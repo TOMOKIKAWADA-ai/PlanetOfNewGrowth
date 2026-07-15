@@ -1,0 +1,18 @@
+extends RefCounted
+class_name GameTypes
+
+enum PlayerForm { HUMAN, BIRD }
+enum EnemyType { CHASER, SHOOTER, GUARDIAN, SPAWNER }
+enum UpgradeId {
+	DAMAGE,
+	ATTACK_SPEED,
+	PROJECTILE_COUNT,
+	PIERCE,
+	MOVE_SPEED,
+	MAX_HP,
+	MAX_MP,
+	MP_REGEN,
+	BIRD_EFFICIENCY,
+	DIVE_DAMAGE,
+	AREA_PULSE
+}

@@ -1,0 +1,11 @@
+.godot/
+.godot-bin/
+Godot_v*.zip
+node_modules/
+dist/
+tmp/
+.agents/
+*.log
+.env
+.env.*
+search-survive-itchio.zip

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Search Survive Three</title>
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.addEventListener('DOMContentLoaded', () => {
+          document.body.innerHTML = [
+            '<main style="max-width:720px;margin:80px auto;padding:0 24px;font-family:system-ui,sans-serif;line-height:1.6;">',
+            '<h1>Open this game through localhost</h1>',
+            '<p>This app needs the Vite server. Opening index.html directly with file:// will not load the game scripts.</p>',
+            '<pre style="padding:12px;background:#111;color:#fff;border-radius:8px;overflow:auto;">npm.cmd run dev</pre>',
+            '<p>Then open <a href="http://127.0.0.1:5173/">http://127.0.0.1:5173/</a>.</p>',
+            '</main>'
+          ].join('');
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game"></canvas>
+      <div id="titleScreen" class="screen title-screen">
+        <img class="title-background" src="/assets/ui/title/title-main.png" alt="" />
+        <section class="title-content" aria-labelledby="gameTitle">
+          <h1 id="gameTitle" class="sr-only">芽吹きの惑星</h1>
+          <p class="title-story">
+            人類は荒廃した地球で生き延びるため、<br />
+            動く肉体を捨て、植物と機械のあいだの存在となった。<br /><br />
+            だが、異界の種子が大地を侵食しはじめる。<br /><br />
+            旧人類の肉体から生まれた三人の兵士は、<br />
+            失われた世界を守るため、再び地上を駆ける。
+          </p>
+          <button id="titleStartButton" class="title-start-button" type="button">GAME START</button>
+        </section>
+      </div>
+      <div id="characterSelect" class="screen character-select hidden">
+        <section class="select-panel" aria-labelledby="characterSelectTitle">
+          <h1 id="characterSelectTitle">Character Select</h1>
+          <div class="character-grid">
+            <button class="character-card" type="button" data-character="tsukimi">
+              <img class="character-art" src="/assets/ui/characters/tsukimi.png" alt="" />
+              <span class="character-copy">
+                <span class="character-name">Tsukimi</span>
+                <span class="character-role">STANDARD / LONG BEAM</span>
+              </span>
+            </button>
+            <button class="character-card" type="button" data-character="akame">
+              <img class="character-art" src="/assets/ui/characters/akame.png" alt="" />
+              <span class="character-copy">
+                <span class="character-name">Akame</span>
+                <span class="character-role">TANK / HIGH DURABILITY</span>
+              </span>
+            </button>
+            <button class="character-card" type="button" data-character="kiichigo">
+              <img class="character-art" src="/assets/ui/characters/kiichigo.png" alt="" />
+              <span class="character-copy">
+                <span class="character-name">Kiichigo</span>
+                <span class="character-role">LIGHT / 5 SLASH BURST</span>
+              </span>
+            </button>
+          </div>
+          <div class="select-actions">
+            <button id="tutorialButton" class="secondary-button" type="button">Tutorial</button>
+          </div>
+        </section>
+      </div>
+      <div id="tutorial" class="screen hidden" aria-labelledby="tutorialTitle">
+        <section class="tutorial-panel" role="dialog" aria-modal="true">
+          <div class="tutorial-meta">
+            <span id="tutorialStepLabel"></span>
+            <span id="tutorialStepCount"></span>
+          </div>
+          <img id="tutorialScreenshot" class="tutorial-screenshot" alt="" aria-hidden="true" />
+          <div id="tutorialIcon" class="tutorial-icon" aria-hidden="true"></div>
+          <h1 id="tutorialTitle"></h1>
+          <p id="tutorialBody"></p>
+          <div id="tutorialControl" class="tutorial-control"></div>
+          <div id="tutorialDots" class="tutorial-dots" aria-hidden="true"></div>
+          <div class="tutorial-actions">
+            <button id="tutorialBack" class="secondary-button" type="button">Back</button>
+            <button id="tutorialNext" type="button">Next</button>
+          </div>
+          <button id="tutorialSkip" class="tutorial-skip" type="button">Skip tutorial</button>
+        </section>
+      </div>
+      <div id="hud" class="hidden">
+        <div class="top-row">
+          <div class="meter hp"><span>HP</span><div><i id="hpBar"></i></div><b id="hpText"></b></div>
+          <div class="meter mp"><span>MP</span><div><i id="mpBar"></i></div><b id="mpText"></b></div>
+          <div class="meter burst"><span>Burst</span><div><i id="burstBar"></i></div><b id="burstText"></b></div>
+          <div class="clock" id="clock">08:00</div>
+        </div>
+        <div class="side-panel">
+          <div id="statsLine"></div>
+          <div id="hintLine"></div>
+        </div>
+        <div id="motherPanel" class="hidden">
+          <div class="mother-title">母卵</div>
+          <div class="mother-bar"><i id="motherBar"></i></div>
+        </div>
+        <div id="motherAlert" class="hidden"></div>
+        <div id="centerMessage"></div>
+      </div>
+      <div id="deathBlackout" class="death-blackout"></div>
+      <div id="levelUp" class="screen hidden">
+        <h1>Level Up</h1>
+        <div id="upgradeChoices"></div>
+      </div>
+      <div id="result" class="screen hidden">
+        <h1 id="resultTitle"></h1>
+        <p id="resultBody"></p>
+        <button id="restartButton">Retry</button>
+      </div>
+      <div id="pause" class="screen hidden">
+        <h1>Paused</h1>
+        <p>Escで再開 / Rで再開始</p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
