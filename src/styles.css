@@ -474,7 +474,7 @@ body,
 
 .tutorial-screenshot {
   width: 100%;
-  height: 180px;
+  height: 540px;
   margin: 18px auto 0;
   border: 0;
   border-radius: 8px;
@@ -856,7 +856,7 @@ button {
     min-height: 88px;
   }
   .tutorial-screenshot {
-    height: 130px;
+    height: 390px;
   }
   .tutorial-icon {
     width: 68px;

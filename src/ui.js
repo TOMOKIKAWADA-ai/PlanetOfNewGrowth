@@ -16,16 +16,19 @@ const UPGRADE_ICON_URLS = {
   pickupMagnet: new URL('../assets/ui/upgrade-icons/pickupMagnet.png', import.meta.url).href
 };
 
-const TUTORIAL_IMAGE_URLS = {
-  human: new URL('../assets/ui/tutorial/human-gameplay-small.png', import.meta.url).href,
-  bird: new URL('../assets/ui/tutorial/bird-gameplay-small.png', import.meta.url).href
-};
+const TUTORIAL_IMAGE_URLS = [
+  new URL('../assets/ui/tutorial/move.gif', import.meta.url).href,
+  new URL('../assets/ui/tutorial/attack.gif', import.meta.url).href,
+  new URL('../assets/ui/tutorial/bird.gif', import.meta.url).href,
+  new URL('../assets/ui/tutorial/burst.gif', import.meta.url).href,
+  new URL('../assets/ui/tutorial/boss.gif', import.meta.url).href
+];
 
 const TUTORIAL_STEPS = [
   { label: '\u79fb\u52d5', title: '\u307e\u305a\u306f\u79fb\u52d5', body: '\u5730\u9762\u306e\u4e0a\u3092\u81ea\u7531\u306b\u79fb\u52d5\u3057\u3066\u3001\u5371\u967a\u306a\u653b\u6483\u3092\u907f\u3051\u307e\u3057\u3087\u3046\u3002', control: 'W A S D  /  Arrow Keys' },
-  { label: '\u653b\u6483', title: '\u653b\u6483\u3068\u7834\u58ca', body: '\u81ea\u52d5\u653b\u6483\u304c\u8fd1\u304f\u306e\u6575\u3092\u72d9\u3044\u307e\u3059\u3002\u81ea\u52d5\u653b\u6483\u3067\u5375\u3084\u5efa\u7269\u3092\u58ca\u3057\u307e\u3057\u3087\u3046\u3002', control: 'Auto attack  =  nearby targets' },
-  { label: '\u9ce5\u5f62\u614b', title: '\u9ce5\u5f62\u614b\u3067\u98db\u3076', body: 'Q\u3067\u9ce5\u5f62\u614b\u306b\u5909\u8eab\u3002MP\u3092\u6d88\u8cbb\u3057\u306a\u304c\u3089\u98db\u7d9a\u3051\u3001\u8fd1\u304f\u306e\u5375\u3078\u81ea\u52d5\u3067\u6025\u964d\u3057\u307e\u3059\u3002Q\u3067\u623b\u308c\u307e\u3059\u3002', control: 'Q  =  Bird form / Return' },
-  { label: 'Burst', title: 'Burst\u3092\u653e\u3064', body: '\u6575\u3084\u5375\u3092\u5012\u3059\u3068\u30b2\u30fc\u30b8\u304c\u6e9c\u307e\u308a\u307e\u3059\u3002\u6e80\u30bf\u30f3\u306b\u306a\u3063\u305f\u3089E\u3067\u5f37\u529b\u306a\u7bc4\u56f2\u653b\u6483\u3092\u767a\u52d5\u3067\u304d\u307e\u3059\u3002', control: 'E  =  Burst when the gauge is full' },
+  { label: '攻撃', title: '攻撃', body: '自動で近くの敵を攻撃します。異界の種子（通称：卵）や敵を倒しましょう。', control: 'Auto attack  =  nearby targets' },
+  { label: '鳥形態', title: '鳥形態で飛ぶ', body: 'Qで鳥形態に変身。MPを消費しながら飛び続けます。卵に特攻があり、一撃で倒せるうえ捕食することでHPを回復できます。Qをもう一度押すと戻れます。', control: 'Q  =  Bird form / Return' },
+  { label: 'バースト技', title: 'バースト技を放つ', body: '敵や卵を倒すとゲージが溜まります。満タンになったらEで強力な範囲攻撃を発動できます。キャラクターによりバースト技は異なります。', control: 'E  =  Burst when the gauge is full' },
   { label: '\u76ee\u6a19', title: '\u30a8\u30ea\u30a2\u3092\u53d6\u308a\u623b\u3059', body: '\u5375\u306e\u5897\u6b96\u3092\u98df\u3044\u6b62\u3081\u3001\u6700\u5f8c\u306b\u73fe\u308c\u308b\u30dc\u30b9\u3092\u7834\u58ca\u3057\u307e\u3057\u3087\u3046\u3002\u30a8\u30ea\u30a2\u3092\u5fa9\u65e7\u3067\u304d\u308c\u3070\u52dd\u5229\u3067\u3059\u3002', control: 'AREA RESTORED  =  Victory' }
 ];
 let tutorialGuideInstance = null;
@@ -67,7 +70,7 @@ export class TutorialGuide {
   }
   render() {
     const step = TUTORIAL_STEPS[this.index];
-    this.screenshot.src = this.index === 2 ? TUTORIAL_IMAGE_URLS.bird : TUTORIAL_IMAGE_URLS.human;
+    this.screenshot.src = TUTORIAL_IMAGE_URLS[this.index];
     this.stepLabel.textContent = step.label;
     this.stepCount.textContent = (this.index + 1) + ' / ' + TUTORIAL_STEPS.length;
     this.icon.textContent = String(this.index + 1).padStart(2, '0');
