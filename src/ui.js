@@ -16,6 +16,12 @@ const UPGRADE_ICON_URLS = {
   pickupMagnet: new URL('../assets/ui/upgrade-icons/pickupMagnet.png', import.meta.url).href
 };
 
+const UPGRADE_CATEGORIES = {
+  damage: '攻撃', speed: '攻撃', seeds: '攻撃', pierce: '攻撃',
+  move: '移動', hp: '耐久', mp: '変身', regen: '変身',
+  birdCost: '変身', dive: '鳥形態', pulse: '範囲攻撃', pickupMagnet: '回収'
+};
+
 const TUTORIAL_IMAGE_URLS = [
   new URL('../assets/ui/tutorial/move.gif', import.meta.url).href,
   new URL('../assets/ui/tutorial/attack.gif', import.meta.url).href,
@@ -25,10 +31,10 @@ const TUTORIAL_IMAGE_URLS = [
 ];
 
 const TUTORIAL_STEPS = [
-  { label: '\u79fb\u52d5', title: '\u307e\u305a\u306f\u79fb\u52d5', body: '\u5730\u9762\u306e\u4e0a\u3092\u81ea\u7531\u306b\u79fb\u52d5\u3057\u3066\u3001\u5371\u967a\u306a\u653b\u6483\u3092\u907f\u3051\u307e\u3057\u3087\u3046\u3002', control: 'W A S D  /  Arrow Keys' },
-  { label: '攻撃', title: '攻撃', body: '自動で近くの敵を攻撃します。異界の種子（通称：卵）や敵を倒しましょう。', control: 'Auto attack  =  nearby targets' },
-  { label: '鳥形態', title: '鳥形態で飛ぶ', body: 'Qで鳥形態に変身。MPを消費しながら飛び続けます。卵に特攻があり、一撃で倒せるうえ捕食することでHPを回復できます。Qをもう一度押すと戻れます。', control: 'Q  =  Bird form / Return' },
-  { label: 'バースト技', title: 'バースト技を放つ', body: '敵や卵を倒すとゲージが溜まります。満タンになったらEで強力な範囲攻撃を発動できます。キャラクターによりバースト技は異なります。', control: 'E  =  Burst when the gauge is full' },
+  { label: '\u79fb\u52d5', title: '\u307e\u305a\u306f\u79fb\u52d5', body: '\u5730\u9762\u306e\u4e0a\u3092\u81ea\u7531\u306b\u79fb\u52d5\u3057\u3066\u3001\u5371\u967a\u306a\u653b\u6483\u3092\u907f\u3051\u307e\u3057\u3087\u3046\u3002', control: '画面左のスティック / WASD / 左スティック' },
+  { label: '攻撃', title: '自動で攻撃', body: '人間形態では近くの敵や卵を自動で撃ちます。敵を避けながら移動し、卵が増えるのを抑えましょう。', control: '攻撃は自動 / 操作は移動と変身' },
+  { label: '鳥形態', title: '鳥形態で飛ぶ', body: '画面右の変身ボタン、Qまたは△で鳥形態に変身。MPを消費しながら飛び続けます。卵に特攻があり、一撃で倒せるうえ捕食することでHPを回復できます。もう一度押すと戻れます。', control: '変身ボタン / Q / △  =  形態切り替え' },
+  { label: 'バースト技', title: 'バースト技を放つ', body: '敵や卵を倒すとゲージが溜まります。満タンになったら画面右のバーストボタン、E、□、R1のいずれかで強力な範囲攻撃を発動できます。キャラクターによりバースト技は異なります。', control: 'バーストボタン / E / □ / R1' },
   { label: '\u76ee\u6a19', title: '\u30a8\u30ea\u30a2\u3092\u53d6\u308a\u623b\u3059', body: '\u5375\u306e\u5897\u6b96\u3092\u98df\u3044\u6b62\u3081\u3001\u6700\u5f8c\u306b\u73fe\u308c\u308b\u30dc\u30b9\u3092\u7834\u58ca\u3057\u307e\u3057\u3087\u3046\u3002\u30a8\u30ea\u30a2\u3092\u5fa9\u65e7\u3067\u304d\u308c\u3070\u52dd\u5229\u3067\u3059\u3002', control: 'AREA RESTORED  =  Victory' }
 ];
 let tutorialGuideInstance = null;
@@ -111,14 +117,22 @@ export class Hud {
     this.resultTitle = document.getElementById('resultTitle');
     this.resultBody = document.getElementById('resultBody');
     this.restartButton = document.getElementById('restartButton');
+    this.replayStoryButton = document.getElementById('replayStoryButton');
     this.deathBlackout = document.getElementById('deathBlackout');
     this.pause = document.getElementById('pause');
+    this.pauseResumeButton = document.getElementById('pauseResumeButton');
     this.motherPanel = document.getElementById('motherPanel');
     this.motherBar = document.getElementById('motherBar');
     this.motherAlert = document.getElementById('motherAlert');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
     this.restartButton.addEventListener('click', () => window.location.reload());
+    this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
+    this.pauseResumeButton.addEventListener('click', () => {
+      if (this.game.state !== 'paused') return;
+      this.game.state = 'playing';
+      this.game.playSfx('buttonConfirm', { volume: 0.75 });
+    });
   }
 
   update(dt) {
@@ -130,6 +144,7 @@ export class Hud {
     this.setBar(this.burstBar, player.burst / Config.player.burstMax);
     const burstReady = player.burst >= Config.player.burstMax && player.burstCooldownTimer <= 0;
     this.burstMeter?.classList.toggle('ready', burstReady);
+    document.getElementById('touchBurst')?.classList.toggle('ready', burstReady);
     this.hpText.textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
     this.mpText.textContent = `${Math.floor(player.mp)} / ${player.maxMp}`;
     const burstCooldownText = player.burstCooldownTimer > 0 ? `  CD ${player.burstCooldownTimer.toFixed(1)}s` : '';
@@ -150,7 +165,7 @@ export class Hud {
       : player.burstCooldownTimer > 0
         ? `バースト再使用 ${player.burstCooldownTimer.toFixed(1)}s`
         : player.burst >= Config.player.burstMax
-          ? 'E: バースト使用可能'
+          ? 'E / □ / R1: バースト使用可能'
           : this.game.spawnPauseTimer > 0
             ? `出現停止 ${this.game.spawnPauseTimer.toFixed(1)}s`
             : '';
@@ -209,9 +224,11 @@ export class Hud {
   showLevelUp(choices, onPick) {
     this.levelUp.classList.remove('hidden');
     this.upgradeChoices.replaceChildren();
-    for (const upgrade of choices) {
+    for (const [index, upgrade] of choices.entries()) {
       const button = document.createElement('button');
       button.className = 'upgrade';
+      button.type = 'button';
+      button.setAttribute('aria-label', `${index + 1}番 ${UPGRADE_CATEGORIES[upgrade.id] ?? '強化'}：${upgrade.title}。${upgrade.body}`);
       const iconUrl = UPGRADE_ICON_URLS[upgrade.id];
       if (iconUrl) {
         const icon = document.createElement('img');
@@ -223,18 +240,26 @@ export class Hud {
       }
       const copy = document.createElement('div');
       copy.className = 'upgrade-copy';
+      const kind = document.createElement('span');
+      kind.className = 'upgrade-kind';
+      kind.textContent = UPGRADE_CATEGORIES[upgrade.id] ?? '強化';
       const title = document.createElement('b');
       title.textContent = upgrade.title;
       const body = document.createElement('span');
       body.textContent = upgrade.body;
-      copy.append(title, body);
+      copy.append(kind, title, body);
       button.appendChild(copy);
+      const number = document.createElement('span');
+      number.className = 'upgrade-index';
+      number.textContent = String(index + 1).padStart(2, '0');
+      button.appendChild(number);
       button.addEventListener('click', () => {
         this.levelUp.classList.add('hidden');
         onPick(upgrade);
       });
       this.upgradeChoices.appendChild(button);
     }
+    this.upgradeChoices.querySelector('button')?.focus();
   }
 
   hideLevelUp() {
@@ -242,11 +267,14 @@ export class Hud {
   }
 
   showResult(victory, body) {
+    const chapterComplete = victory && this.game.stageId === 1;
     this.result.classList.toggle('victory', victory);
     this.result.classList.toggle('defeat', !victory);
-    this.resultTitle.textContent = victory ? 'AREA RESTORED' : 'Defeat';
+    this.resultTitle.textContent = chapterComplete ? '第1章 完' : victory ? 'AREA RESTORED' : 'Defeat';
+    this.replayStoryButton.classList.toggle('hidden', !chapterComplete);
     this.resultBody.textContent = body;
     this.result.classList.remove('hidden');
+    this.restartButton?.focus();
   }
 
   showDeathBlackout(show) {

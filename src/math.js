@@ -29,6 +29,18 @@ export function horizontalDistanceSq(a, b) {
   return dx * dx + dz * dz;
 }
 
+export function horizontalPointSegmentDistanceSq(point, start, end) {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const lengthSq = dx * dx + dz * dz;
+  const t = lengthSq > 0.0001
+    ? clamp(((point.x - start.x) * dx + (point.z - start.z) * dz) / lengthSq, 0, 1)
+    : 0;
+  const offsetX = point.x - (start.x + dx * t);
+  const offsetZ = point.z - (start.z + dz * t);
+  return offsetX * offsetX + offsetZ * offsetZ;
+}
+
 export function horizontalLength(x, z) {
   return Math.hypot(x, z);
 }

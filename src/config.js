@@ -31,6 +31,7 @@ export const Config = {
     playerRunAnimationSpeed: 1.08,
     playerReactAnimationSpeed: 1.25,
     playerDyingAnimationSpeed: 0.95,
+    playerBurstAnimationSpeed: 1,
     playerDeathResultDelay: 0.45,
     playerDeathBlackoutSeconds: 10,
     useFloorTexture: true,
@@ -42,6 +43,11 @@ export const Config = {
     useUnlitBackgroundModels: false,
     seedGlowOutline: false,
     seedEmissiveIntensity: 0,
+    droneOrbitSpeed: 1.9,
+    droneSpinSpeed: 2.4,
+    droneFallGravity: 5.8,
+    droneFallTumbleSpeed: 4.8,
+    droneGroundY: 0.02,
     renderExposure: 1.18,
     ambientLightIntensity: 0.78,
     sunLightIntensity: 2.55,
@@ -85,11 +91,24 @@ export const Config = {
   map: {
     radius: 72,
     safeRadius: 7,
-    playSeconds: 480,
-    motherSpawnSeconds: 420,
-    eggMax: 120,
-    enemyMax: 250,
+    playSeconds: 240,
+    motherSpawnSeconds: 180,
+    eggMax: 90,
+    enemyMax: 120,
     initialEggs: 4,
+    initialEnemies: 2,
+    initialEggCap: 10,
+    initialEnemyCap: 14,
+    stageBeats: [
+      { at: 35, enemies: ['chaser', 'shooter'], eggs: 1, eggCap: 18, enemyCap: 25 },
+      { at: 70, enemies: ['spawner', 'chaser', 'shooter'], eggs: 1, eggCap: 32, enemyCap: 42 },
+      { at: 110, enemies: ['chaser', 'guardian'], eggs: 3, eggCap: 48, enemyCap: 60 },
+      { at: 150, enemies: ['shooter', 'shooter', 'guardian', 'chaser'], eggs: 1, eggCap: 64, enemyCap: 78 },
+      { at: 180, enemies: ['sniper', 'guardian', 'spawner', 'chaser'], eggs: 2, eggCap: 72, enemyCap: 88 },
+      { at: 195, enemies: ['sniper', 'shooter', 'guardian', 'chaser'], eggs: 1, eggCap: 78, enemyCap: 96 },
+      { at: 210, enemies: ['sniper', 'sniper', 'shooter', 'guardian', 'chaser', 'chaser'], eggs: 2, eggCap: 84, enemyCap: 108 },
+      { at: 225, enemies: ['sniper', 'sniper', 'shooter', 'guardian', 'spawner', 'chaser', 'chaser'], eggs: 1, eggCap: 90, enemyCap: 120 }
+    ],
     spawnCapPauseSeconds: 40,
     spawnCapResumeBudget: 1,
     hatchAcceleration: 0.85,
@@ -111,12 +130,16 @@ export const Config = {
   player: {
     maxHp: 120,
     maxMp: 100,
-    humanSpeed: 6,
-    birdSpeed: 13.2,
+    humanSpeed: 6.72,
+    birdSpeed: 14.78,
     birdTurnRate: Math.PI * 0.82,
     birdBoundaryTurnRate: Math.PI * 1.2,
     humanRegenMp: 6,
     birdMpCost: 14,
+    fishSpeed: 8.4,
+    fishMpCost: 9,
+    fishEggRange: 3.2,
+    fishBiteCooldown: 0.34,
     radius: 0.72,
     invincibleAfterBird: 1.2,
     phaseAfterBird: 1.2,
@@ -125,12 +148,6 @@ export const Config = {
     humanHeight: 0,
     birdHeight: 8.5,
     birdFloatSpeed: 11,
-    meleeRange: 3,
-    meleeArc: Math.PI * 0.62,
-    meleeCooldown: 0.58,
-    meleeWindup: 0.11,
-    meleeEggDamage: 30,
-    meleeEnemyDamage: 22,
     autoInterval: 0.75,
     autoDamage: 10,
     autoRange: 12,
@@ -179,8 +196,8 @@ export const Config = {
     akame: {
       maxHp: 170,
       maxMp: 90,
-      humanSpeed: 5.1,
-      birdSpeed: 12.1,
+      humanSpeed: 5.71,
+      birdSpeed: 13.55,
       autoDamage: 12,
       damageTakenMultiplier: 0.78,
       radius: 0.82
@@ -188,8 +205,8 @@ export const Config = {
     kiichigo: {
       maxHp: 88,
       maxMp: 112,
-      humanSpeed: 7.4,
-      birdSpeed: 14.4,
+      humanSpeed: 8.29,
+      birdSpeed: 16.13,
       autoInterval: 0.62,
       specialInterval: 0.34,
       damageTakenMultiplier: 1.08,
@@ -208,11 +225,12 @@ export const Config = {
       fov: 58,
       pitch: 1.22
     },
+    fish: { height: 1.1, distance: 5.2, fov: 43, pitch: 0.22 },
     transitionSeconds: 0.6
   },
   egg: {
     hp: 38,
-    motherHp: 420,
+    motherHp: 300,
     motherShockwaveFirstDelay: 4.5,
     motherShockwaveInterval: 10,
     motherShockwaveWarning: 1.6,
@@ -220,9 +238,9 @@ export const Config = {
     motherShockwaveRange: 24,
     motherShockwaveDamage: 68,
     matureSeconds: 8,
-    hatchMin: 12,
-    hatchMax: 18,
-    reproduceSeconds: 18,
+    hatchMin: 9.5,
+    hatchMax: 14,
+    reproduceSeconds: 14,
     childMinDistance: 4,
     childMaxDistance: 10,
     spacing: 3.1,
@@ -230,10 +248,10 @@ export const Config = {
     healOnBreakRatio: 0.05
   },
   enemy: {
-    chaser: { hp: 28, speed: 3.1, damage: 12, xp: 5 },
+    chaser: { hp: 28, speed: 3.32, damage: 12, xp: 5 },
     shooter: {
       hp: 24,
-      speed: 2.3,
+      speed: 2.46,
       damage: 7,
       xp: 7,
       range: 13,
@@ -242,24 +260,48 @@ export const Config = {
       fireWindup: 0.2,
       animationFade: 0.08
     },
-    guardian: { hp: 72, speed: 2.0, damage: 15, xp: 10 },
+    sniper: {
+      hp: 24,
+      speed: 2.46,
+      damage: 10,
+      xp: 9,
+      range: 21,
+      fireInterval: 3.6,
+      warningSeconds: 1.15,
+      beamSeconds: 0.8,
+      warningTurnRate: 4.5,
+      beamTurnRate: 2.4,
+      hitInterval: 0.42,
+      humanHitRadius: 0.85,
+      birdHitRadius: 1.8,
+      maxAliveBeforeRush: 2,
+      maxAliveDuringRush: 6
+    },
+    guardian: { hp: 72, speed: 2.14, damage: 15, xp: 10 },
     spawner: {
       hp: 48,
-      speed: 8.2,
+      speed: 8.77,
       damage: 5,
       xp: 13,
       lifeSeconds: 58,
-      layMin: 6.2,
-      layMax: 10.5,
+      layMin: 5,
+      layMax: 8.3,
       fleeRange: 10,
       nearEggLimit: 3,
       eggCheckRange: 11,
       destinationSeconds: 4.8
-    }
+    },
+    dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
+    tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },
+    dragonfly: { hp: 46, speed: 7.27, damage: 15, birdDamageMultiplier: 2.2, xp: 10 },
+    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13 }
   },
   xp: {
     firstLevel: 18,
     growth: 1.22,
+    rewardMultiplier: 1.4,
+    openingMagnetRange: 12,
+    openingMagnetSeconds: 25,
     magnetRange: 2.7,
     pickupRange: 0.9,
     orbSpeed: 9
@@ -344,7 +386,7 @@ export const UpgradePool = [
   {
     id: 'damage',
     title: '攻撃力',
-    body: '自動射撃と特殊弾の威力が上がる。',
+    body: '自動攻撃の威力＋3。卵を狙う弾も強くなる。',
     apply(game) {
       game.player.autoDamage += 3;
       game.player.specialDamage += 0.35;
@@ -353,7 +395,7 @@ export const UpgradePool = [
   {
     id: 'speed',
     title: '攻撃速度',
-    body: '自動射撃と特殊弾の間隔が短くなる。',
+    body: '自動攻撃の間隔が約12％短くなる。',
     apply(game) {
       game.player.autoInterval = Math.max(0.32, game.player.autoInterval * 0.88);
       game.player.specialInterval = Math.max(0.22, game.player.specialInterval * 0.92);
@@ -362,7 +404,7 @@ export const UpgradePool = [
   {
     id: 'seeds',
     title: '発射弾数',
-    body: '浮遊する種が増え、弾を撃つ起点も増える。',
+    body: '周りに浮く種が１つ増え、同時に撃つ弾が増える。',
     apply(game) {
       game.player.seedCount = Math.min(6, game.player.seedCount + 1);
       game.player.syncSeeds();
@@ -371,7 +413,7 @@ export const UpgradePool = [
   {
     id: 'pierce',
     title: '貫通',
-    body: '弾が追加で敵を貫く。',
+    body: '自動で撃つ弾が、さらに１体の敵を貫く。',
     apply(game) {
       game.player.pierce += 1;
     }
@@ -379,7 +421,7 @@ export const UpgradePool = [
   {
     id: 'move',
     title: '移動速度',
-    body: '移動速度が上がる。',
+    body: '人間形態と鳥形態の移動が速くなる。',
     apply(game) {
       game.player.humanSpeed += 0.55;
       game.player.birdSpeed += 0.8;
@@ -388,7 +430,7 @@ export const UpgradePool = [
   {
     id: 'hp',
     title: '最大HP',
-    body: '最大HPが増え、増えた分だけ回復する。',
+    body: '最大HP＋20。今のHPも20回復する。',
     apply(game) {
       game.player.maxHp += 20;
       game.player.hp = Math.min(game.player.maxHp, game.player.hp + 20);
@@ -397,7 +439,7 @@ export const UpgradePool = [
   {
     id: 'mp',
     title: '最大MP',
-    body: '最大MPが増える。',
+    body: '最大MP＋18。鳥形態で長く飛べる。',
     apply(game) {
       game.player.maxMp += 18;
       game.player.mp = Math.min(game.player.maxMp, game.player.mp + 18);
@@ -406,7 +448,7 @@ export const UpgradePool = [
   {
     id: 'regen',
     title: 'MP回復',
-    body: 'MP回復量が上がる。',
+    body: '人間形態でのMP回復量が毎秒＋1.7。',
     apply(game) {
       game.player.humanRegenMp += 1.7;
     }
@@ -414,7 +456,7 @@ export const UpgradePool = [
   {
     id: 'birdCost',
     title: '鳥MP消費軽減',
-    body: '変身中のMP消費が少なくなる。',
+    body: '鳥形態のMP消費が毎秒1.5少なくなる。',
     apply(game) {
       game.player.birdMpCost = Math.max(6, game.player.birdMpCost - 1.5);
     }
@@ -422,7 +464,7 @@ export const UpgradePool = [
   {
     id: 'dive',
     title: '急降下強化',
-    body: '急降下ダメージが上がる。',
+    body: '鳥形態の急降下で、卵に与えるダメージが上がる。',
     apply(game) {
       game.player.birdDiveBonus += 18;
       game.player.birdMotherDiveBonus += 8;
@@ -431,7 +473,7 @@ export const UpgradePool = [
   {
     id: 'pulse',
     title: '範囲パルス',
-    body: '一定間隔で周囲に範囲ダメージを与える。',
+    body: '一定間隔で周囲を自動攻撃。取得済みなら威力と範囲が上がる。',
     apply(game) {
       game.player.pulseLevel += 1;
       game.player.pulseDamage += 8;
@@ -441,7 +483,7 @@ export const UpgradePool = [
   {
     id: 'pickupMagnet',
     title: '引き寄せ力',
-    body: '少し遠い取得アイテムも素早く引き寄せやすくなる。',
+    body: '経験値やアイテムを、遠くから素早く引き寄せる。',
     apply(game) {
       game.player.pickupMagnetRange += 1.8;
       game.player.pickupMagnetSpeed += 2.6;

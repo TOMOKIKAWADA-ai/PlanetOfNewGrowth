@@ -3,12 +3,16 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { CameraRig } from './camera-rig.js';
+import { getCharacterPortrait } from './character-portraits.js';
+import { StoryPlayer } from './story.js';
+import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
 import { Config } from './config.js';
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
+import { TouchControls } from './touch-controls.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
 
 const FLOOR_TEXTURE_URL = new URL('../assets/floor/flr_001.png', import.meta.url).href;
@@ -182,36 +186,132 @@ const BACKGROUND_OBJECTS = [
   { url: new URL('../assets/background/obj_007_rtp.glb', import.meta.url).href, height: 1.25, count: 16, minRadius: 12 },
   { url: new URL('../assets/background/obj_008_rtp.glb', import.meta.url).href, height: 2.2, count: 2, minRadius: 24 }
 ];
+const WATER_STAGE_LAND_PATCHES = [
+  { x: 0, z: 0, radius: 25, scaleX: 1.2, scaleZ: 0.8, rotation: 0.18, seed: 0.4 },
+  { x: -36, z: -12, radius: 18, scaleX: 1.0, scaleZ: 0.72, rotation: -0.65, seed: 1.7 },
+  { x: 31, z: 28, radius: 17, scaleX: 0.95, scaleZ: 0.75, rotation: 0.58, seed: 2.9 },
+  { x: 34, z: -31, radius: 14, scaleX: 1.15, scaleZ: 0.75, rotation: -0.28, seed: 4.2 },
+  { x: -25, z: 37, radius: 12, scaleX: 1.0, scaleZ: 0.8, rotation: 0.92, seed: 5.5 }
+];
 const CHARACTER_OPTIONS = {
   tsukimi: { playerModel: 'tsukimiGlb' },
   akame: { playerModel: 'akameGlb' },
   kiichigo: { playerModel: 'kiichigoGlb' }
 };
+const appInput = new InputState(window);
+let activeGame = null;
+let selectedStageId = 1;
+let menuCursorButton = null;
+
+function setMenuCursor(button) {
+  if (menuCursorButton === button) return;
+  menuCursorButton?.classList.remove('menu-cursor');
+  menuCursorButton = button;
+  menuCursorButton?.classList.add('menu-cursor');
+}
+
+function getMenuButtons(container) {
+  return container
+    ? [...container.querySelectorAll('button:not([disabled])')].filter(button => button.getClientRects().length && !button.closest('[inert]'))
+    : [];
+}
+
+function moveMenuFocus(container, direction, linearFallback = false) {
+  const buttons = getMenuButtons(container);
+  if (buttons.length === 0) return;
+  const current = buttons.includes(document.activeElement) ? document.activeElement : buttons[0];
+  if (current !== document.activeElement) {
+    current.focus();
+    return;
+  }
+
+  const origin = current.getBoundingClientRect();
+  const originX = origin.left + origin.width * 0.5;
+  const originY = origin.top + origin.height * 0.5;
+  const vertical = direction === 'up' || direction === 'down';
+  const sign = direction === 'left' || direction === 'up' ? -1 : 1;
+  let best = null;
+  let bestScore = Infinity;
+  for (const button of buttons) {
+    if (button === current) continue;
+    const rect = button.getBoundingClientRect();
+    const dx = rect.left + rect.width * 0.5 - originX;
+    const dy = rect.top + rect.height * 0.5 - originY;
+    const primary = vertical ? dy : dx;
+    if (primary * sign <= 0) continue;
+    const cross = vertical ? dx : dy;
+    const score = Math.abs(primary) + Math.abs(cross) * 2;
+    if (score < bestScore) {
+      best = button;
+      bestScore = score;
+    }
+  }
+  if (best) best.focus();
+  else if (linearFallback && buttons.length > 1) {
+    const currentIndex = buttons.indexOf(current);
+    buttons[(currentIndex + sign + buttons.length) % buttons.length].focus();
+  }
+}
+
+function handleGamepadMenu(input, container, onCancel = null, linearFallback = false) {
+  if (!container || !input.hasGamepad) {
+    setMenuCursor(null);
+    return;
+  }
+  for (const direction of ['up', 'down', 'left', 'right']) {
+    if (input.menuDirectionPressed(direction)) {
+      moveMenuFocus(container, direction, linearFallback);
+      break;
+    }
+  }
+  const buttons = getMenuButtons(container);
+  const focused = buttons.includes(document.activeElement) ? document.activeElement : buttons[0];
+  if (focused && focused !== document.activeElement) focused.focus();
+  setMenuCursor(focused ?? null);
+  if (input.actionPressed('confirm')) {
+    const button = focused;
+    input.consumeAction('confirm');
+    button?.focus();
+    button?.click();
+    setMenuCursor(buttons.includes(document.activeElement) ? document.activeElement : null);
+  } else if (input.actionPressed('cancel')) {
+    input.consumeAction('cancel');
+    onCancel?.();
+  }
+}
 
 class Game {
-  constructor(characterId = 'tsukimi') {
+  constructor(characterId = 'tsukimi', stageId = 1) {
     this.characterId = characterId;
+    this.stageId = stageId;
+    this.isWaterStage = stageId === 2;
     this.canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: Config.performance.antialias,
       powerPreference: 'high-performance'
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, Config.performance.maxPixelRatio) * Config.performance.renderScale);
+    const renderScale = window.matchMedia?.('(any-pointer: coarse)').matches
+      ? Math.min(Config.performance.renderScale, 0.75)
+      : Config.performance.renderScale;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, Config.performance.maxPixelRatio) * renderScale);
     this.renderer.shadowMap.enabled = Config.performance.enableShadows;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = Config.visuals.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = Config.visuals.renderExposure;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x15201d);
-    this.scene.fog = new THREE.FogExp2(0x15201d, 0.012);
+    const worldColor = this.isWaterStage ? 0x173a43 : 0x15201d;
+    this.scene.background = new THREE.Color(worldColor);
+    this.scene.fog = new THREE.FogExp2(worldColor, this.isWaterStage ? 0.017 : 0.012);
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
     this.assets = null;
-    this.input = new InputState(window);
+    this.input = appInput;
+    this.touchControls = new TouchControls(this.input, document.getElementById('touchControls'));
     this.clock = new THREE.Clock();
     this.hud = new Hud(this);
     this.state = 'loading';
+    this.outcome = null;
     this.elapsed = 0;
     this.deathTimer = 0;
     this.deathElapsed = 0;
@@ -237,6 +337,7 @@ class Game {
     this.modelTemplates = new Map();
     this.motherEgg = null;
     this.motherSpawned = false;
+    this.nextStageBeat = 0;
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
     this.scratchNeighbors = [];
@@ -318,10 +419,12 @@ class Game {
     await this.player.loadVisuals();
     this.cameraRig = new CameraRig(this.camera, this.player);
     this.spawnInitialEggs();
+    this.spawnInitialEnemies();
     this.state = 'playing';
+    this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage('Start');
+    this.hud.showMessage(this.stageId === 1 ? '第1章 守る順番\n増殖を抑え、母卵を破壊せよ' : 'Start', 3);
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
@@ -386,6 +489,9 @@ class Game {
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
+    if (this.isWaterStage) {
+      this.createWaterStageEnvironment(ground);
+    }
 
     const boundary = new THREE.Mesh(
       new THREE.RingGeometry(Config.map.radius - 0.55, Config.map.radius + 0.25, Config.performance.groundSegments),
@@ -395,14 +501,183 @@ class Game {
     boundary.position.y = 0.035;
     this.scene.add(boundary);
 
-    if (Config.visuals.useAssetModels) {
+    if (this.isWaterStage) {
+      this.createWaterStageDecor();
+    } else if (Config.visuals.useAssetModels) {
       this.createInstancedDecor(['grass0', 'grass1', 'grass2'], 780, 0.55, 1.6, false);
       this.createInstancedDecor(['rock0', 'rock1', 'rock2'], 120, 0.65, 1.8, false);
       this.createInstancedDecor(['tree0', 'tree1', 'tree2', 'tree3'], 96, 0.95, 1.8, true);
     } else if (Config.visuals.usePrimitiveDecor) {
       this.createPrimitiveDecor();
     }
-    if (Config.visuals.useBackgroundObjects) this.loadBackgroundObjects();
+    if (Config.visuals.useBackgroundObjects && !this.isWaterStage) this.loadBackgroundObjects();
+  }
+
+  createWaterStageEnvironment(ground) {
+    ground.material.dispose();
+    ground.material = new THREE.MeshStandardMaterial({ color: 0x1d5963, roughness: 0.92 });
+
+    const water = new THREE.Mesh(
+      new THREE.CircleGeometry(Config.map.radius, Config.performance.groundSegments),
+      new THREE.MeshPhysicalMaterial({
+        color: 0x4fc2d2,
+        transparent: true,
+        opacity: 0.48,
+        roughness: 0.22,
+        metalness: 0.05,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      })
+    );
+    water.name = 'WaterStageSurface';
+    water.rotation.x = -Math.PI / 2;
+    water.position.y = 0.045;
+    water.renderOrder = 0;
+    this.scene.add(water);
+
+    const shoreMaterial = new THREE.MeshStandardMaterial({ color: 0xb2a874, roughness: 0.98 });
+    const landMaterial = new THREE.MeshStandardMaterial({ color: 0x557649, roughness: 0.96 });
+    for (const patch of WATER_STAGE_LAND_PATCHES) {
+      const island = new THREE.Group();
+      island.name = 'WaterStageIsland';
+      island.position.set(patch.x, 0, patch.z);
+      island.rotation.y = patch.rotation;
+
+      const shore = new THREE.Mesh(
+        this.createIrregularDiscGeometry(patch.radius * 1.04, patch.seed),
+        shoreMaterial
+      );
+      shore.rotation.x = -Math.PI / 2;
+      shore.position.y = 0.07;
+      shore.scale.set(patch.scaleX, patch.scaleZ, 1);
+
+      const land = new THREE.Mesh(
+        this.createIrregularDiscGeometry(patch.radius * 0.93, patch.seed + 0.45),
+        landMaterial
+      );
+      land.rotation.x = -Math.PI / 2;
+      land.position.y = 0.085;
+      land.scale.set(patch.scaleX, patch.scaleZ, 1);
+      land.receiveShadow = true;
+      island.add(shore, land);
+      this.scene.add(island);
+    }
+  }
+
+  createIrregularDiscGeometry(radius, seed) {
+    const geometry = new THREE.CircleGeometry(radius, 48);
+    const positions = geometry.getAttribute('position');
+    for (let i = 1; i < positions.count; i++) {
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      const angle = Math.atan2(y, x);
+      const edgeScale = 1
+        + Math.sin(angle * 3 + seed) * 0.055
+        + Math.sin(angle * 7 - seed * 1.3) * 0.025;
+      positions.setXY(i, x * edgeScale, y * edgeScale);
+    }
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  isWaterStageLand(position, margin = 1) {
+    if (!this.isWaterStage) return true;
+    return WATER_STAGE_LAND_PATCHES.some((patch) => {
+      const dx = position.x - patch.x;
+      const dz = position.z - patch.z;
+      const cosine = Math.cos(patch.rotation);
+      const sine = Math.sin(patch.rotation);
+      const localX = dx * cosine + dz * sine;
+      const localZ = -dx * sine + dz * cosine;
+      const radiusX = patch.radius * patch.scaleX * margin;
+      const radiusZ = patch.radius * patch.scaleZ * margin;
+      return (localX * localX) / (radiusX * radiusX) + (localZ * localZ) / (radiusZ * radiusZ) <= 1;
+    });
+  }
+
+  isWaterPosition(position) {
+    return this.isWaterStage && !this.isWaterStageLand(position, 0.96);
+  }
+
+  randomWaterStageLandPoint(inset = 0.82) {
+    const totalArea = WATER_STAGE_LAND_PATCHES.reduce(
+      (sum, patch) => sum + patch.radius * patch.radius * patch.scaleX * patch.scaleZ,
+      0
+    );
+    let selection = Math.random() * totalArea;
+    let patch = WATER_STAGE_LAND_PATCHES[0];
+    for (const candidate of WATER_STAGE_LAND_PATCHES) {
+      selection -= candidate.radius * candidate.radius * candidate.scaleX * candidate.scaleZ;
+      if (selection <= 0) {
+        patch = candidate;
+        break;
+      }
+    }
+    const angle = Math.random() * TAU;
+    const distance = Math.sqrt(Math.random()) * patch.radius * inset;
+    const localX = Math.cos(angle) * distance * patch.scaleX;
+    const localZ = Math.sin(angle) * distance * patch.scaleZ;
+    const cosine = Math.cos(patch.rotation);
+    const sine = Math.sin(patch.rotation);
+    return new THREE.Vector3(
+      patch.x + localX * cosine - localZ * sine,
+      0,
+      patch.z + localX * sine + localZ * cosine
+    );
+  }
+
+  createWaterStageDecor() {
+    const reedGeometry = new THREE.ConeGeometry(0.11, 1, 4);
+    const reedMaterial = new THREE.MeshStandardMaterial({ color: 0x55a779, roughness: 0.92 });
+    const reeds = new THREE.InstancedMesh(reedGeometry, reedMaterial, 90);
+    reeds.name = 'WaterStageReeds';
+    const grassGeometry = new THREE.ConeGeometry(0.09, 0.52, 3);
+    const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x78a85b, roughness: 0.96 });
+    const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, 110);
+    grass.name = 'WaterStageGrass';
+    const rockGeometry = new THREE.DodecahedronGeometry(0.45, 0);
+    const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x718078, roughness: 0.96 });
+    const rocks = new THREE.InstancedMesh(rockGeometry, rockMaterial, 30);
+    rocks.name = 'WaterStageRocks';
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+
+    for (let i = 0; i < reeds.count; i++) {
+      let point = randomPointInCircle(Config.map.radius - 4, 8);
+      for (let attempt = 0; attempt < 12 && !this.isWaterPosition(point); attempt++) {
+        point = randomPointInCircle(Config.map.radius - 4, 8);
+      }
+      point.y = 0.46;
+      quaternion.setFromEuler(new THREE.Euler(0, Math.random() * TAU, 0));
+      const height = randRange(0.8, 2.1);
+      scale.set(randRange(0.7, 1.25), height, randRange(0.7, 1.25));
+      matrix.compose(point, quaternion, scale);
+      reeds.setMatrixAt(i, matrix);
+    }
+    for (let i = 0; i < grass.count; i++) {
+      const point = this.randomWaterStageLandPoint(0.82);
+      point.y = 0.34;
+      quaternion.setFromEuler(new THREE.Euler(0, Math.random() * TAU, 0));
+      const size = randRange(0.7, 1.45);
+      scale.set(size, size, size);
+      matrix.compose(point, quaternion, scale);
+      grass.setMatrixAt(i, matrix);
+    }
+    for (let i = 0; i < rocks.count; i++) {
+      const point = this.randomWaterStageLandPoint(0.78);
+      point.y = 0.34;
+      quaternion.setFromEuler(new THREE.Euler(randRange(-0.18, 0.18), Math.random() * TAU, randRange(-0.18, 0.18)));
+      const size = randRange(0.5, 1.35);
+      scale.set(size * randRange(0.8, 1.25), size * randRange(0.55, 0.9), size);
+      matrix.compose(point, quaternion, scale);
+      rocks.setMatrixAt(i, matrix);
+    }
+    reeds.instanceMatrix.needsUpdate = true;
+    grass.instanceMatrix.needsUpdate = true;
+    rocks.instanceMatrix.needsUpdate = true;
+    this.scene.add(reeds, grass, rocks);
   }
 
   applyPlanarTileUv(geometry, tileSize) {
@@ -810,9 +1085,49 @@ class Game {
 
   spawnInitialEggs() {
     for (let i = 0; i < Config.map.initialEggs; i++) {
-      const point = randomPointInCircle(Config.map.radius * 0.52, 14);
+      const point = i < 2
+        ? this.findEggSpawnPosition(this.player.position, 12, 19)
+        : randomPointInCircle(Config.map.radius * 0.52, 14);
+      if (!point) continue;
       this.spawnEgg(point);
     }
+  }
+
+  spawnInitialEnemies() {
+    for (let i = 0; i < Config.map.initialEnemies; i++) {
+      const point = this.findEnemySpawnPosition(14, 19);
+      if (point) this.spawnEnemy('chaser', point);
+    }
+  }
+
+  updateStageBeats() {
+    const beats = Config.map.stageBeats;
+    while (this.nextStageBeat < beats.length && this.elapsed >= beats[this.nextStageBeat].at) {
+      const beat = beats[this.nextStageBeat++];
+      for (let i = 0; i < beat.eggs; i++) {
+        const point = this.findEggSpawnPosition(this.player.position, 13, 25);
+        if (point) this.spawnEgg(point);
+      }
+      for (const type of beat.enemies) {
+        const point = this.findEnemySpawnPosition(14, 24);
+        if (point) this.spawnEnemy(type, point);
+      }
+    }
+  }
+
+  findEnemySpawnPosition(minDistance, maxDistance) {
+    for (let i = 0; i < 18; i++) {
+      const angle = Math.random() * TAU;
+      const distance = randRange(minDistance, maxDistance);
+      const point = new THREE.Vector3(
+        this.player.position.x + Math.sin(angle) * distance,
+        0,
+        this.player.position.z + Math.cos(angle) * distance
+      );
+      if (Math.hypot(point.x, point.z) > Config.map.radius - 5) continue;
+      if (!this.isBlockedByBuilding(point, 1.5)) return point;
+    }
+    return null;
   }
 
   frame() {
@@ -825,6 +1140,7 @@ class Game {
   update(dt) {
     this.input.beginFrame();
     this.handleGlobalInput();
+    this.touchControls.setEnabled(this.state === 'playing');
     this.updateBgmState();
     if (this.state === 'playing') {
       this.elapsed += dt;
@@ -833,6 +1149,7 @@ class Game {
       this.shake = Math.max(0, this.shake - dt * 1.7);
       this.updateSpawnPause(dt);
       if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
+      this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
       for (const egg of this.eggs) egg.update(dt);
@@ -845,7 +1162,7 @@ class Game {
       this.cleanupLists();
       this.ensureEggsExist();
       if (this.elapsed >= Config.map.playSeconds && (!this.motherEgg || !this.motherEgg.dead)) {
-        this.finish(false, '8分以内にボスを破壊できませんでした');
+        this.finish(false, '4分以内に母卵を破壊できませんでした');
       }
     }
     if (this.state === 'dying') {
@@ -857,6 +1174,7 @@ class Game {
       this.updateDeathBlackout(dt);
       if (this.deathTimer <= 0) {
         this.finish(false, 'HP reached 0');
+        this.input.endFrame();
         return;
       }
     }
@@ -869,6 +1187,7 @@ class Game {
     }
     this.updateCamera(dt);
     if (this.hud && this.player) this.hud.update(dt);
+    this.touchControls.setEnabled(this.state === 'playing');
     this.input.endFrame();
   }
 
@@ -924,16 +1243,31 @@ class Game {
   }
 
   handleGlobalInput() {
-    if (this.state === 'paused' && this.input.pressed('KeyR')) {
+    if (!this.input.hasGamepad || this.state === 'playing' || this.state === 'loading') setMenuCursor(null);
+    if (this.state === 'story') {
+      handleStoryGamepad(this.input);
+      return;
+    }
+    if (this.state === 'levelup') {
+      handleGamepadMenu(this.input, this.hud.levelUp, null, true);
+      return;
+    }
+    if (this.state === 'result') {
+      handleGamepadMenu(this.input, this.hud.result);
+      return;
+    }
+    if (this.state === 'paused' && this.input.actionPressed('restart')) {
       window.location.reload();
       return;
     }
+    if (this.state === 'paused') handleGamepadMenu(this.input, this.hud.pause);
     if (this.input.pressed('F3')) this.devVisible = !this.devVisible;
     if (this.state === 'tutorial') {
+      handleGamepadMenu(this.input, this.hud.tutorial.overlay, () => this.hud.skipTutorial());
       if (this.input.pressed('Escape')) this.hud.skipTutorial();
       return;
     }
-    if (this.input.pressed('Escape')) {
+    if (this.input.actionPressed('pause') || (this.state === 'paused' && this.input.actionPressed('cancel'))) {
       this.playSfx('buttonCancel', { volume: 0.75 });
       if (this.state === 'playing') {
         this.state = 'paused';
@@ -953,7 +1287,11 @@ class Game {
 
   canSpawnEgg() {
     if (this.eggSpawnPauseTimer > 0) return false;
-    if (this.eggs.length < Config.map.eggMax) return true;
+    const phaseCap = this.nextStageBeat > 0
+      ? Config.map.stageBeats[this.nextStageBeat - 1].eggCap
+      : Config.map.initialEggCap;
+    if (this.eggs.length < Math.min(Config.map.eggMax, phaseCap)) return true;
+    if (this.eggs.length < Config.map.eggMax) return false;
     this.eggSpawnPauseTimer = Config.map.spawnCapPauseSeconds;
     this.spawnPauseTimer = Math.max(this.spawnPauseTimer, this.eggSpawnPauseTimer);
     return false;
@@ -961,7 +1299,11 @@ class Game {
 
   canSpawnEnemy() {
     if (this.enemySpawnPauseTimer > 0) return false;
-    if (this.enemies.length < Config.map.enemyMax) return true;
+    const phaseCap = this.nextStageBeat > 0
+      ? Config.map.stageBeats[this.nextStageBeat - 1].enemyCap
+      : Config.map.initialEnemyCap;
+    if (this.enemies.length < Math.min(Config.map.enemyMax, phaseCap)) return true;
+    if (this.enemies.length < Config.map.enemyMax) return false;
     this.enemySpawnPauseTimer = Config.map.spawnCapPauseSeconds;
     this.spawnPauseTimer = Math.max(this.spawnPauseTimer, this.enemySpawnPauseTimer);
     return false;
@@ -995,20 +1337,37 @@ class Game {
 
   spawnEnemyFromEgg(egg) {
     if (!this.canSpawnEnemy()) return null;
-    const ratio = clamp(this.eggs.length / Config.map.eggMax, 0, 1);
-    const spawnerChance = clamp(0.33 - ratio * 0.28, 0.04, 0.33);
+    if (egg.aquatic) return this.spawnEnemy(Math.random() < 0.5 ? 'dragonflyLarva' : 'tadpole', egg.position, egg);
     const roll = Math.random();
-    const type = roll < spawnerChance ? 'spawner' : roll < spawnerChance + 0.2 ? 'shooter' : roll > 0.9 ? 'guardian' : 'chaser';
+    let type = 'chaser';
+    if (this.elapsed >= 180) {
+      const sniperChance = this.elapsed >= 210 ? 0.16 : 0.09;
+      type = roll < sniperChance ? 'sniper' : roll < 0.38 ? 'shooter' : roll < 0.52 ? 'spawner' : roll < 0.65 ? 'guardian' : 'chaser';
+    } else if (this.elapsed >= 150) {
+      type = roll < 0.32 ? 'shooter' : roll < 0.48 ? 'spawner' : roll < 0.62 ? 'guardian' : 'chaser';
+    } else if (this.elapsed >= 70) {
+      type = roll < 0.18 ? 'spawner' : roll < 0.38 ? 'shooter' : roll < 0.48 ? 'guardian' : 'chaser';
+    } else if (this.elapsed >= 35 && roll < 0.22) {
+      type = 'shooter';
+    }
     return this.spawnEnemy(type, egg.position, egg);
   }
 
   spawnEnemy(type, position, homeEgg = null) {
     if (!this.canSpawnEnemy()) return null;
+    if (type === 'sniper') {
+      const maxSnipers = this.elapsed >= 210
+        ? Config.enemy.sniper.maxAliveDuringRush
+        : Config.enemy.sniper.maxAliveBeforeRush;
+      let aliveSnipers = 0;
+      for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'sniper') aliveSnipers++;
+      if (aliveSnipers >= maxSnipers) type = 'shooter';
+    }
     const offset = randomPointInCircle(2.1, 0.7).add(position);
     const enemy = new Enemy(this, type, offset, homeEgg);
     this.scene.add(enemy.object);
     this.enemies.push(enemy);
-    this.spawnDust(offset, type === 'spawner' ? 0xffe36a : 0x82ffaa);
+    this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
     return enemy;
   }
 
@@ -1016,7 +1375,7 @@ class Game {
     if (this.eggs.length > 0 || this.motherEgg && !this.motherEgg.dead) return;
     const position = this.findEggSpawnPosition(this.player.position, 16, 28) ?? randomPointInCircle(Config.map.radius - 9, 18);
     const egg = this.spawnEgg(position);
-    if (egg) this.spawnEnemy('spawner', position, egg);
+    if (egg) this.spawnEnemy(egg.aquatic ? 'tadpole' : 'spawner', position, egg);
   }
 
   pickLowEggDensityPoint(from) {
@@ -1113,10 +1472,11 @@ class Game {
     start.y = 1.2;
     const aim = target.clone();
     aim.y = this.player.visualHeight + 1.0;
+    const birdThreat = this.elapsed >= 150 && this.player.form === 'bird';
     projectile.reset(start, aim, {
       kind: 'enemy',
-      damage: stats.damage,
-      speed: stats.bulletSpeed,
+      damage: stats.damage * (birdThreat ? 1.35 : 1),
+      speed: birdThreat ? 16 : stats.bulletSpeed,
       radius: 0.2,
       life: 2.8,
       spriteFrames: this.enemyProjectileTextures,
@@ -1139,7 +1499,7 @@ class Game {
   }
 
   spawnXp(position, value) {
-    this.spawnPickup(position, 'xp', value);
+    this.spawnPickup(position, 'xp', Math.round(value * Config.xp.rewardMultiplier));
   }
 
   spawnPickup(position, type, value = null) {
@@ -1185,32 +1545,6 @@ class Game {
     for (let i = this.xpOrbs.length - 1; i >= 0; i--) {
       if (!this.xpOrbs[i].active) this.xpOrbs.splice(i, 1);
     }
-  }
-
-  spawnMeleeArc(position, angle, range) {
-    const geometry = new THREE.RingGeometry(range * 0.42, range, 32, 1, -Math.PI * 0.28, Math.PI * 0.56);
-    const material = new THREE.MeshBasicMaterial({
-      color: 0xf4ffb5,
-      transparent: true,
-      opacity: 0.58,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(position.x, 0.09, position.z);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.rotation.z = -angle - Math.PI * 0.28;
-    this.scene.add(mesh);
-    this.effects.push({
-      object: mesh,
-      life: 0.22,
-      duration: 0.22,
-      update(effect, dt) {
-        effect.life -= dt;
-        mesh.scale.setScalar(1 + (1 - effect.life / effect.duration) * 0.18);
-        material.opacity = Math.max(0, 0.58 * effect.life / effect.duration);
-      }
-    });
   }
 
   spawnPulseSpriteEffect(position, range) {
@@ -1787,7 +2121,7 @@ class Game {
   }
 
   startPlayerDeath(duration) {
-    if (this.state === 'result') return;
+    if (this.outcome) return;
     this.state = 'dying';
     this.deathWorldActive = true;
     this.deathElapsed = 0;
@@ -1800,12 +2134,34 @@ class Game {
   }
 
   finish(victory, body) {
-    if (this.state === 'result') return;
+    if (this.outcome || (victory && this.player?.dead)) return;
+    this.outcome = {
+      victory,
+      body: victory && this.stageId === 1
+        ? 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。'
+        : body
+    };
     this.state = 'result';
+    this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
     if (!this.deathWorldActive) this.hud.showDeathBlackout(false);
     this.settleCamera();
-    this.hud.showResult(victory, body);
+    if (victory && this.stageId === 1) this.replayAftermath();
+    else this.hud.showResult(victory, this.outcome.body);
+  }
+
+  replayAftermath() {
+    if (!this.outcome?.victory || storyPlayer.active) return;
+    const scene = createAftermath(this.characterId, this.stageId);
+    if (!scene) return;
+    this.state = 'story';
+    this.hud.result.classList.add('hidden');
+    document.getElementById('hud').classList.add('hidden');
+    storyPlayer.show(scene, () => {
+      this.state = 'result';
+      document.getElementById('hud').classList.remove('hidden');
+      this.hud.showResult(this.outcome.victory, this.outcome.body);
+    });
   }
 
   createBgm() {
@@ -1964,7 +2320,15 @@ class Game {
   }
 }
 
-let activeGame = null;
+const storyPlayer = new StoryPlayer();
+
+function handleStoryGamepad(input) {
+  if (storyPlayer.logOpen) {
+    handleGamepadMenu(input, storyPlayer.query('.story-log'), () => storyPlayer.toggleLog());
+  } else {
+    handleGamepadMenu(input, storyPlayer.root);
+  }
+}
 
 function startGameWithCharacter(characterId) {
   if (activeGame) return;
@@ -1972,30 +2336,105 @@ function startGameWithCharacter(characterId) {
   Config.visuals.playerModel = option.playerModel;
   document.getElementById('characterSelect')?.classList.add('hidden');
   document.getElementById('hud')?.classList.remove('hidden');
-  activeGame = new Game(characterId);
+  activeGame = new Game(characterId, selectedStageId);
 }
 
 function setupCharacterSelect() {
   const characterSelect = document.getElementById('characterSelect');
+  const debugStageSelect = document.getElementById('debugStageSelect');
+  const stageButtons = [...document.querySelectorAll('[data-stage-id]')];
   const buttons = [...document.querySelectorAll('[data-character]')];
+  const confirmButton = document.getElementById('characterConfirm');
+  const selectionSummary = document.getElementById('characterSelectionSummary');
+  let selectedCharacterId = 'tsukimi';
+  buttons.forEach((button) => {
+    const portrait = button.querySelector('.character-art');
+    if (portrait) portrait.src = getCharacterPortrait(button.dataset.character, 'normal');
+  });
   if (!characterSelect || buttons.length === 0) {
     startGameWithCharacter('tsukimi');
     return;
   }
-  buttons.forEach((button) => {
+
+  const selectCharacter = (characterId) => {
+    const selected = buttons.find(button => button.dataset.character === characterId);
+    if (!selected) return;
+    selectedCharacterId = characterId;
+    for (const button of buttons) {
+      const active = button === selected;
+      button.classList.toggle('selected', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+    const name = selected.querySelector('.character-name')?.textContent ?? '';
+    const role = selected.querySelector('.character-role')?.textContent ?? '';
+    selectionSummary.textContent = `${name}を選択中。${role}。`;
+    confirmButton.textContent = `${name}で出撃`;
+  };
+
+  const updateDebugStageSelection = () => {
+    stageButtons.forEach((button) => {
+      const selected = Number(button.dataset.stageId) === selectedStageId;
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-checked', String(selected));
+    });
+  };
+  const setDebugStageSelectOpen = (open) => {
+    if (!debugStageSelect) return;
+    debugStageSelect.classList.toggle('hidden', !open);
+    debugStageSelect.setAttribute('aria-hidden', String(!open));
+    if (open) {
+      updateDebugStageSelection();
+      stageButtons.find((button) => Number(button.dataset.stageId) === selectedStageId)?.focus();
+    } else {
+      characterSelect.querySelector(`[data-character="${selectedCharacterId}"]`)?.focus();
+    }
+  };
+
+  window.addEventListener('keydown', (event) => {
+    const characterSelectActive = !characterSelect.classList.contains('hidden');
+    const tutorialActive = !document.getElementById('tutorial')?.classList.contains('hidden');
+    if (!characterSelectActive || tutorialActive) return;
+    if (event.code === 'F3') {
+      event.preventDefault();
+      setDebugStageSelectOpen(debugStageSelect?.classList.contains('hidden'));
+    } else if (event.code === 'Escape' && !debugStageSelect?.classList.contains('hidden')) {
+      event.preventDefault();
+      setDebugStageSelectOpen(false);
+    }
+  });
+
+  stageButtons.forEach((button) => {
     button.addEventListener('click', () => {
+      selectedStageId = Number(button.dataset.stageId) || 1;
       const confirm = new Audio(SFX_URLS.buttonConfirm);
       confirm.volume = Config.audio.sfxVolume * 0.75;
       confirm.play()?.catch?.(() => {});
-      buttons.forEach((candidate) => {
-        candidate.disabled = true;
-      });
-      startGameWithCharacter(button.dataset.character);
+      setDebugStageSelectOpen(false);
+    });
+  });
+
+  buttons.forEach((button) => {
+    button.addEventListener('focus', () => selectCharacter(button.dataset.character));
+    button.addEventListener('click', () => {
+      selectCharacter(button.dataset.character);
+      confirmButton.focus();
+    });
+  });
+  confirmButton.addEventListener('click', () => {
+    if (activeGame || storyPlayer.active) return;
+    const confirm = new Audio(SFX_URLS.buttonConfirm);
+    confirm.volume = Config.audio.sfxVolume * 0.75;
+    confirm.play()?.catch?.(() => {});
+    buttons.forEach(button => { button.disabled = true; });
+    confirmButton.disabled = true;
+    characterSelect.classList.add('hidden');
+    storyPlayer.show(createBriefing(selectedCharacterId, selectedStageId), () => {
+      startGameWithCharacter(selectedCharacterId);
     });
   });
   document.getElementById('tutorialButton')?.addEventListener('click', () => {
     getTutorialGuide().show(() => {
-      characterSelect.querySelector('[data-character="tsukimi"]')?.focus();
+      characterSelect.querySelector(`[data-character="${selectedCharacterId}"]`)?.focus();
     });
   });
 }
@@ -2006,15 +2445,46 @@ function setupTitleScreen() {
   const startButton = document.getElementById('titleStartButton');
   if (!titleScreen || !characterSelect || !startButton) return;
   startButton.addEventListener('click', () => {
+    selectedStageId = 1;
     const confirm = new Audio(SFX_URLS.buttonConfirm);
     confirm.volume = Config.audio.sfxVolume * 0.75;
     confirm.play()?.catch?.(() => {});
     titleScreen.classList.add('hidden');
-    characterSelect.classList.remove('hidden');
-    characterSelect.querySelector('[data-character="tsukimi"]')?.focus();
+    storyPlayer.show(PROLOGUE, () => {
+      characterSelect.classList.remove('hidden');
+      characterSelect.querySelector('[data-character="tsukimi"]')?.focus({ preventScroll: true });
+    });
   });
   startButton.focus();
 }
 
 setupCharacterSelect();
 setupTitleScreen();
+
+function updatePreGamepadMenus() {
+  if (activeGame) return;
+  appInput.beginFrame();
+  const titleScreen = document.getElementById('titleScreen');
+  const characterSelect = document.getElementById('characterSelect');
+  const debugStageSelect = document.getElementById('debugStageSelect');
+  const tutorial = document.getElementById('tutorial');
+  if (storyPlayer.active) {
+    handleStoryGamepad(appInput);
+  } else if (tutorial && !tutorial.classList.contains('hidden')) {
+    handleGamepadMenu(appInput, tutorial, () => getTutorialGuide().finish());
+  } else if (debugStageSelect && !debugStageSelect.classList.contains('hidden')) {
+    handleGamepadMenu(appInput, debugStageSelect, () => {
+      debugStageSelect.classList.add('hidden');
+      debugStageSelect.setAttribute('aria-hidden', 'true');
+      characterSelect?.querySelector('.character-card.selected')?.focus();
+    });
+  } else if (characterSelect && !characterSelect.classList.contains('hidden')) {
+    handleGamepadMenu(appInput, characterSelect);
+  } else if (titleScreen && !titleScreen.classList.contains('hidden')) {
+    handleGamepadMenu(appInput, titleScreen);
+  }
+  appInput.endFrame();
+  if (!activeGame) requestAnimationFrame(updatePreGamepadMenus);
+}
+
+requestAnimationFrame(updatePreGamepadMenus);

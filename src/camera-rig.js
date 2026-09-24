@@ -17,7 +17,7 @@ export class CameraRig {
   startTransition(mode) {
     this.mode = mode;
     this.from = { ...this.current };
-    this.to = { ...(mode === 'bird' ? Config.camera.bird : Config.camera.human) };
+    this.to = { ...(Config.camera[mode] ?? Config.camera.human) };
     this.timer = 0;
   }
 
@@ -28,7 +28,11 @@ export class CameraRig {
     this.current.distance = lerp(this.from.distance, this.to.distance, t);
     this.current.fov = lerp(this.from.fov, this.to.fov, t);
     this.current.pitch = lerp(this.from.pitch, this.to.pitch, t);
-    this.camera.fov += (this.current.fov - this.camera.fov) * Math.min(1, dt * 8);
+    const portraitScale = this.camera.aspect < 0.85
+      ? Math.min(1.6, 0.85 / this.camera.aspect)
+      : 1;
+    const targetFov = Math.min(80, this.current.fov * portraitScale);
+    this.camera.fov += (targetFov - this.camera.fov) * Math.min(1, dt * 8);
     this.camera.updateProjectionMatrix();
 
     const target = this.player.position;

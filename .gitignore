@@ -2,7 +2,11 @@
 .godot-bin/
 Godot_v*.zip
 node_modules/
+.npm-cache/
+__pycache__/
+*.pyc
 dist/
+backups/
 tmp/
 .agents/
 *.log

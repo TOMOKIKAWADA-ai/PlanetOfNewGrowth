@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Search Survive Three</title>
     <script>
       if (window.location.protocol === 'file:') {
@@ -34,37 +34,62 @@
             失われた世界を守るため、再び地上を駆ける。
           </p>
           <button id="titleStartButton" class="title-start-button" type="button">GAME START</button>
+          <p class="controller-lock-note">コントローラー接続中：キーボード操作は無効</p>
         </section>
       </div>
       <div id="characterSelect" class="screen character-select hidden">
         <section class="select-panel" aria-labelledby="characterSelectTitle">
-          <h1 id="characterSelectTitle">Character Select</h1>
+          <h1 id="characterSelectTitle">出撃する兵士を選ぶ</h1>
+          <p class="select-instruction">能力を見比べて選択し、「出撃」を押すと始まります。1プレイは4分です。</p>
+          <p class="controller-lock-note">コントローラー接続中：左スティック・方向キーで選択、×で決定。キーボード操作は無効</p>
           <div class="character-grid">
-            <button class="character-card" type="button" data-character="tsukimi">
+            <button class="character-card selected" type="button" data-character="tsukimi" aria-pressed="true">
               <img class="character-art" src="/assets/ui/characters/tsukimi.png" alt="" />
               <span class="character-copy">
-                <span class="character-name">Tsukimi</span>
-                <span class="character-role">STANDARD / LONG BEAM</span>
+                <span class="character-tag">バランス型</span>
+                <span class="character-name">ツキミ</span>
+                <span class="character-role">長射程ビームで遠くから攻撃</span>
               </span>
             </button>
-            <button class="character-card" type="button" data-character="akame">
+            <button class="character-card" type="button" data-character="akame" aria-pressed="false">
               <img class="character-art" src="/assets/ui/characters/akame.png" alt="" />
               <span class="character-copy">
-                <span class="character-name">Akame</span>
-                <span class="character-role">TANK / HIGH DURABILITY</span>
+                <span class="character-tag">耐久型</span>
+                <span class="character-name">アカメ</span>
+                <span class="character-role">HPが高く、受けるダメージが少ない</span>
               </span>
             </button>
-            <button class="character-card" type="button" data-character="kiichigo">
+            <button class="character-card" type="button" data-character="kiichigo" aria-pressed="false">
               <img class="character-art" src="/assets/ui/characters/kiichigo.png" alt="" />
               <span class="character-copy">
-                <span class="character-name">Kiichigo</span>
-                <span class="character-role">LIGHT / 5 SLASH BURST</span>
+                <span class="character-tag">スピード型</span>
+                <span class="character-name">キイチゴ</span>
+                <span class="character-role">素早く動き、バースト技で連続斬撃</span>
               </span>
             </button>
           </div>
+          <p id="characterSelectionSummary" class="character-selection-summary" aria-live="polite">ツキミを選択中。長射程ビームで遠くから攻撃。</p>
           <div class="select-actions">
-            <button id="tutorialButton" class="secondary-button" type="button">Tutorial</button>
+            <button id="characterConfirm" class="title-start-button" type="button">ツキミで出撃</button>
+            <button id="tutorialButton" class="secondary-button" type="button">操作を見る</button>
           </div>
+        </section>
+      </div>
+      <div id="debugStageSelect" class="screen debug-stage-select hidden" aria-hidden="true">
+        <section class="debug-stage-panel" role="dialog" aria-modal="true" aria-labelledby="debugStageTitle">
+          <p class="debug-stage-kicker">F3 DEBUG MENU</p>
+          <h1 id="debugStageTitle">Stage Select</h1>
+          <div class="debug-stage-grid" role="radiogroup" aria-label="Debug stage">
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="1">
+              <span>Stage 1</span>
+              <strong>Grassland</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="2">
+              <span>Stage 2 / 開発用</span>
+              <strong>Water</strong>
+            </button>
+          </div>
+          <p class="debug-stage-help">F3 / Esc: Close</p>
         </section>
       </div>
       <div id="tutorial" class="screen hidden" aria-labelledby="tutorialTitle">
@@ -91,7 +116,7 @@
           <div class="meter hp"><span>HP</span><div><i id="hpBar"></i></div><b id="hpText"></b></div>
           <div class="meter mp"><span>MP</span><div><i id="mpBar"></i></div><b id="mpText"></b></div>
           <div class="meter burst"><span>Burst</span><div><i id="burstBar"></i></div><b id="burstText"></b></div>
-          <div class="clock" id="clock">08:00</div>
+          <div class="clock" id="clock">04:00</div>
         </div>
         <div class="side-panel">
           <div id="statsLine"></div>
@@ -104,19 +129,56 @@
         <div id="motherAlert" class="hidden"></div>
         <div id="centerMessage"></div>
       </div>
+      <div id="touchControls" class="touch-controls hidden" aria-label="タッチ操作">
+        <div id="touchStick" class="touch-stick" role="group" aria-label="移動スティック">
+          <span class="touch-stick-knob" aria-hidden="true"></span>
+          <span class="touch-stick-label" aria-hidden="true">移動</span>
+        </div>
+        <div class="touch-actions">
+          <button class="touch-action touch-transform" type="button" data-touch-action="transform" aria-label="形態を切り替える">変身</button>
+          <button id="touchBurst" class="touch-action touch-burst" type="button" data-touch-action="burst" aria-label="バースト技">バースト</button>
+        </div>
+        <button class="touch-pause" type="button" data-touch-action="pause" aria-label="一時停止">一時停止</button>
+      </div>
       <div id="deathBlackout" class="death-blackout"></div>
       <div id="levelUp" class="screen hidden">
-        <h1>Level Up</h1>
+        <h1>強化を1つ選ぶ</h1>
+        <p id="levelUpControls">選んだ強化は今回のプレイ中ずっと有効。タップ、または方向キー・左スティックで選択して×で決定</p>
+        <p class="controller-lock-note">コントローラー接続中：キーボード操作は無効</p>
         <div id="upgradeChoices"></div>
       </div>
       <div id="result" class="screen hidden">
         <h1 id="resultTitle"></h1>
         <p id="resultBody"></p>
-        <button id="restartButton">Retry</button>
+        <button id="replayStoryButton" class="hidden">帰還後の会話を読み返す</button>
+        <button id="restartButton">タイトルへ</button>
       </div>
       <div id="pause" class="screen hidden">
-        <h1>Paused</h1>
-        <p>Escで再開 / Rで再開始</p>
+        <section class="pause-panel" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+          <p class="pause-kicker">PAUSE / 操作ガイド</p>
+          <h1 id="pauseTitle">一時停止</h1>
+          <p class="pause-lead">人間形態で戦い、鳥形態で卵を壊す。状況に合わせて切り替えよう。</p>
+          <p class="controller-lock-note">コントローラー接続中：キーボード操作は無効</p>
+          <div class="pause-guide">
+            <section class="pause-guide-card" aria-labelledby="pauseHumanTitle">
+              <h2 id="pauseHumanTitle">人間形態 <span>戦う・MPを回復</span></h2>
+              <p>近くの敵や卵を自動で撃ちます。MPが回復し、ゲージが満タンならバースト技を使えます。</p>
+            </section>
+            <section class="pause-guide-card" aria-labelledby="pauseBirdTitle">
+              <h2 id="pauseBirdTitle">鳥形態 <span>速く移動・卵を壊す</span></h2>
+              <p>MPを消費して高速移動。卵や母卵に近づくと自動で急降下し、普通の卵を壊すとHPが回復します。</p>
+            </section>
+          </div>
+          <p class="pause-tip">鳥形態から戻ると短時間だけ守られます。MPが尽きる前に戻り、人間形態で回復しましょう。</p>
+          <div class="pause-controls" aria-label="操作方法">
+            <div><strong>移動</strong><span>WASD・矢印キー / 左スティック・方向キー</span></div>
+            <div><strong>変身・戻る</strong><span>Q / △</span></div>
+            <div><strong>バースト技</strong><span>E / □・R1　※人間形態のみ</span></div>
+            <div><strong>再開</strong><span>Esc / OPTIONS・○</span></div>
+          </div>
+          <button id="pauseResumeButton" class="pause-resume" type="button">ゲームに戻る</button>
+          <p class="pause-restart">最初からやり直す: R / CREATE</p>
+        </section>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

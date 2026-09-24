@@ -5,6 +5,7 @@ import {
   clamp,
   clampToCircle,
   horizontalDistanceSq,
+  horizontalPointSegmentDistanceSq,
   normalizeXZ,
   randRange,
   randomPointInCircle,
@@ -56,6 +57,7 @@ const AKAME_DYING_FBX_URL = new URL('../assets/player/akame_dying.fbx', import.m
 const KIICHIGO_RUN_FBX_URL = new URL('../assets/player/kiichigo_run.fbx', import.meta.url).href;
 const KIICHIGO_REACT_FBX_URL = new URL('../assets/player/kiichigo_react.fbx', import.meta.url).href;
 const KIICHIGO_DYING_FBX_URL = new URL('../assets/player/kiichigo_dying.fbx', import.meta.url).href;
+const KIICHIGO_BURST_VRMA_URL = new URL('../assets/player/kiichigo_spinning_kick.vrma', import.meta.url).href;
 const TSUKIMI_BIRD_GLB_URL = new URL('../assets/player/tsukimi_bird.glb', import.meta.url).href;
 const DEFAULT_FBX_ANIMATIONS = {
   idle: PLAYER_IDLE_FBX_URL,
@@ -75,6 +77,53 @@ const KIICHIGO_FBX_ANIMATIONS = {
   react: KIICHIGO_REACT_FBX_URL,
   dying: KIICHIGO_DYING_FBX_URL
 };
+const VRMA_TO_MIXAMO_BONES = {
+  J_hips: 'mixamorigHips',
+  J_spine: 'mixamorigSpine',
+  J_chest: 'mixamorigSpine1',
+  J_upperChest: 'mixamorigSpine2',
+  J_neck: 'mixamorigNeck',
+  J_head: 'mixamorigHead',
+  J_leftShoulder: 'mixamorigLeftShoulder',
+  J_leftUpperArm: 'mixamorigLeftArm',
+  J_leftLowerArm: 'mixamorigLeftForeArm',
+  J_leftHand: 'mixamorigLeftHand',
+  J_rightShoulder: 'mixamorigRightShoulder',
+  J_rightUpperArm: 'mixamorigRightArm',
+  J_rightLowerArm: 'mixamorigRightForeArm',
+  J_rightHand: 'mixamorigRightHand',
+  J_leftUpperLeg: 'mixamorigLeftUpLeg',
+  J_leftLowerLeg: 'mixamorigLeftLeg',
+  J_leftFoot: 'mixamorigLeftFoot',
+  J_rightUpperLeg: 'mixamorigRightUpLeg',
+  J_rightLowerLeg: 'mixamorigRightLeg',
+  J_rightFoot: 'mixamorigRightFoot',
+  J_leftIndexProximal: 'mixamorigLeftHandIndex1',
+  J_leftIndexIntermediate: 'mixamorigLeftHandIndex2',
+  J_leftIndexDistal: 'mixamorigLeftHandIndex3',
+  J_leftMiddleProximal: 'mixamorigLeftHandMiddle1',
+  J_leftMiddleIntermediate: 'mixamorigLeftHandMiddle2',
+  J_leftMiddleDistal: 'mixamorigLeftHandMiddle3',
+  J_leftRingProximal: 'mixamorigLeftHandRing1',
+  J_leftRingIntermediate: 'mixamorigLeftHandRing2',
+  J_leftRingDistal: 'mixamorigLeftHandRing3',
+  J_leftLittleProximal: 'mixamorigLeftHandPinky1',
+  J_leftLittleIntermediate: 'mixamorigLeftHandPinky2',
+  J_leftLittleDistal: 'mixamorigLeftHandPinky3',
+  J_rightIndexProximal: 'mixamorigRightHandIndex1',
+  J_rightIndexIntermediate: 'mixamorigRightHandIndex2',
+  J_rightIndexDistal: 'mixamorigRightHandIndex3',
+  J_rightMiddleProximal: 'mixamorigRightHandMiddle1',
+  J_rightMiddleIntermediate: 'mixamorigRightHandMiddle2',
+  J_rightMiddleDistal: 'mixamorigRightHandMiddle3',
+  J_rightRingProximal: 'mixamorigRightHandRing1',
+  J_rightRingIntermediate: 'mixamorigRightHandRing2',
+  J_rightRingDistal: 'mixamorigRightHandRing3',
+  J_rightLittleProximal: 'mixamorigRightHandPinky1',
+  J_rightLittleIntermediate: 'mixamorigRightHandPinky2',
+  J_rightLittleDistal: 'mixamorigRightHandPinky3'
+};
+const VRMA_STABLE_HEAD_BONES = new Set(['J_neck', 'J_head']);
 const PLAYER_VISUALS = {
   tsukimiFbx: { type: 'fbx', url: TSUKIMI_FBX_URL, name: 'TsukimiPlayerFbx' },
   tsukimiGlb: { type: 'gltf', url: TSUKIMI_GLB_URL, name: 'TsukimiPlayer', axisFix: 'zUpToYUp' },
@@ -94,6 +143,7 @@ const PLAYER_VISUALS = {
     name: 'KiichigoPlayerGlb',
     axisFix: 'zUpToYUp',
     fbxAnimations: KIICHIGO_FBX_ANIMATIONS,
+    burstVrmaUrl: KIICHIGO_BURST_VRMA_URL,
     useFbxAnimations: true,
     useEmbeddedAnimation: false
   }
@@ -106,8 +156,13 @@ const poseQuat = new THREE.Quaternion();
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
+  sniper: { color: 0x702534, radius: 0.42, height: 1.12, segments: 5 },
   guardian: { color: 0x180c0d, radius: 0.58, height: 1.55, segments: 6 },
-  spawner: { color: 0x180c0d, radius: 0.38, height: 1.0, segments: 5 }
+  spawner: { color: 0x180c0d, radius: 0.38, height: 1.0, segments: 5 },
+  dragonflyLarva: { color: 0x376d61, radius: 0.34, height: 0.55, segments: 7 },
+  tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
+  dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
+  frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -121,6 +176,15 @@ const ENEMY_LOD_MATERIALS = Object.fromEntries(
     new THREE.MeshBasicMaterial({ color: spec.color })
   ])
 );
+const SNIPER_BEAM_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
+const SNIPER_BEAM_MATERIALS = {
+  warning: new THREE.MeshBasicMaterial({ color: 0xffb45a, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
+  glow: new THREE.MeshBasicMaterial({ color: 0xff4866, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
+  core: new THREE.MeshBasicMaterial({ color: 0xfff2db, transparent: true, opacity: 0.94, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+};
+const SNIPER_MARKER_GEOMETRY = new THREE.TorusGeometry(0.42, 0.07, 6, 16);
+const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: 0xff6571, toneMapped: false });
+const SNIPER_BEAM_UP = new THREE.Vector3(0, 1, 0);
 const EGG_LOD_GEOMETRY = new THREE.DodecahedronGeometry(0.7, 0);
 const EGG_LOD_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x180c0d });
 const PICKUP_GEOMETRIES = {
@@ -230,8 +294,6 @@ export class Player {
     this.nextXp = Config.xp.firstLevel;
     this.autoTimer = 0;
     this.specialTimer = 0;
-    this.meleeTimer = 0;
-    this.meleeWindup = 0;
     this.invincibleTimer = 0;
     this.phaseTimer = 0;
     this.attackLockTimer = 0;
@@ -246,6 +308,7 @@ export class Player {
     this.seeds = [];
     this.model = null;
     this.birdModel = null;
+    this.fishModel = this.createFishModel();
     this.birdModelBaseY = 0;
     this.modelSkinnedMesh = null;
     this.modelBaseY = 0;
@@ -268,9 +331,26 @@ export class Player {
     this.underLight = this.createUnderLight();
     if (this.contactShadow) this.game.scene.add(this.contactShadow);
     this.group.add(this.fallback);
+    this.group.add(this.fishModel);
     if (this.underLight) this.group.add(this.underLight);
     this.group.add(this.seedOrbit);
     this.syncSeeds();
+  }
+
+  createFishModel() {
+    const group = new THREE.Group();
+    group.name = 'FishForm';
+    const material = new THREE.MeshStandardMaterial({ color: 0x54c7d9, roughness: 0.48 });
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.72, 18, 12), material);
+    body.scale.set(1.45, 0.72, 0.72);
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.48, 0.9, 3), material);
+    tail.rotation.z = Math.PI * 0.5;
+    tail.position.x = -1.05;
+    group.add(body, tail);
+    group.rotation.y = -Math.PI * 0.5;
+    group.position.y = 0.5;
+    group.visible = false;
+    return group;
   }
 
   async loadVisuals() {
@@ -509,6 +589,7 @@ export class Player {
         this.modelActions[source.key] = action;
         this.modelActionConfigs[source.key] = source;
       }
+      if (options.burstVrmaUrl) await this.loadVrmaAnimation('burst', options.burstVrmaUrl);
       if (!this.modelActions.idle && !this.modelActions.run) return false;
       this.activeModelAction = this.modelActions.idle ? 'idle' : Object.keys(this.modelActions)[0];
       for (const [key, action] of Object.entries(this.modelActions)) {
@@ -535,6 +616,64 @@ export class Player {
       const clonedTrack = track.clone();
       clonedTrack.name = `${targetBoneName}.${property}`;
       tracks.push(clonedTrack);
+    }
+    return new THREE.AnimationClip(name, clip.duration, tracks);
+  }
+
+  async loadVrmaAnimation(name, url) {
+    try {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const gltf = await new GLTFLoader().loadAsync(url);
+      const sourceClip = gltf.animations?.[0];
+      if (!sourceClip) return false;
+      const clip = this.createVrmaRetargetedClip(sourceClip, name);
+      if (clip.tracks.length === 0) return false;
+      const source = {
+        key: name,
+        speed: Config.visuals.playerBurstAnimationSpeed,
+        oneShot: true
+      };
+      const action = this.modelMixer.clipAction(clip);
+      action.setLoop(THREE.LoopOnce, 1);
+      action.clampWhenFinished = false;
+      action.enabled = false;
+      action.setEffectiveTimeScale(source.speed);
+      action.setEffectiveWeight(0);
+      this.modelActions[name] = action;
+      this.modelActionConfigs[name] = source;
+      return true;
+    } catch (error) {
+      console.warn('Failed to load Kiichigo burst VRMA.', error);
+      return false;
+    }
+  }
+
+  createVrmaRetargetedClip(clip, name) {
+    const tracks = [];
+    const sourceQuaternion = new THREE.Quaternion();
+    const targetQuaternion = new THREE.Quaternion();
+    for (const track of clip.tracks) {
+      const separator = track.name.lastIndexOf('.');
+      if (separator < 0) continue;
+      const sourceBoneName = track.name.slice(0, separator);
+      const property = track.name.slice(separator + 1);
+      const targetBoneName = VRMA_TO_MIXAMO_BONES[sourceBoneName];
+      const baseQuaternion = this.baseBoneQuaternions.get(targetBoneName);
+      if (!targetBoneName || !baseQuaternion || property !== 'quaternion') continue;
+
+      const values = new Float32Array(track.values.length);
+      for (let offset = 0; offset < track.values.length; offset += 4) {
+        targetQuaternion.copy(baseQuaternion);
+        if (!VRMA_STABLE_HEAD_BONES.has(sourceBoneName)) {
+          sourceQuaternion.fromArray(track.values, offset);
+          targetQuaternion.multiply(sourceQuaternion).normalize();
+        }
+        targetQuaternion.toArray(values, offset);
+      }
+      const retargetedTrack = track.clone();
+      retargetedTrack.name = `${targetBoneName}.quaternion`;
+      retargetedTrack.values = values;
+      tracks.push(retargetedTrack);
     }
     return new THREE.AnimationClip(name, clip.duration, tracks);
   }
@@ -912,6 +1051,10 @@ export class Player {
       if (!drone) seed.scale.setScalar(0.42);
       seed.userData.aimHold = 0;
       seed.userData.aimWorldAngle = 0;
+      seed.userData.spinAngle = this.game.elapsed * Config.visuals.droneSpinSpeed;
+      seed.userData.fallVelocity = 0;
+      seed.userData.fallDriftX = 0;
+      seed.userData.fallDriftZ = 0;
       this.seedOrbit.add(seed);
       this.seeds.push(seed);
     }
@@ -1005,8 +1148,8 @@ export class Player {
         this.game.showMessage('MP不足');
         return;
       }
-      this.form = 'bird';
-      this.game.cameraRig.startTransition('bird');
+      this.form = this.game.isWaterPosition(this.position) ? 'fish' : 'bird';
+      this.game.cameraRig.startTransition(this.form);
       this.game.playSfx('transformBird', { volume: 0.85 });
     } else {
       this.returnToHuman(true);
@@ -1029,11 +1172,9 @@ export class Player {
   }
 
   update(dt, input) {
-    if (input.pressed('KeyQ')) this.toggleForm();
+    if (input.actionPressed('transform')) this.toggleForm();
     this.autoTimer = Math.max(0, this.autoTimer - dt);
     this.specialTimer = Math.max(0, this.specialTimer - dt);
-    this.meleeTimer = Math.max(0, this.meleeTimer - dt);
-    this.meleeWindup = Math.max(0, this.meleeWindup - dt);
     this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
     this.phaseTimer = Math.max(0, this.phaseTimer - dt);
     this.attackLockTimer = Math.max(0, this.attackLockTimer - dt);
@@ -1054,16 +1195,13 @@ export class Player {
   }
 
   updateMovement(dt, input) {
-    let x = 0;
-    let z = 0;
-    if (input.down('KeyA') || input.down('ArrowLeft')) x -= 1;
-    if (input.down('KeyD') || input.down('ArrowRight')) x += 1;
-    if (input.down('KeyW') || input.down('ArrowUp')) z -= 1;
-    if (input.down('KeyS') || input.down('ArrowDown')) z += 1;
+    const x = input.movementX();
+    const z = input.movementZ();
+    const movementStrength = Math.min(1, Math.hypot(x, z));
     normalizeXZ(tempVec, x, z);
-    const hasMovementInput = Math.abs(tempVec.x) + Math.abs(tempVec.z) > 0.001;
+    const hasMovementInput = movementStrength > 0.001;
     const boost = this.speedBoostTimer > 0 ? Config.pickups.speedBoostMultiplier : 1;
-    const speed = (this.form === 'bird' ? this.birdSpeed : this.humanSpeed) * boost;
+    const speed = (this.form === 'bird' ? this.birdSpeed : this.form === 'fish' ? Config.player.fishSpeed : this.humanSpeed) * boost;
     const diveLocked = this.form === 'bird' && (this.diveState === 'warning' || this.diveState === 'dive');
 
     if (this.form === 'bird') {
@@ -1091,10 +1229,10 @@ export class Player {
         this.moveAngle = this.faceAngle;
       }
     } else {
-      this.position.x += tempVec.x * speed * dt;
-      this.position.z += tempVec.z * speed * dt;
+      this.position.x += tempVec.x * speed * movementStrength * dt;
+      this.position.z += tempVec.z * speed * movementStrength * dt;
       clampToCircle(this.position, Config.map.radius - 2);
-      this.game.resolveBuildingCollision(this.position, this.radius);
+      if (!this.game.isWaterStage) this.game.resolveBuildingCollision(this.position, this.radius);
       clampToCircle(this.position, Config.map.radius - 2);
       if (hasMovementInput) {
         this.moveAngle = Math.atan2(tempVec.x, tempVec.z);
@@ -1102,7 +1240,11 @@ export class Player {
       }
     }
 
-    const targetHeight = this.form === 'bird' ? Config.player.birdHeight : Config.player.humanHeight;
+    if (this.form === 'fish' && !this.game.isWaterPosition(this.position)) {
+      this.returnToHuman(false);
+    }
+
+    const targetHeight = this.form === 'bird' ? Config.player.birdHeight : this.form === 'fish' ? 0.35 : Config.player.humanHeight;
     if (this.diveState === 'ready') {
       this.visualHeight += (targetHeight - this.visualHeight) * Math.min(1, dt * Config.player.birdFloatSpeed);
     }
@@ -1113,24 +1255,37 @@ export class Player {
     if (this.form === 'human') {
       this.mp = clamp(this.mp + this.humanRegenMp * dt, 0, this.maxMp);
     } else {
-      this.mp = clamp(this.mp - this.birdMpCost * dt, 0, this.maxMp);
+      const formCost = this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost;
+      this.mp = clamp(this.mp - formCost * dt, 0, this.maxMp);
       if (this.mp <= 0) this.returnToHuman(true);
     }
   }
 
   updateCombat(dt, input) {
     if (this.form === 'human') {
-      if (input.pressed('KeyE')) this.tryBurst();
+      if (input.actionPressed('burst')) this.tryBurst();
       this.tryAutoShoot();
       this.trySpecialEggShot();
       this.updatePulse(dt);
+    } else if (this.form === 'fish') {
+      this.tryFishBite();
     } else if (this.burst >= Config.player.burstMax) {
       this.game.hint = 'バーストは今使えません';
     }
   }
 
+  tryFishBite() {
+    if (this.specialTimer > 0) return;
+    const target = this.findNearestEgg(Config.player.fishEggRange, false);
+    if (!target || !target.aquatic) return;
+    this.faceAngle = angleToXZ(this.position, target.position);
+    target.takeDamage(target.hp + 1, 'fishBite');
+    this.specialTimer = Config.player.fishBiteCooldown;
+    this.game.spawnDiveImpact(target.position);
+  }
+
   tryAutoShoot() {
-    if (this.attackLockTimer > 0 || this.autoTimer > 0 || this.meleeWindup > 0) return;
+    if (this.attackLockTimer > 0 || this.autoTimer > 0) return;
     const target = this.findNearestEnemy(Config.player.autoRange);
     if (!target) return;
     this.fireFromSeeds(target.position, {
@@ -1144,7 +1299,7 @@ export class Player {
   }
 
   trySpecialEggShot() {
-    if (this.attackLockTimer > 0 || this.specialTimer > 0 || this.meleeWindup > 0) return;
+    if (this.attackLockTimer > 0 || this.specialTimer > 0) return;
     const target = this.findNearestEgg(Config.player.specialEggRange, true);
     if (!target) return;
     this.fireFromSeeds(target.position, {
@@ -1174,43 +1329,6 @@ export class Player {
       this.game.spawnProjectile(origin, aim, spec);
     }
     if (spec.kind === 'player') this.game.playSfx('playerShot', { volume: 0.48, cooldown: 0.055 });
-  }
-
-  tryMelee() {
-    if (this.meleeTimer > 0 || this.attackLockTimer > 0) return;
-    this.meleeTimer = Config.player.meleeCooldown;
-    this.meleeWindup = Config.player.meleeWindup;
-    this.game.spawnMeleeArc(this.position, this.faceAngle, Config.player.meleeRange);
-    window.setTimeout(() => {
-      if (this.game.state !== 'playing' || this.form !== 'human') return;
-      this.resolveMelee();
-    }, Config.player.meleeWindup * 1000);
-  }
-
-  resolveMelee() {
-    const range = Config.player.meleeRange;
-    const eggs = this.game.findEggsInRadius(this.position, range);
-    const enemies = this.game.enemyGrid.query(this.position, range, this.game.scratchEnemies);
-    for (const egg of eggs) {
-      if (this.isInFrontArc(egg.position, Config.player.meleeArc)) {
-        egg.takeDamage(Config.player.meleeEggDamage, 'melee');
-      }
-    }
-    for (const enemy of enemies) {
-      if (this.isInFrontArc(enemy.position, Config.player.meleeArc)) {
-        enemy.takeDamage(Config.player.meleeEnemyDamage, this.position);
-      }
-    }
-    for (const building of this.game.findBuildingsInRadius(this.position, range)) {
-      if (this.isInFrontArc(building.position, Config.player.meleeArc)) {
-        this.game.damageBuilding(building, Config.player.meleeEnemyDamage, this.position);
-      }
-    }
-  }
-
-  isInFrontArc(position, arc) {
-    const angle = angleToXZ(this.position, position);
-    return Math.abs(signedAngleDifference(angle, this.faceAngle)) <= arc * 0.5;
   }
 
   tryBurst() {
@@ -1289,6 +1407,7 @@ export class Player {
     this.burstSlashTimer = 0;
     this.burstBeamTimer = 0;
     this.burstBeamDamageTimer = 0;
+    this.playOneShotAnimation('burst');
     this.game.playSfx('kiichigoBurst', { volume: 0.94, cooldown: 4.2 });
     this.game.playVoice('burst', { volume: 0.92, cooldown: 4.2 });
   }
@@ -1524,6 +1643,7 @@ export class Player {
     this.damageFlashTimer = 0;
     this.visualHeight = Config.player.humanHeight;
     this.group.position.y = this.visualHeight;
+    this.startDroneFall();
     this.game.cameraRig?.startTransition('human');
     const duration = this.playOneShotAnimation('dying');
     this.game.startPlayerDeath(duration + Config.visuals.playerDeathResultDelay);
@@ -1565,34 +1685,71 @@ export class Player {
   }
 
   updateSeeds(dt) {
+    if (this.dead) {
+      this.updateFallingDrones(dt);
+      return;
+    }
     const radius = 1.05 + this.seeds.length * 0.08;
-    const base = this.game.elapsed * 1.9;
+    const base = this.game.elapsed * Config.visuals.droneOrbitSpeed;
     for (let i = 0; i < this.seeds.length; i++) {
       const seed = this.seeds[i];
-      const angle = base + i * TAU / this.seeds.length;
+      const worldAngle = base + i * TAU / this.seeds.length;
+      const angle = worldAngle - this.faceAngle;
       seed.position.set(
         Math.sin(angle) * radius,
         1.45 + Math.sin(base * 1.7 + i) * 0.12,
         Math.cos(angle) * radius
       );
-      seed.userData.aimHold = Math.max(0, (seed.userData.aimHold ?? 0) - dt);
-      if (seed.userData.aimHold > 0) {
-        seed.rotation.y = (seed.userData.aimWorldAngle ?? 0) - this.faceAngle;
-      } else {
-        seed.rotation.y += dt * 1.6;
+      seed.userData.spinAngle = (seed.userData.spinAngle + dt * Config.visuals.droneSpinSpeed) % TAU;
+      seed.rotation.y = seed.userData.spinAngle - this.faceAngle;
+    }
+  }
+
+  startDroneFall() {
+    for (let i = 0; i < this.seeds.length; i++) {
+      const seed = this.seeds[i];
+      const angle = this.game.elapsed * 2.73 + i * TAU / Math.max(1, this.seeds.length);
+      seed.userData.fallVelocity = 0;
+      seed.userData.fallDriftX = Math.sin(angle) * 0.34;
+      seed.userData.fallDriftZ = Math.cos(angle) * 0.34;
+      seed.userData.tumbleDirection = i % 2 === 0 ? 1 : -1;
+    }
+  }
+
+  updateFallingDrones(dt) {
+    for (const seed of this.seeds) {
+      if (seed.position.y <= Config.visuals.droneGroundY) {
+        seed.position.y = Config.visuals.droneGroundY;
+        continue;
       }
+      seed.userData.fallVelocity += Config.visuals.droneFallGravity * dt;
+      seed.position.y = Math.max(
+        Config.visuals.droneGroundY,
+        seed.position.y - seed.userData.fallVelocity * dt
+      );
+      seed.position.x += seed.userData.fallDriftX * dt;
+      seed.position.z += seed.userData.fallDriftZ * dt;
+      const tumble = Config.visuals.droneFallTumbleSpeed * (seed.userData.tumbleDirection ?? 1) * dt;
+      seed.rotation.x += tumble;
+      seed.rotation.z += tumble * 0.72;
+      seed.rotation.y += Config.visuals.droneSpinSpeed * dt;
     }
   }
 
   updateVisualPose(dt) {
     const moving = this.game.input.movementActive();
     const bird = this.form === 'bird';
+    const fish = this.form === 'fish';
     this.oneShotAnimationTimer = Math.max(0, this.oneShotAnimationTimer - dt);
     this.updatePlayerAnimationState(moving);
     if (this.modelMixer) this.modelMixer.update(dt);
     this.group.visible = true;
     this.group.rotation.y = this.faceAngle;
-    if (this.fallback) this.fallback.visible = !this.model && (!bird || !this.birdModel);
+    if (this.fallback) this.fallback.visible = !fish && !this.model && (!bird || !this.birdModel);
+    if (this.fishModel) {
+      this.fishModel.visible = fish;
+      this.fishModel.rotation.z = Math.sin(this.game.elapsed * 8) * 0.08;
+    }
     if (this.birdModel) {
       this.birdModel.visible = bird;
       this.birdModel.rotation.x = Config.visuals.birdModelPitch;
@@ -1600,7 +1757,7 @@ export class Player {
       this.birdModel.position.y = this.birdModelBaseY + Math.sin(this.game.elapsed * 5) * 0.08;
     }
     if (this.model) {
-      this.model.visible = !bird || !this.birdModel;
+      this.model.visible = !fish && (!bird || !this.birdModel);
       this.model.rotation.y = PLAYER_VISUALS[Config.visuals.playerModel]
         ? Config.visuals.playerModelYaw
         : Config.player.modelYaw;
@@ -1632,6 +1789,7 @@ export class Egg {
   constructor(game, position, isMother = false) {
     this.game = game;
     this.isMother = isMother;
+    this.aquatic = game.isWaterPosition(position) && !isMother;
     this.object = new THREE.Group();
     this.object.name = isMother ? 'MotherEgg' : 'Egg';
     this.position = this.object.position;
@@ -1773,6 +1931,10 @@ export class Egg {
     this.game.playSfx('motherCharge', { volume: 0.92, cooldown: 0.4 });
   }
   takeDamage(amount, source) {
+    if (this.aquatic && source !== 'fishBite') {
+      this.game.showMessage('\u6c34\u4e2d\u306e\u5375\u306f\u9b5a\u5f62\u614b\u3067\u99c6\u9664\u3067\u304d\u307e\u3059', 1.2);
+      return;
+    }
     if (this.dead) return;
     this.hp -= amount;
     if (this.isMother) {
@@ -1804,14 +1966,24 @@ export class Enemy {
     this.dead = false;
     this.attackTimer = 0;
     this.fireTimer = randRange(0.4, 1.2);
+    if (type === 'sniper') this.fireTimer = randRange(1.2, 2);
     this.pendingShotTimer = 0;
     this.pendingShotTarget = new THREE.Vector3();
+    this.beamState = 'idle';
+    this.beamTimer = 0;
+    this.beamHitTimer = 0;
+    this.beamAim = 0;
+    this.beamEnd = new THREE.Vector3();
+    this.beamDirection = new THREE.Vector3();
     this.buildingImpactTimer = 0;
     this.knock = new THREE.Vector3();
     this.destination = randomPointInCircle(Config.map.radius - 5, Config.map.safeRadius);
     this.destinationTimer = 0;
     this.layTimer = randRange(Config.enemy.spawner.layMin, Config.enemy.spawner.layMax);
     this.lifeTimer = type === 'spawner' ? Config.enemy.spawner.lifeSeconds : Infinity;
+    this.matureTimer = (type === 'dragonflyLarva' || type === 'tadpole') ? this.stats.matureSeconds : Infinity;
+    this.jumpTimer = type === 'frog' ? randRange(1.2, Config.enemy.frog.jumpInterval) : 0;
+    this.jumpPhase = 0;
     this.updateAccumulator = 0;
     this.distanceSqToPlayer = Infinity;
     this.collisionRadius = (ENEMY_LOD_SPECS[type]?.radius ?? 0.48) + 0.16;
@@ -1828,9 +2000,11 @@ export class Enemy {
     this.initializeModelAnimations();
     this.hpBar = this.createHpBar();
     this.object.add(this.hpBar);
+    if (type === 'sniper') this.createSniperBeam();
   }
 
   get stats() {
+    if (Config.enemy[this.type]) return Config.enemy[this.type];
     if (this.type === 'shooter') return Config.enemy.shooter;
     if (this.type === 'guardian') return Config.enemy.guardian;
     if (this.type === 'spawner') return Config.enemy.spawner;
@@ -1838,9 +2012,11 @@ export class Enemy {
   }
 
   createModel(type) {
+    if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
     const gameplayModelKeys = {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
+      sniper: 'shooterEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -1854,7 +2030,7 @@ export class Enemy {
       }
       return this.createLodModel(gameplayModel, type);
     }
-    const key = type === 'shooter' ? 'ghost' : type === 'guardian' ? 'skeleton' : type === 'spawner' ? 'vampire' : 'zombie';
+    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' ? 'skeleton' : type === 'spawner' ? 'vampire' : 'zombie';
     const model = Config.visuals.useAssetModels ? this.game.assets.cloneModel(key) : null;
     if (model) {
       model.scale.setScalar(type === 'guardian' ? 1.15 : type === 'spawner' ? 0.82 : type === 'chaser' ? 1.0 : 0.9);
@@ -1898,13 +2074,38 @@ export class Enemy {
     return group;
   }
 
+  createSniperBeam() {
+    const marker = new THREE.Mesh(SNIPER_MARKER_GEOMETRY, SNIPER_MARKER_MATERIAL);
+    marker.name = 'SniperMarker';
+    marker.position.y = 2.15;
+    marker.rotation.x = Math.PI * 0.5;
+    this.object.add(marker);
+    this.beam = new THREE.Group();
+    this.beam.name = 'SniperTrackingBeam';
+    this.beam.position.y = 1.4;
+    this.beam.visible = false;
+    const makeBeam = (name, material, radius) => {
+      const mesh = new THREE.Mesh(SNIPER_BEAM_GEOMETRY, material);
+      mesh.name = name;
+      mesh.userData.radius = radius;
+      mesh.renderOrder = 8;
+      mesh.frustumCulled = false;
+      this.beam.add(mesh);
+      return mesh;
+    };
+    this.beamWarning = makeBeam('SniperWarning', SNIPER_BEAM_MATERIALS.warning, 0.055);
+    this.beamGlow = makeBeam('SniperBeamGlow', SNIPER_BEAM_MATERIALS.glow, 0.45);
+    this.beamCore = makeBeam('SniperBeamCore', SNIPER_BEAM_MATERIALS.core, 0.11);
+    this.object.add(this.beam);
+  }
+
   getModelAnimationRoot() {
     if (this.model?.isLOD) return this.model.levels[0]?.object ?? null;
     return this.model;
   }
 
   initializeModelAnimations() {
-    if (this.type !== 'shooter') return;
+    if (this.type !== 'shooter' && this.type !== 'sniper') return;
     const root = this.getModelAnimationRoot();
     const clips = root?.animations ?? [];
     const idleClip = clips.find((clip) => clip.name.toLowerCase() === 'anim2');
@@ -1962,13 +2163,29 @@ export class Enemy {
     this.buildingImpactTimer = Math.max(0, this.buildingImpactTimer - dt);
     this.fireTimer -= dt;
     this.lifeTimer -= dt;
+    this.matureTimer -= dt;
+    if (this.matureTimer <= 0) {
+      const adultType = this.type === 'dragonflyLarva' ? 'dragonfly' : 'frog';
+      this.game.spawnEnemy(adultType, this.position, this.homeEgg);
+      this.die(false);
+      this.game.spawnBurstEffect(this.position, 2.4, adultType === 'dragonfly' ? 0x9ee9ff : 0x9bd15b);
+      return;
+    }
     if (this.lifeTimer <= 0) {
       this.die(false);
       this.game.spawnDust(this.position, 0xffd86d);
       return;
     }
-    if (this.game.player.dead) this.updateDeathApproach(dt);
+    if (this.game.player.dead) {
+      if (this.beam) this.beam.visible = false;
+      this.beamState = 'idle';
+      this.updateDeathApproach(dt);
+    }
+    else if (this.type === 'frog') this.updateFrog(dt);
+    else if (this.type === 'dragonfly') this.moveToward(this.game.player.position, dt, this.speed);
+    else if (this.type === 'dragonflyLarva' || this.type === 'tadpole') this.updateAquaticLarva(dt);
     else if (this.type === 'spawner') this.updateSpawner(dt);
+    else if (this.type === 'sniper') this.updateSniper(dt);
     else if (this.type === 'shooter') this.updateShooter(dt);
     else if (this.type === 'guardian') this.updateGuardian(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
@@ -2018,13 +2235,40 @@ export class Enemy {
   updateDeathApproach(dt) {
     const distanceSq = horizontalDistanceSq(this.position, this.game.player.position);
     if (distanceSq > 1.15 ** 2) {
-      const creepScale = this.type === 'spawner' ? 0.22 : this.type === 'shooter' ? 0.45 : 0.55;
+      const creepScale = this.type === 'spawner' ? 0.22 : this.type === 'shooter' || this.type === 'sniper' ? 0.45 : 0.55;
       this.moveToward(this.game.player.position, dt, Math.max(0.85, this.speed * creepScale));
       return;
     }
     const angle = this.game.elapsed * 0.9 + this.position.x * 0.3 + this.position.z * 0.2;
     this.position.x += Math.sin(angle) * dt * 0.16;
     this.position.z += Math.cos(angle) * dt * 0.16;
+  }
+
+  updateAquaticLarva(dt) {
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, this.game.player.position));
+    if (distance < 3.2) this.moveAway(this.game.player.position, dt, this.speed);
+    else {
+      this.position.x += Math.sin(this.game.elapsed * 0.8 + this.position.z) * dt * this.speed * 0.35;
+      this.position.z += Math.cos(this.game.elapsed * 0.7 + this.position.x) * dt * this.speed * 0.35;
+    }
+  }
+
+  updateFrog(dt) {
+    const player = this.game.player;
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, player.position));
+    this.jumpTimer -= dt;
+    if (this.jumpPhase > 0) {
+      this.jumpPhase = Math.max(0, this.jumpPhase - dt);
+      const t = 1 - this.jumpPhase / 0.75;
+      this.model.position.y = (this.model.userData.baseY ?? 0) + Math.sin(t * Math.PI) * 3.4;
+      this.moveToward(player.position, dt, this.speed * 4.2);
+      if (this.jumpPhase === 0 && distance < 2.4) player.takeDamage(Config.enemy.frog.damage);
+      return;
+    }
+    if (distance <= Config.enemy.frog.jumpRange && this.jumpTimer <= 0) {
+      this.jumpTimer = Config.enemy.frog.jumpInterval;
+      this.jumpPhase = 0.75;
+    } else this.moveToward(player.position, dt, this.speed);
   }
 
   updateShooter(dt) {
@@ -2042,6 +2286,62 @@ export class Enemy {
     if (this.pendingShotTimer === 0 && distance <= Config.enemy.shooter.range + 2 && this.fireTimer <= 0) {
       this.fireTimer = Config.enemy.shooter.fireInterval;
       this.beginShooterAttack(player.position);
+    }
+  }
+
+  updateSniper(dt) {
+    const stats = Config.enemy.sniper;
+    const player = this.game.player;
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, player.position));
+    if (distance < stats.range * 0.55) this.moveAway(player.position, dt, this.speed);
+    else if (distance > stats.range * 0.9) this.moveToward(player.position, dt, this.speed);
+
+    if (this.beamState === 'idle' && distance <= stats.range && this.fireTimer <= 0) {
+      this.beamState = 'warning';
+      this.beamTimer = stats.warningSeconds;
+      this.beamAim = angleToXZ(this.position, player.position);
+      this.fireTimer = stats.fireInterval;
+    }
+    if (this.beamState === 'idle') return;
+
+    const desiredAngle = angleToXZ(this.position, player.position);
+    const turnRate = this.beamState === 'warning' ? stats.warningTurnRate : stats.beamTurnRate;
+    this.beamAim += clamp(signedAngleDifference(desiredAngle, this.beamAim), -turnRate * dt, turnRate * dt);
+    this.beamTimer -= dt;
+    if (this.beamState === 'warning' && this.beamTimer <= 0) {
+      this.beamState = 'firing';
+      this.beamTimer = stats.beamSeconds;
+      this.beamHitTimer = 0;
+      this.playModelAnimation('shoot');
+    } else if (this.beamState === 'firing' && this.beamTimer <= 0) {
+      this.beamState = 'idle';
+      this.beam.visible = false;
+      return;
+    }
+
+    this.updateSniperBeamVisual(Math.min(distance, stats.range), player.visualHeight);
+    if (this.beamState !== 'firing') return;
+    this.beamHitTimer = Math.max(0, this.beamHitTimer - dt);
+    const hitRadius = player.form === 'bird' ? stats.birdHitRadius : stats.humanHitRadius;
+    if (this.beamHitTimer === 0 && horizontalPointSegmentDistanceSq(player.position, this.position, this.beamEnd) <= hitRadius ** 2) {
+      player.takeDamage(stats.damage);
+      this.beamHitTimer = stats.hitInterval;
+    }
+  }
+
+  updateSniperBeamVisual(horizontalLength, playerHeight) {
+    const dx = Math.sin(this.beamAim) * horizontalLength;
+    const dz = Math.cos(this.beamAim) * horizontalLength;
+    this.beamEnd.set(this.position.x + dx, 0, this.position.z + dz);
+    this.beamDirection.set(dx, playerHeight + 1 - this.beam.position.y, dz);
+    const length = Math.max(0.01, this.beamDirection.length());
+    this.beam.quaternion.setFromUnitVectors(SNIPER_BEAM_UP, this.beamDirection.normalize());
+    this.beam.visible = true;
+    this.beamWarning.visible = this.beamState === 'warning';
+    this.beamGlow.visible = this.beamCore.visible = this.beamState === 'firing';
+    for (const mesh of [this.beamWarning, this.beamGlow, this.beamCore]) {
+      mesh.position.y = length * 0.5;
+      mesh.scale.set(mesh.userData.radius, length, mesh.userData.radius);
     }
   }
 
@@ -2130,11 +2430,13 @@ export class Enemy {
 
   updateContactDamage() {
     const player = this.game.player;
-    if (player.form === 'bird' || player.phaseTimer > 0) return;
+    if (player.phaseTimer > 0) return;
+    if (player.form === 'bird' && this.type !== 'dragonfly') return;
     if (this.distanceSqToPlayer > 1.55) return;
     if (this.attackTimer > 0) return;
     this.attackTimer = 0.75;
-    player.takeDamage(this.stats.damage);
+    const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
+    player.takeDamage(this.stats.damage * multiplier);
   }
 
   updateHpBar() {
@@ -2468,7 +2770,9 @@ export class ExperienceOrb {
     const player = this.game.player;
     const distanceSq = horizontalDistanceSq(this.position, player.position);
     const showGlow = distanceSq <= Config.performance.xpGlowDistance ** 2;
-    const magnetRange = player.getPickupMagnetRange();
+    const magnetRange = this.type === 'xp' && this.game.elapsed < Config.xp.openingMagnetSeconds
+      ? Math.max(player.getPickupMagnetRange(), Config.xp.openingMagnetRange)
+      : player.getPickupMagnetRange();
     this.object.rotation.y += dt * (this.type === 'speed' ? 7 : 4);
     this.model.rotation.x = Math.sin(this.game.elapsed * 5 + this.position.x) * 0.08;
     if (this.type === 'magnet') this.model.rotation.x += Math.PI * 0.5;
