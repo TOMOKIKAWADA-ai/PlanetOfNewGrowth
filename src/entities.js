@@ -153,10 +153,12 @@ const tempVec = new THREE.Vector3();
 const tempVec2 = new THREE.Vector3();
 const poseEuler = new THREE.Euler();
 const poseQuat = new THREE.Quaternion();
+const SNIPER_VISUAL_SCALE = 1.12;
+const SNIPER_COLOR = 0xff1515;
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
-  sniper: { color: 0x702534, radius: 0.42, height: 1.12, segments: 5 },
+  sniper: { color: SNIPER_COLOR, radius: 0.42 * SNIPER_VISUAL_SCALE, height: 1.12 * SNIPER_VISUAL_SCALE, segments: 5 },
   guardian: { color: 0x180c0d, radius: 0.58, height: 1.55, segments: 6 },
   spawner: { color: 0x180c0d, radius: 0.38, height: 1.0, segments: 5 },
   dragonflyLarva: { color: 0x376d61, radius: 0.34, height: 0.55, segments: 7 },
@@ -183,7 +185,7 @@ const SNIPER_BEAM_MATERIALS = {
   core: new THREE.MeshBasicMaterial({ color: 0xfff2db, transparent: true, opacity: 0.94, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
 };
 const SNIPER_MARKER_GEOMETRY = new THREE.TorusGeometry(0.42, 0.07, 6, 16);
-const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: 0xff6571, toneMapped: false });
+const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: SNIPER_COLOR, toneMapped: false });
 const SNIPER_BEAM_UP = new THREE.Vector3(0, 1, 0);
 const EGG_LOD_GEOMETRY = new THREE.DodecahedronGeometry(0.7, 0);
 const EGG_LOD_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x180c0d });
@@ -1973,6 +1975,7 @@ export class Enemy {
     this.beamTimer = 0;
     this.beamHitTimer = 0;
     this.beamAim = 0;
+    this.beamTrackedTarget = new THREE.Vector3();
     this.beamEnd = new THREE.Vector3();
     this.beamDirection = new THREE.Vector3();
     this.buildingImpactTimer = 0;
@@ -2023,6 +2026,7 @@ export class Enemy {
     const gameplayModel = this.game.cloneGameplayModel(gameplayModelKeys[type]);
     if (gameplayModel) {
       gameplayModel.userData.baseY = gameplayModel.position.y;
+      if (type === 'sniper') this.styleSniperModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2034,6 +2038,7 @@ export class Enemy {
     const model = Config.visuals.useAssetModels ? this.game.assets.cloneModel(key) : null;
     if (model) {
       model.scale.setScalar(type === 'guardian' ? 1.15 : type === 'spawner' ? 0.82 : type === 'chaser' ? 1.0 : 0.9);
+      if (type === 'sniper') this.styleSniperModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2043,6 +2048,27 @@ export class Enemy {
       return this.createLodModel(model, type);
     }
     return createEnemyLowModel(type);
+  }
+
+  styleSniperModel(model) {
+    model.scale.multiplyScalar(SNIPER_VISUAL_SCALE);
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(SNIPER_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(0x500000);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = Math.max(material.emissiveIntensity ?? 0, 0.35);
+        material.needsUpdate = true;
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
   }
 
   createLodModel(highDetail, type) {
@@ -2300,11 +2326,18 @@ export class Enemy {
       this.beamState = 'warning';
       this.beamTimer = stats.warningSeconds;
       this.beamAim = angleToXZ(this.position, player.position);
+      this.beamTrackedTarget.copy(player.position);
       this.fireTimer = stats.fireInterval;
     }
     if (this.beamState === 'idle') return;
 
-    const desiredAngle = angleToXZ(this.position, player.position);
+    if (player.form === 'bird') {
+      this.beamTrackedTarget.copy(player.position);
+    } else {
+      const follow = 1 - Math.exp(-dt / stats.groundTrackingLagSeconds);
+      this.beamTrackedTarget.lerp(player.position, follow);
+    }
+    const desiredAngle = angleToXZ(this.position, this.beamTrackedTarget);
     const turnRate = this.beamState === 'warning' ? stats.warningTurnRate : stats.beamTurnRate;
     this.beamAim += clamp(signedAngleDifference(desiredAngle, this.beamAim), -turnRate * dt, turnRate * dt);
     this.beamTimer -= dt;

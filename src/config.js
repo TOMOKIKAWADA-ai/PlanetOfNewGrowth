@@ -271,6 +271,7 @@ export const Config = {
       beamSeconds: 0.8,
       warningTurnRate: 4.5,
       beamTurnRate: 2.4,
+      groundTrackingLagSeconds: 0.45,
       hitInterval: 0.42,
       humanHitRadius: 0.85,
       birdHitRadius: 1.8,
