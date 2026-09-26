@@ -22,12 +22,18 @@
 .story-player .story-advance.menu-cursor .story-next { color: #fff1a8; }
 .story-player button:disabled { opacity: .35; cursor: default; }
 html[data-input-mode="gamepad"] .story-keyboard-help { display: none; }
-.story-cast { z-index: 1; top: clamp(74px, 10vh, 120px); right: 5%; bottom: auto; left: 5%; height: min(77vh, 820px); overflow: clip; transition: opacity .45s, transform .45s; }
+.story-cast { --portrait-lower: 0px; z-index: 1; top: calc(clamp(74px, 10vh, 120px) + var(--portrait-lower)); right: 5%; bottom: auto; left: 5%; height: min(77vh, 820px); overflow: clip; transition: opacity .45s, transform .45s; }
 .story-actor { --portrait-flip: 1; position: absolute; bottom: 0; width: 54%; height: 100%; object-fit: contain; object-position: center bottom; opacity: 0; filter: brightness(.75) saturate(.8); transform: scaleX(var(--portrait-flip)) scale(.93); transform-origin: center bottom; transition: filter .35s, transform .45s, opacity .35s; }
 .story-actor[data-side="left"] { left: -4%; }
 .story-actor[data-side="right"] { right: -4%; --portrait-flip: -1; }
+.story-actor:not(.is-visible) { visibility: hidden; }
 .story-actor.is-visible { opacity: .78; }
 .story-actor.is-speaking { z-index: 1; opacity: 1; filter: brightness(1) saturate(1); transform: scaleX(var(--portrait-flip)) scale(1.035); }
+.story-civilian-gallery { position: absolute; z-index: 1; inset: 13% 10% auto; height: min(58vh, 620px); display: flex; align-items: stretch; justify-content: center; gap: clamp(8px, 2vw, 24px); pointer-events: none; }
+.story-civilian-frame { min-width: 0; max-width: min(34vw, 380px); height: 100%; margin: 0; overflow: hidden; border: 1px solid #e8dcb580; border-radius: 55% 55% 18px 18px / 14% 14% 18px 18px; background: #ded9c5; box-shadow: 0 24px 65px #030806dd, inset 0 0 0 5px #0d1a16; transform: translateY(0); }
+.story-civilian-frame img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 47%; filter: sepia(.13) saturate(.75) contrast(1.09) brightness(.87); -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 76%, transparent 100%); mask-image: linear-gradient(to bottom, #000 0%, #000 76%, transparent 100%); }
+.story-civilian-gallery[data-count="1"] .story-civilian-frame { width: min(35vw, 390px); }
+.story-civilian-gallery[data-count="3"] .story-civilian-frame { width: min(26vw, 290px); }
 .is-close .story-actor.is-speaking { transform: scaleX(var(--portrait-flip)) scale(1.11); }
 .is-close .story-actor.is-visible:not(.is-speaking) { opacity: .3; }
 .story-lower-shade { z-index: 2; background: linear-gradient(180deg, transparent 38%, #03090844 55%, #030908c4 82%, #030908 100%); }
@@ -42,6 +48,7 @@ html[data-input-mode="gamepad"] .story-keyboard-help { display: none; }
 .is-complete .story-next { opacity: 1; }
 .story-footer { position: absolute; z-index: 4; left: 5%; right: 5%; bottom: max(12px, env(safe-area-inset-bottom)); display: flex; justify-content: space-between; color: #a1aca5; font-size: 10px; letter-spacing: .12em; }
 .is-narration .story-cast, .is-npc .story-cast { opacity: 0; transform: translateY(12px); }
+.is-narration .story-actor, .is-npc .story-actor { visibility: hidden; }
 .is-narration .story-text { font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; line-height: 1.85; }
 .is-blackout .story-backdrop { opacity: 0; }
 .story-log { position: absolute; inset: 0; z-index: 6; background: #06100ff5; padding: 5% max(8%, calc((100% - 900px) / 2)); display: flex; flex-direction: column; }
@@ -51,11 +58,14 @@ html[data-input-mode="gamepad"] .story-keyboard-help { display: none; }
 .story-log-entries p { border-bottom: 1px solid #c9dac11a; padding: 20px 0; margin: 0; font-size: 16px; line-height: 1.9; white-space: pre-line; }
 .story-log-entries strong { display: block; margin-bottom: 8px; font-size: 12px; color: #c7ddbb; letter-spacing: .15em; }
 @media (max-width: 600px) {
+  .story-civilian-gallery { inset: 19% 4% auto; height: min(50vh, 400px); gap: 4px; }
+  .story-civilian-gallery[data-count="1"] .story-civilian-frame { width: min(70vw, 285px); max-width: 70vw; }
+  .story-civilian-gallery[data-count="3"] .story-civilian-frame { width: 30vw; max-width: 30vw; }
   .story-header { top: max(12px, env(safe-area-inset-top)); left: 4%; right: 4%; display: block; }
   .story-header h2 { margin-top: 3px; font-size: 16px; }
   .story-header nav { margin-top: 9px; gap: 6px; }
   .story-header nav button { flex: 1; min-height: 44px; padding: 7px 2px; font-size: 10px; }
-  .story-cast { top: 113px; left: 0; right: 0; height: min(64vh, 520px); }
+  .story-cast { top: calc(113px + var(--portrait-lower)); left: 0; right: 0; height: min(64vh, 520px); }
   .story-actor { width: 105%; height: 100%; }
   .story-actor[data-side="left"] { left: -17%; }
   .story-actor[data-side="right"] { right: -17%; }
@@ -70,12 +80,21 @@ html[data-input-mode="gamepad"] .story-keyboard-help { display: none; }
   .story-log { padding: max(14px, env(safe-area-inset-top)) 5% max(20px, env(safe-area-inset-bottom)); }
 }
 @media (max-height: 500px) {
-  .story-cast { top: 50px; height: 68vh; }
+  .story-cast { top: calc(50px + var(--portrait-lower)); height: 68vh; }
   .story-caption { bottom: calc(46px + env(safe-area-inset-bottom)); max-height: 55vh; padding-top: 10px; padding-bottom: 3px; }
   .story-location { margin-bottom: 3px; }
   .story-speaker { margin-bottom: 3px; }
   .story-player .story-advance { min-height: 44px; padding-bottom: 6px; }
   .story-text { font-size: 16px; line-height: 1.45; }
+}
+@media (orientation: portrait) {
+  .story-cast { --portrait-lower: 12px; }
+  .story-actor {
+    visibility: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 10px), transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 10px), transparent 100%);
+  }
+  .story-actor.is-speaking { visibility: visible; }
 }
 @media (prefers-reduced-motion: reduce) {
   .story-player *, .story-player *::before { transition: none !important; animation: none !important; }

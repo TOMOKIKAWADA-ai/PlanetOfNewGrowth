@@ -21,6 +21,7 @@ export class StoryPlayer {
         </nav>
       </header>
       <div class="story-cast" aria-hidden="true">${Object.keys(STORY_CHARACTERS).filter(id => STORY_CHARACTERS[id].portrait).map(id => `<img class="story-actor" data-actor="${id}" alt="" />`).join('')}</div>
+      <div class="story-civilian-gallery hidden" aria-label="市民の姿"></div>
       <div class="story-lower-shade" aria-hidden="true"></div>
       <div class="story-caption">
         <p class="story-location"></p>
@@ -96,6 +97,20 @@ export class StoryPlayer {
     this.root.classList.toggle('is-blackout', Boolean(line.blackout));
     this.root.classList.toggle('is-close', Boolean(line.close));
     this.root.style.setProperty('--speaker-color', character?.color ?? '#d1dfc5');
+    const art = line.art ?? character?.artwork;
+    const artworks = art ? (Array.isArray(art) ? art : [art]) : [];
+    const gallery = this.query('.story-civilian-gallery');
+    gallery.classList.toggle('hidden', artworks.length === 0 || Boolean(line.blackout));
+    gallery.dataset.count = String(artworks.length);
+    gallery.replaceChildren(...artworks.map((source, index) => {
+      const frame = document.createElement('figure');
+      frame.className = 'story-civilian-frame';
+      const image = document.createElement('img');
+      image.src = source;
+      image.alt = artworks.length === 1 && character?.artwork ? `${character.name}の、根を張った姿` : `根を張った市民 ${index + 1}`;
+      frame.append(image);
+      return frame;
+    }));
     const backdrop = this.query('.story-backdrop');
     if (line.background) backdrop.style.backgroundImage = `url("${line.background}")`;
     const speakerId = character?.portrait ? line.speaker : null;

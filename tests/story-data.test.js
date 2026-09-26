@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROLOGUE, STORY_CHARACTERS, createBriefing, createAftermath } from '../src/story-data.js';
+import { PROLOGUE, STORY_CHARACTERS, CIVILIAN_ART, createBriefing, createAftermath } from '../src/story-data.js';
 import { CHARACTER_EXPRESSIONS } from '../src/character-portraits.js';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const soldiers = ['tsukimi', 'akame', 'kiichigo'];
 
@@ -30,11 +32,18 @@ test('chapter one gives each selected soldier the source assignment and return c
   assert.deepEqual(createAftermath('unknown'), createAftermath('tsukimi'));
 });
 
-test('only the three soldiers have portraits; the NPCs have distinct identities', () => {
+test('soldier portraits and rooted civilian artwork remain distinct', () => {
   assert.deepEqual(Object.keys(STORY_CHARACTERS).filter(id => STORY_CHARACTERS[id].portrait), soldiers);
-  for (const id of ['enju', 'minari', 'rindou']) {
+  for (const id of ['enju', 'minari', 'rindou', 'keshi', 'kunugi']) {
     assert.ok(STORY_CHARACTERS[id].role);
     assert.ok([...createBriefing('tsukimi').lines, ...createAftermath('tsukimi').lines].some(line => line.speaker === id));
+  }
+  for (const source of Object.values(CIVILIAN_ART)) assert.ok(existsSync(fileURLToPath(source)), source);
+  const scenes = [PROLOGUE, createBriefing('tsukimi'), createAftermath('tsukimi')];
+  for (const scene of scenes) for (const line of scene.lines) {
+    for (const source of line.art ? (Array.isArray(line.art) ? line.art : [line.art]) : []) {
+      assert.ok(Object.values(CIVILIAN_ART).includes(source));
+    }
   }
 });
 
@@ -50,5 +59,8 @@ test('water stage keeps its existing briefing without chapter one aftermath', ()
 
 test('chapter one preserves both the rescue and its cost', () => {
   const script = createAftermath('tsukimi').lines.map(line => line.text).join('\n');
-  for (const detail of ['六人', '温室', '三か月', '種の箱', '水が流れていた']) assert.ok(script.includes(detail));
+  for (const detail of ['六人', '温室', '三か月', '種の箱', '水が届く']) assert.ok(script.includes(detail));
+  assert.match(script, /気味が悪い/);
+  assert.match(script, /怖い/);
+  assert.match(script, /ありがとう/);
 });
