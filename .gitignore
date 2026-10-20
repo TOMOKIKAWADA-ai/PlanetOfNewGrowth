@@ -13,3 +13,4 @@ tmp/
 .env
 .env.*
 search-survive-itchio.zip
+assets_src/
