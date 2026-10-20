@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { mkdir } from 'node:fs/promises';
-import { PROLOGUE } from '../src/story-data.js';
+import { PROLOGUE, STORY_CHARACTERS, createBriefing } from '../src/story-data.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -47,14 +47,14 @@ async function pad(page, button, keepConnected = false) {
 
 async function startBattle(page, id, stage = 1) {
   await page.locator('[data-action="skip"]').click();
-  if (stage === 2) {
+  if (stage !== 1) {
     await page.keyboard.press('F3');
-    await page.locator('[data-stage-id="2"]').click();
+    await page.locator(`[data-stage-id="${stage}"]`).click();
   }
   await page.locator(`[data-character="${id}"]`).click();
   assert.equal(await page.locator('#characterConfirm').isVisible(), true);
   await page.locator('#characterConfirm').click();
-  assert.match(await page.locator('.story-header h2').textContent(), stage === 1 ? /守る順番/ : /水底に残るもの/);
+  assert.equal(await page.locator('.story-header h2').textContent(), createBriefing(id, stage).subtitle);
   await page.locator('[data-action="skip"]').click();
   await page.waitForFunction(() => window.__storyTest.game?.state === 'playing', null, { timeout: 45000 });
   assert.equal(await page.locator('#game').evaluate(el => el.inert), false);
@@ -148,10 +148,14 @@ try {
     await page.setViewportSize(size);
     const problems = await page.evaluate(async () => {
       const { story } = window.__storyTest;
-      const { createAftermath } = await import('/src/story-data.js');
+      const { PROLOGUE, STORY_CHAPTER_COUNT, createBriefing, createAftermath } = await import('/src/story-data.js');
       const original = story.scene;
       const failures = [];
-      for (const scene of [original, createAftermath('tsukimi')]) {
+      const chapters = Array.from({ length: STORY_CHAPTER_COUNT }, (_, i) => i + 1);
+      const scenes = [PROLOGUE, ...['tsukimi', 'akame', 'kiichigo'].flatMap(id => chapters.flatMap(chapter => [
+        createBriefing(id, chapter), createAftermath(id, chapter)
+      ]))];
+      for (const scene of scenes) {
         story.scene = scene;
         for (let i = 0; i < scene.lines.length; i++) {
           story.index = i;
@@ -174,15 +178,19 @@ try {
     await page.screenshot({ path: `tmp/story-check/briefing-${size.width}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.evaluate(() => { const s = window.__storyTest.story; s.index = 7; s.render(); });
+  await page.evaluate(() => {
+    const s = window.__storyTest.story;
+    s.index = s.scene.lines.findIndex(line => line.speaker === 'minari');
+    s.render();
+  });
   assert.equal(await page.locator('.story-speaker').textContent(), 'ミナリ');
   assert.equal(await page.locator('.story-player').evaluate(el => el.classList.contains('is-npc')), true);
   await page.screenshot({ path: 'tmp/story-check/minari.png' });
   await page.locator('[data-action="skip"]').click();
   await page.waitForFunction(() => window.__storyTest.game?.state === 'playing', null, { timeout: 45000 });
-  assert.match(await page.locator('#clock').textContent(), /^(?:05:00|4:5\d)$/);
-  assert.equal(await page.evaluate(() => window.__storyTest.Config.map.playSeconds), 300);
-  assert.equal(await page.evaluate(() => window.__storyTest.Config.map.motherSpawnSeconds), 240);
+  assert.match(await page.locator('#clock').textContent(), /^(?:0?4:00|3:5\d)$/);
+  assert.equal(await page.evaluate(() => window.__storyTest.Config.map.playSeconds), 240);
+  assert.equal(await page.evaluate(() => window.__storyTest.Config.map.motherSpawnSeconds), 180);
   assert.equal(await page.evaluate(() => typeof window.__storyTest.game.player.tryMelee), 'undefined');
   await page.evaluate(() => { window.__padConnected = true; });
   await page.waitForFunction(() => document.documentElement.dataset.inputMode === 'gamepad');
@@ -195,7 +203,7 @@ try {
   await page.keyboard.up('KeyW');
   await page.evaluate(() => { window.__padConnected = false; });
   await page.waitForFunction(() => document.documentElement.dataset.inputMode === 'keyboard');
-  await page.evaluate(() => { window.__storyTest.game.elapsed = 240; });
+  await page.evaluate(() => { const { game, Config } = window.__storyTest; game.elapsed = Config.map.motherSpawnSeconds; });
   await page.waitForFunction(() => window.__storyTest.game.motherEgg !== null);
   assert.equal(await page.evaluate(() => window.__storyTest.game.motherEgg !== null), true);
   await page.keyboard.down('Escape');
@@ -287,7 +295,7 @@ try {
   assert.equal(await page.evaluate(() => window.__storyTest.story.index), 0);
   await page.locator('[data-action="skip"]').click();
   assert.equal(await page.evaluate(() => window.__storyTest.game.state), 'result');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'restartButton');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'nextChapterButton');
   await page.locator('#restartButton').click();
   await page.locator('#titleStartButton').waitFor({ state: 'visible' });
   await page.close();
@@ -297,7 +305,7 @@ try {
     { id: 'akame', stage: 1, outcome: 'victory' },
     { id: 'kiichigo', stage: 1, outcome: 'death' },
     { id: 'kiichigo', stage: 1, outcome: 'timeout' },
-    { id: 'tsukimi', stage: 2, outcome: 'victory' }
+    { id: 'tsukimi', stage: 3, outcome: 'victory' }
   ]) {
     const other = await newPage();
     await startBattle(other, scenario.id, scenario.stage);
@@ -309,16 +317,20 @@ try {
         game.deathTimer = 0.01;
       } else game.elapsed = Config.map.playSeconds;
     }, scenario.outcome);
-    if (scenario.stage === 1 && scenario.outcome === 'victory') {
+    if (scenario.outcome === 'victory') {
       await other.waitForFunction(() => window.__storyTest.game.state === 'story');
       await other.keyboard.press('Enter');
-      assert.equal(await other.locator('.story-speaker').textContent(), 'アカメ');
+      assert.equal(await other.locator('.story-speaker').textContent(), STORY_CHARACTERS[scenario.id].name);
       await other.locator('[data-action="skip"]').click();
+      await other.locator('#result').waitFor({ state: 'visible' });
+      assert.equal(await other.locator('#resultTitle').textContent(), `第${scenario.stage}章 完`);
+      assert.equal(await other.locator('#nextChapterButton').isVisible(), true);
     } else {
       await other.locator('#result').waitFor({ state: 'visible' });
       assert.equal(await other.locator('.story-player').isVisible(), false);
       assert.equal(await other.locator('#replayStoryButton').isVisible(), false);
-      assert.equal(await other.locator('#resultTitle').textContent(), scenario.outcome === 'victory' ? 'AREA RESTORED' : 'Defeat');
+      assert.equal(await other.locator('#retryButton').isVisible(), true);
+      assert.equal(await other.locator('#resultTitle').textContent(), 'Defeat');
     }
     await other.close();
     console.log(`PASS: ${scenario.id} / stage ${scenario.stage} / ${scenario.outcome}`);
