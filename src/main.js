@@ -1173,7 +1173,7 @@ class Game {
       }
       this.updateDeathBlackout(dt);
       if (this.deathTimer <= 0) {
-        this.finish(false, 'HP reached 0');
+        this.finish(false, 'HPが尽きました');
         this.input.endFrame();
         return;
       }
@@ -1429,17 +1429,18 @@ class Game {
   findEggsInRadius(position, radius, includeMother = false) {
     this.scratchEggs.length = 0;
     const radiusSq = radius * radius;
-    for (const egg of this.eggs) if (!egg.dead && horizontalDistanceSq(position, egg.position) <= radiusSq) this.scratchEggs.push(egg);
+    for (const egg of this.eggs) if (!egg.dead && !egg.aquatic && horizontalDistanceSq(position, egg.position) <= radiusSq) this.scratchEggs.push(egg);
     if (includeMother && this.motherEgg && !this.motherEgg.dead && horizontalDistanceSq(position, this.motherEgg.position) <= radiusSq) this.scratchEggs.push(this.motherEgg);
     return this.scratchEggs;
   }
 
   onEggDestroyed(egg, source) {
     this.scene.remove(egg.object);
+    egg.dispose();
     if (egg.isMother) {
       this.playSfx('eggBreak', { volume: 0.9 });
       this.spawnBurstEffect(egg.position, 9, 0xffd56b);
-      this.finish(true, 'Mother egg destroyed');
+      this.finish(true, '母卵を破壊しました');
       return;
     }
     this.eggsDestroyed += 1;
@@ -1536,6 +1537,7 @@ class Game {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       if (this.enemies[i].dead) {
         this.scene.remove(this.enemies[i].object);
+        this.enemies[i].dispose();
         this.enemies.splice(i, 1);
       }
     }

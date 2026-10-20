@@ -1,6 +1,3 @@
-.godot/
-.godot-bin/
-Godot_v*.zip
 node_modules/
 .npm-cache/
 __pycache__/
