@@ -6,6 +6,9 @@ import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
+import {
+  getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest
+} from './campaign.js';
 import { Config } from './config.js';
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
@@ -198,6 +201,14 @@ const CHARACTER_OPTIONS = {
   akame: { playerModel: 'akameGlb' },
   kiichigo: { playerModel: 'kiichigoGlb' }
 };
+const CHAPTER_RESULTS = {
+  1: 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。',
+  2: 'シラユリ観測所の記録を回収した。\n卵は、白蓮保管庫から水路をさかのぼっていた。',
+  3: '水門の母卵は沈んだ。\n白蓮保管庫の扉が開き、卵の出どころが明らかになった。',
+  4: '避難所に、卵は一つも届かなかった。\n四つの区は、孵化の夜まで水を止めると決めた。',
+  5: '旧貯水池の水を、歩いて持ち帰った。\nニレの葉が、もう一度開いた。',
+  6: '白蓮は咲かなかった。\n一斉孵化の朝は来ず、三人は戸口の内側で眠った。'
+};
 const appInput = new InputState(window);
 let activeGame = null;
 let selectedStageId = 1;
@@ -283,8 +294,9 @@ function handleGamepadMenu(input, container, onCancel = null, linearFallback = f
 class Game {
   constructor(characterId = 'tsukimi', stageId = 1) {
     this.characterId = characterId;
-    this.stageId = stageId;
-    this.isWaterStage = stageId === 2;
+    this.stage = getStage(stageId);
+    this.stageId = this.stage.chapter;
+    this.isWaterStage = this.stage.terrain === 'water';
     this.canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -301,9 +313,8 @@ class Game {
     this.renderer.toneMapping = Config.visuals.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = Config.visuals.renderExposure;
     this.scene = new THREE.Scene();
-    const worldColor = this.isWaterStage ? 0x173a43 : 0x15201d;
-    this.scene.background = new THREE.Color(worldColor);
-    this.scene.fog = new THREE.FogExp2(worldColor, this.isWaterStage ? 0.017 : 0.012);
+    this.scene.background = new THREE.Color(this.stage.worldColor);
+    this.scene.fog = new THREE.FogExp2(this.stage.worldColor, this.stage.fog);
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
     this.assets = null;
     this.input = appInput;
@@ -424,16 +435,18 @@ class Game {
     this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage(this.stageId === 1 ? '第1章 守る順番\n増殖を抑え、母卵を破壊せよ' : 'Start', 3);
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${this.stage.motherName}を破壊せよ`, 3);
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
 
   setupLighting() {
     this.setupEnvironmentLighting();
-    const ambient = new THREE.HemisphereLight(0xcfe0ff, 0x26342b, Config.visuals.ambientLightIntensity);
+    const { light } = this.stage;
+    this.renderer.toneMappingExposure = Config.visuals.renderExposure * light.exposure;
+    const ambient = new THREE.HemisphereLight(light.sky, light.ground, Config.visuals.ambientLightIntensity);
     this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xfff0cf, Config.visuals.sunLightIntensity);
+    const sun = new THREE.DirectionalLight(light.sun, Config.visuals.sunLightIntensity);
     sun.position.set(-28, 34, 24);
     sun.castShadow = Config.performance.enableShadows;
     if (Config.performance.enableShadows) {
@@ -447,7 +460,7 @@ class Game {
     }
     if (Config.visuals.sunLightIntensity > 0) this.scene.add(sun);
     if (Config.visuals.fillLightIntensity > 0) {
-      const fill = new THREE.DirectionalLight(0xaec8ff, Config.visuals.fillLightIntensity);
+      const fill = new THREE.DirectionalLight(light.fill, Config.visuals.fillLightIntensity);
       fill.position.set(30, 22, -34);
       fill.castShadow = false;
       this.scene.add(fill);
@@ -1162,7 +1175,7 @@ class Game {
       this.cleanupLists();
       this.ensureEggsExist();
       if (this.elapsed >= Config.map.playSeconds && (!this.motherEgg || !this.motherEgg.dead)) {
-        this.finish(false, '4分以内に母卵を破壊できませんでした');
+        this.finish(false, `${Config.map.playSeconds / 60}分以内に${this.stage.motherName}を破壊できませんでした`);
       }
     }
     if (this.state === 'dying') {
@@ -1330,7 +1343,9 @@ class Game {
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
-    this.spawnEgg(position, true);
+    const mother = this.spawnEgg(position, true);
+    mother.maxHp *= this.stage.motherHpScale;
+    mother.hp = mother.maxHp;
     this.spawnBurstEffect(position, 7, 0xff8b52);
     this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
@@ -2135,19 +2150,25 @@ class Game {
 
   finish(victory, body) {
     if (this.outcome || (victory && this.player?.dead)) return;
-    this.outcome = {
-      victory,
-      body: victory && this.stageId === 1
-        ? 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。'
-        : body
-    };
+    this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
     if (!this.deathWorldActive) this.hud.showDeathBlackout(false);
     this.settleCamera();
-    if (victory && this.stageId === 1) this.replayAftermath();
-    else this.hud.showResult(victory, this.outcome.body);
+    if (victory) {
+      if (isFinalChapter(this.stageId)) clearProgress();
+      else saveProgress(this.stageId + 1, this.characterId);
+      this.replayAftermath();
+    } else {
+      this.hud.showResult(victory, this.outcome.body);
+    }
+  }
+
+  // ゲームは再読み込みで作り直すため、次に始める章を渡してからページを読み直す。
+  launchChapter(stageId) {
+    requestLaunch(stageId, this.characterId);
+    window.location.reload();
   }
 
   replayAftermath() {
@@ -2439,11 +2460,37 @@ function setupCharacterSelect() {
   });
 }
 
+// 章の出撃前会話を再生してから戦闘を始める。キャラクター選択は第1章の最初だけ。
+function beginChapter(characterId, stageId) {
+  selectedStageId = stageId;
+  document.getElementById('titleScreen')?.classList.add('hidden');
+  document.getElementById('characterSelect')?.classList.add('hidden');
+  storyPlayer.show(createBriefing(characterId, stageId), () => startGameWithCharacter(characterId));
+}
+
 function setupTitleScreen() {
   const titleScreen = document.getElementById('titleScreen');
   const characterSelect = document.getElementById('characterSelect');
   const startButton = document.getElementById('titleStartButton');
+  const continueButton = document.getElementById('titleContinueButton');
   if (!titleScreen || !characterSelect || !startButton) return;
+  const launch = takeLaunchRequest();
+  if (launch) {
+    beginChapter(launch.characterId, launch.chapter);
+    return;
+  }
+  const progress = loadProgress();
+  if (progress && continueButton) {
+    const stage = getStage(progress.chapter);
+    continueButton.textContent = `つづきから（${stage.label}）`;
+    continueButton.classList.remove('hidden');
+    continueButton.addEventListener('click', () => {
+      const confirm = new Audio(SFX_URLS.buttonConfirm);
+      confirm.volume = Config.audio.sfxVolume * 0.75;
+      confirm.play()?.catch?.(() => {});
+      beginChapter(progress.characterId, progress.chapter);
+    });
+  }
   startButton.addEventListener('click', () => {
     selectedStageId = 1;
     const confirm = new Audio(SFX_URLS.buttonConfirm);
@@ -2455,7 +2502,7 @@ function setupTitleScreen() {
       characterSelect.querySelector('[data-character="tsukimi"]')?.focus({ preventScroll: true });
     });
   });
-  startButton.focus();
+  (progress && continueButton ? continueButton : startButton).focus();
 }
 
 setupCharacterSelect();
