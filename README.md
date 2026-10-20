@@ -1,6 +1,6 @@
 # Search Survive Three
 
-Three.js / Vite 製の見下ろし型 3D サバイバルゲームです。Godot はランタイムから外し、Web ブラウザだけで起動します。
+Three.js / Vite 製の見下ろし型 3D サバイバルゲームです。Web ブラウザだけで起動します。
 
 ## 起動方法
 
@@ -62,19 +62,19 @@ USBまたはBluetoothで接続し、ブラウザ上でいずれかのボタン�
 ## 実装内容
 
 - Three.js の単一 Web アプリとして実装
-- 現在の見た目はプレーンな低ポリゴン Primitive 基準
-- `assets/player/tsukimi_base.glb` を自キャラ表示として有効化しています
+- プレイヤーはキャラクターごとのGLB（`tsukimi_v2_mix3.glb` / `akame_002_rtp.glb` / `kiichigo_BLD.glb`）に、FBXのアニメーションを適用して表示
+- 卵・母卵・敵・ドローン・経験値は `src/main.js` の `GAMEPLAY_MODELS` に列挙したGLBを常に読み込みます（`visuals.useAssetModels` とは無関係）
 - 背景装飾は `assets/background` のGLBのみを使用し、Primitiveの草・石・木は無効化しています
-- `src/config.js` の `visuals.useAssetModels` を `true` に戻すと、GLB アセット読み込みを再有効化できます
+- `src/config.js` の `visuals.useAssetModels` を `true` にすると、Kenney などの旧アセット（`assets.js` の `AssetStore`）を追加で読み込みます
 - 卵の成熟、孵化、増殖、卵ゼロ時の即時復帰スポーン
-- 産卵獣、追跡敵、射撃敵、守護敵
+- 産卵獣、追跡敵、射撃敵、狙撃敵、守護敵
 - 鳥形態の上空移動、自動捕食、母卵への自動急降下
-- 人間形態の自動射撃、特殊弾、バースト技、範囲パルス強化
+- 人間形態の自動射撃、特殊弾、キャラクター別バースト技、範囲パルス強化
 - 経験値、レベルアップ、ランダム 3 択強化
 - 母卵 HP バーと画面外アラート
 - 敵検索用の空間グリッド
 - 弾と経験値オーブのオブジェクトプール
-- 草、岩、木の `InstancedMesh` 配置
+- 消えた卵・敵が個別に作ったジオメトリとマテリアルの解放
 
 ## 主な設定場所
 
@@ -86,20 +86,10 @@ USBまたはBluetoothで接続し、ブラウザ上でいずれかのボタン�
 
 ## アセット
 
-- `assets/models/Tsuyukusa_003rig.glb`
-- `assets/models/seed_001_ritpo.glb`
-- `assets/player/Run.fbx` は前回テスト用に残っていますが、現在は未使用
-- `assets/player/tsukimi_rig.glb`
-- `assets/player/tsukimi_base.glb`
-- `assets/enemies/ene_001.glb`
-- `assets/eggs/darkseed.glb`
-- `assets/background/*.glb`
-- `assets/floor/flr_001.png`
-- Kenney `Nature Kit` / `Graveyard Kit` の CC0 GLB
-- Kenney と Tsuyukusa 系GLBは段階的に追加し直すために残していますが、現在は `visuals.useAssetModels: false` のため使用していません
-- 外部モデルOFF時は Vite の `publicDir` も無効化されるため、`dist` へGLB/JPGはコピーされません
-- ライセンスは `assets/kenney` に同梱
-
-## 旧 Godot 版
-
-旧 Godot プロジェクトは `legacy_godot` に退避しています。現在の起動・ビルドには使用しません。
+- 使用中: `assets/player`（上記GLBとFBXアニメーション）、`assets/eggs`、`assets/mother`、`assets/enemies`、`assets/drones`、`assets/xp`、`assets/background`、`assets/floor`、`assets/effects`、`assets/audio`、`assets/story`、`assets/promo`、`assets/ui`
+- チュートリアルのアニメーションは animated WebP（`assets/ui/tutorial/*.webp`）。GIFより大幅に軽量です
+- 現在は未使用ですが、段階的に追加し直すために残しているもの:
+  - `assets/player/Run.fbx`、`Idle.fbx`、`tsukimi_base.glb`、`tsukimi_rig.glb`、`tukimi_v2.fbx`
+  - `assets/models/Tsuyukusa_*.glb`、`assets/models/seed_001_ritpo.glb`
+  - Kenney `Nature Kit` / `Graveyard Kit` の CC0 GLB（ライセンスは `assets/kenney` に同梱）
+- `visuals.useAssetModels: false` の間は Vite の `publicDir` も無効化されるため、未使用のGLB/JPGは `dist` へコピーされません

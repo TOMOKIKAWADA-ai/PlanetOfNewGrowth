@@ -1394,7 +1394,7 @@ export class Player {
       ? [...this.game.eggs, this.game.motherEgg]
       : this.game.eggs;
     for (const egg of eggs) {
-      if (egg.dead || !this.isInForwardStrip(egg.position, this.faceAngle, length, width)) continue;
+      if (egg.dead || egg.aquatic || !this.isInForwardStrip(egg.position, this.faceAngle, length, width)) continue;
       egg.takeDamage(egg.isMother ? Config.player.tsukimiBeamMotherDamage : Config.player.tsukimiBeamEggDamage, 'burst');
     }
     for (const building of this.game.buildingObstacles) {
@@ -1597,6 +1597,7 @@ export class Player {
     for (const egg of eggs) {
       if (egg.dead || egg.claimed) continue;
       if (egg.isMother && !includeMother) continue;
+      if (egg.aquatic !== (this.form === 'fish')) continue;
       const distance = horizontalDistanceSq(this.position, egg.position);
       if (distance <= radius * radius && distance < bestDistance) {
         bestDistance = distance;
@@ -1630,7 +1631,6 @@ export class Player {
     }
     this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
     this.playOneShotAnimation('react');
-    if (this.hp <= 0) this.game.finish(false, 'HPが尽きました');
   }
 
   startDeath() {
@@ -1660,13 +1660,11 @@ export class Player {
 
   addXp(amount) {
     this.xp += amount;
-    while (this.xp >= this.nextXp) {
-      this.xp -= this.nextXp;
-      this.level += 1;
-      this.nextXp = Math.floor(this.nextXp * Config.xp.growth + 6);
-      this.game.showLevelUp();
-      break;
-    }
+    if (this.xp < this.nextXp || this.game.state !== 'playing') return;
+    this.xp -= this.nextXp;
+    this.level += 1;
+    this.nextXp = Math.floor(this.nextXp * Config.xp.growth + 6);
+    this.game.showLevelUp();
   }
 
   addBurst(amount) {
@@ -1839,7 +1837,7 @@ export class Egg {
   }
 
   createFallback() {
-    return new THREE.Mesh(
+    const mesh = new THREE.Mesh(
       new THREE.DodecahedronGeometry(this.isMother ? 1.6 : 0.75, 1),
       new THREE.MeshStandardMaterial({
         color: this.isMother ? 0xbd4731 : 0x9bbf3b,
@@ -1848,6 +1846,19 @@ export class Egg {
         roughness: 0.72
       })
     );
+    mesh.userData.ownedResources = true;
+    return mesh;
+  }
+
+  dispose() {
+    const owned = [this.ring, this.spore];
+    this.model.traverse((child) => {
+      if (child.userData.ownedResources) owned.push(child);
+    });
+    for (const object of owned) {
+      object.geometry.dispose();
+      object.material.dispose();
+    }
   }
 
   createSpores(count, color) {
@@ -1885,12 +1896,12 @@ export class Egg {
       this.ring.rotation.z += dt * (this.isMother ? 0.18 : 0.32);
       this.spore.rotation.y -= dt * 0.22;
     }
+    this.hitPulse = Math.max(0, this.hitPulse - dt * 1.7);
+    this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
     if (this.isMother) {
-      this.hitPulse = Math.max(0, this.hitPulse - dt * 1.7);
-      this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
       this.updateMotherShockwave(dt);
+      return;
     }
-    if (this.isMother) return;
     this.mature = this.age >= Config.egg.matureSeconds;
     if (!this.mature) return;
     const hatchScale = this.game.getHatchRateScale();
@@ -1942,8 +1953,7 @@ export class Egg {
     if (this.isMother) {
       this.hitPulse = Math.max(this.hitPulse, clamp(amount / this.maxHp * 0.32, 0.004, 0.025));
     } else {
-      const squash = clamp(amount / this.maxHp, 0.03, 0.18);
-      this.model.scale.multiplyScalar(1 + squash);
+      this.hitPulse = Math.max(this.hitPulse, clamp(amount / this.maxHp, 0.03, 0.18));
     }
     this.game.spawnHitSpark(this.position, this.isMother ? 0xffbf61 : 0xd8ff7a);
     if (this.hp <= 0) {
@@ -1990,6 +2000,7 @@ export class Enemy {
     this.updateAccumulator = 0;
     this.distanceSqToPlayer = Infinity;
     this.collisionRadius = (ENEMY_LOD_SPECS[type]?.radius ?? 0.48) + 0.16;
+    this.ownedMaterials = [];
     const stats = this.stats;
     this.maxHp = stats.hp;
     this.hp = stats.hp;
@@ -2056,6 +2067,7 @@ export class Enemy {
       if (!child.isMesh || !child.material) return;
       const recolor = (source) => {
         const material = source.clone();
+        this.ownedMaterials.push(material);
         if (material.color?.isColor) material.color.setHex(SNIPER_COLOR);
         if ('map' in material) material.map = null;
         if ('vertexColors' in material) material.vertexColors = false;
@@ -2080,6 +2092,20 @@ export class Enemy {
       Config.performance.enemyLodDistance,
       Config.performance.enemyHideDistance
     );
+  }
+
+  dispose() {
+    if (this.modelMixer) {
+      this.modelMixer.stopAllAction();
+      this.modelMixer.uncacheRoot(this.modelMixer.getRoot());
+      this.modelMixer = null;
+    }
+    for (const bar of this.hpBar.children) {
+      bar.geometry.dispose();
+      bar.material.dispose();
+    }
+    for (const material of this.ownedMaterials) material.dispose();
+    this.ownedMaterials.length = 0;
   }
 
   createHpBar() {

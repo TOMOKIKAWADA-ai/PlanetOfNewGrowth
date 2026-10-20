@@ -23,11 +23,11 @@ const UPGRADE_CATEGORIES = {
 };
 
 const TUTORIAL_IMAGE_URLS = [
-  new URL('../assets/ui/tutorial/move.gif', import.meta.url).href,
-  new URL('../assets/ui/tutorial/attack.gif', import.meta.url).href,
-  new URL('../assets/ui/tutorial/bird.gif', import.meta.url).href,
-  new URL('../assets/ui/tutorial/burst.gif', import.meta.url).href,
-  new URL('../assets/ui/tutorial/boss.gif', import.meta.url).href
+  new URL('../assets/ui/tutorial/move.webp', import.meta.url).href,
+  new URL('../assets/ui/tutorial/attack.webp', import.meta.url).href,
+  new URL('../assets/ui/tutorial/bird.webp', import.meta.url).href,
+  new URL('../assets/ui/tutorial/burst.webp', import.meta.url).href,
+  new URL('../assets/ui/tutorial/boss.webp', import.meta.url).href
 ];
 
 const TUTORIAL_STEPS = [
