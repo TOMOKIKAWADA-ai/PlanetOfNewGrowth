@@ -18,3 +18,6 @@
 
 | 日付 | 種類 | ファイル | ツール・モデル | プロンプト / 台詞 | シード | 元ファイル | 状態 |
 |---|---|---|---|---|---|---|---|
+| 2026-10-21 | イラスト（画風比較） | `assets_src/illust/2026-10-21/bg-softsketch.png` | Forge / softsketchIllustrious_v125（Euler a 28 steps CFG 5.5） | 白い廃墟都市・花弁状の塔・冠水・朝の光（全文は同名 JSON） | 2101 | jobs.json | 不採用（比較用） |
+| 2026-10-21 | イラスト（画風比較） | `assets_src/illust/2026-10-21/bg-bluepencil.png` | Forge / bluePencilXLLCM_v200（LCM 8 steps CFG 2） | 同上 | 2101 | jobs.json | 不採用（比較用） |
+| 2026-10-21 | イラスト（画風比較） | `assets_src/illust/2026-10-21/bg-juggernaut.png` | Forge / juggernautXL_ragnarokBy（DPM++ 2M 28 steps CFG 5） | 同上（concept art 向けに調整） | 2101 | jobs.json | 不採用（比較用、背景の候補モデル） |
