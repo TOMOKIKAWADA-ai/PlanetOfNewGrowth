@@ -2,12 +2,29 @@
 
 生成したアセットは必ずここに1行追加する。差し替えて使わなくなったものも、行を消さずに状態を「不採用」「置換済み」にする。
 
-## ライセンスの注意
+## ライセンス（2026-10-21 調査。法的助言ではない。公開・販売の前に原文を再確認する）
 
-- Hunyuan3D 2: Tencent Hunyuan Community License。EU・英国・韓国では利用不可などの条件がある。公開・販売前に条文を確認する。
-- Stable Audio 3: Stability AI のライセンス（商用利用は収益規模で条件が変わる）。公開・販売前に確認する。
-- Irodori-TTS: リポジトリとモデルカードのライセンスを確認する。
-- 画像生成の SDXL モデル: 使ったモデル名を必ず記録する。
+| アプリ・モデル | ライセンス | 商用 | 注意点 |
+|---|---|---|---|
+| Irodori-TTS 4.1（コード・モデル） | MIT | ○ | モデルカードの禁止事項: 本人の同意なく実在の人の声を複製しない、人を欺く音声に使わない。出力には Sony silentcipher の透かしが入る（MIT） |
+| Semantic-DACVAE-Japanese（Irodori の音声コーデック） | MIT | ○ | 元の facebook/dacvae-watermarked は SAM License（使用料なし、商用の禁止なし。軍事・諜報用途の禁止、輸出規制の順守、再配布時はライセンス同梱） |
+| Mesh Avatar Studio（エディタ・ランタイム） | MIT | ○ | 同梱のサンプル絵（Miko）は対象外。今回のアバターは自前の立ち絵から作成 |
+| HyperFrames（CLI・core） | Apache-2.0 | ○ | — |
+| GSAP（動画のアニメーション） | GSAP Standard License（無料） | ○ | Webflow と競合するノーコードのアニメーション制作ツールへの組み込みは不可 |
+| しっぽり明朝／Zen角ゴシック New | SIL OFL 1.1 | ○ | 動画への使用は自由。フォント単体の販売は不可 |
+| Playwright / FFmpeg / Whisper small | Apache-2.0 / LGPL・GPL / MIT | ○ | 制作用の道具で、出力物には影響しない（Whisper は読み確認だけに使用） |
+| Stable Audio 3 Small-SFX | Stability AI Community License（コードは MIT） | △ | 年間売上100万ドル未満なら商用可。**商用で使うなら Stability AI への登録が必要**。出力は自分のもの。出力を他の生成AIの学習に使わない。文章処理に使う T5Gemma は Gemma 利用規約にも従う |
+| Hunyuan3D 2.0 | Tencent Hunyuan 3D 2.0 Community License | △〜× | **EU・英国・韓国は対象外。生成物をその地域で使用・配布・表示することも禁止**。世界向けに公開するゲームに生成物を入れると条件に触れるおそれがある。月間利用者100万人超は別途許諾が必要 |
+| SDXL base 1.0 | CreativeML Open RAIL++-M | ○ | 利用制限（有害用途の禁止）を守る |
+| juggernautXL_ragnarokBy | CreativeML Open RAIL 系＋RunDiffusion の追加条件 | 要確認 | 有料のAPIやサービスでモデルを動かすのは要許諾。生成画像の商用利用は版ごとに表記が違うため、Ragnarok 版のモデルページを確認する |
+| softsketchIllustrious_v125 | Illustrious XL 由来（Fair AI Public License 1.0-SD） | 要確認 | 生成画像の商用利用は可とする説明が多いが、原文で未確認。派生モデルの公開条件がある |
+| bluePencilXLLCM_v200 | 未確認 | 要確認 | モデルページで確認する |
+
+**運用ルール**
+- Hunyuan3D の生成物は、配布地域を決めるまで `config.js` の切り替えで元のモックに戻せる状態を保つ。世界向けに公開するなら、MIT などの3D生成（例: Microsoft TRELLIS）への切り替えを検討する。
+- Stable Audio で作った効果音を入れたゲームを商用で公開する前に、ユーザーが Stability AI に登録する（アカウント操作なので自動では行わない）。
+- 画像生成のモデルは、この表で「要確認」のものを商用の素材に使わない。使った場合は台帳に記録し、公開前にモデルページを確認する。
+- ゲーム内の既存素材（`assets/promo`、立ち絵、`assets/audio`）の出どころは未記録。分かったらここに追記する。
 
 ## 置き換え候補（B0-1 で埋める）
 
