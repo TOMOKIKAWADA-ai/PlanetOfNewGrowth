@@ -1618,7 +1618,7 @@ export class Player {
       this.game.showMessage(this.shieldCharges > 0 ? `防護膜 ${this.shieldCharges}` : '防護膜');
       return;
     }
-    amount *= this.damageTakenMultiplier;
+    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1);
     this.hp = Math.max(0, this.hp - amount);
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
     this.damageFlashTimer = 0.16;

@@ -128,6 +128,8 @@ export const Config = {
     buildingCollapseSeconds: 0.72
   },
   player: {
+    // 全キャラ共通の被ダメージ倍率。1 で調整前（2026-10-21 以前）と同じ。
+    damageTakenScale: 0.9,
     maxHp: 120,
     maxMp: 100,
     humanSpeed: 6.72,
