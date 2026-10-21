@@ -206,7 +206,7 @@ try {
     await page.locator('#titleStartButton').click();
     await page.locator('[data-action="skip"]').click();
     if (stageId !== 1) {
-      await page.keyboard.press('F3');
+      await page.keyboard.press('F2');
       await page.locator(`[data-stage-id="${stageId}"]`).click();
     }
     await page.locator(`[data-character="${characterId}"]`).click();

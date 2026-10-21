@@ -209,7 +209,15 @@ const CHAPTER_RESULTS = {
   5: '旧貯水池の水を、歩いて持ち帰った。\nニレの葉が、もう一度開いた。',
   6: '白蓮は咲かなかった。\n一斉孵化の朝は来ず、三人は戸口の内側で眠った。'
 };
+// デバッグ機能（F2 の開発情報表示とステージ選択）は、開発サーバーか URL に ?debug があるときだけ使える。
+const DEBUG_ENABLED = import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug');
+const DEBUG_KEY = 'F2';
 const appInput = new InputState(window);
+if (DEBUG_ENABLED) {
+  window.addEventListener('keydown', (event) => {
+    if (event.code === DEBUG_KEY) event.preventDefault();
+  }, true);
+}
 let activeGame = null;
 let selectedStageId = 1;
 let menuCursorButton = null;
@@ -1274,7 +1282,7 @@ class Game {
       return;
     }
     if (this.state === 'paused') handleGamepadMenu(this.input, this.hud.pause);
-    if (this.input.pressed('F3')) this.devVisible = !this.devVisible;
+    if (DEBUG_ENABLED && this.input.pressed(DEBUG_KEY)) this.devVisible = !this.devVisible;
     if (this.state === 'tutorial') {
       handleGamepadMenu(this.input, this.hud.tutorial.overlay, () => this.hud.skipTutorial());
       if (this.input.pressed('Escape')) this.hud.skipTutorial();
@@ -2415,7 +2423,7 @@ function setupCharacterSelect() {
     const characterSelectActive = !characterSelect.classList.contains('hidden');
     const tutorialActive = !document.getElementById('tutorial')?.classList.contains('hidden');
     if (!characterSelectActive || tutorialActive) return;
-    if (event.code === 'F3') {
+    if (DEBUG_ENABLED && event.code === DEBUG_KEY) {
       event.preventDefault();
       setDebugStageSelectOpen(debugStageSelect?.classList.contains('hidden'));
     } else if (event.code === 'Escape' && !debugStageSelect?.classList.contains('hidden')) {

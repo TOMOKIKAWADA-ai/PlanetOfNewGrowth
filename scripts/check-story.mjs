@@ -48,7 +48,7 @@ async function pad(page, button, keepConnected = false) {
 async function startBattle(page, id, stage = 1) {
   await page.locator('[data-action="skip"]').click();
   if (stage !== 1) {
-    await page.keyboard.press('F3');
+    await page.keyboard.press('F2');
     await page.locator(`[data-stage-id="${stage}"]`).click();
   }
   await page.locator(`[data-character="${id}"]`).click();
@@ -313,7 +313,7 @@ try {
     else await other.evaluate(outcome => {
       const { game, Config } = window.__storyTest;
       if (outcome === 'death') {
-        game.player.takeDamage(game.player.maxHp + 1, { ignoreInvincibility: true });
+        game.player.takeDamage(game.player.maxHp * 10, { ignoreInvincibility: true });
         game.deathTimer = 0.01;
       } else game.elapsed = Config.map.playSeconds;
     }, scenario.outcome);
