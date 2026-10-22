@@ -108,6 +108,8 @@
   `-af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-15:TP=-1.5:LRA=11,afade=t=in:d=0.01" -ar 44100 -ac 1 -codec:a libmp3lame -q:a 4`
   - 失敗例: `afade=t=out:st=0:d=0.001` を入れたら開始直後にフェードアウトしてほぼ無音（-60 LUFS 以下）になった。書き出したら `-af ebur128 -f null -` で音量を必ず確かめる。0.4 秒未満の短い音は ebur128 が -70 と出るが無音ではない。
   - 既存の声の音量（2026-10-23 計測）: -13.6〜-16.6 LUFS。
+  - **0.5 秒前後の短い声は loudnorm が効かない**（平均音量が -11.7〜-22.5 dB にばらついた）。そのあとで `volumedetect` の平均音量を測り、`volume=<-16 − 平均>dB,alimiter=limit=0.84:level=false` で平均 -16 dB に合わせ直した（結果 -16〜-18 dB）。
+  - 短い掛け声（「あっ！」など）は、後ろに意味のない語が付くことが多い。文字起こしと、`librosa.effects.trim` で測った声の長さ（被弾の声なら 1 秒未満）の両方で選ぶ。「くっ！」のような促音だけの声は Whisper が「くっっっ…」と繰り返して一致率が 0 になるが、声の長さが短ければ問題ない。
 - 読み間違いやすい語は仮名で書く（例: 孵る→かえる）。**母卵の読みは「マザーエッグ」**。字幕や表示は漢字のまま。
 - 台詞はキャラクターの口調（`docs/story-direction.md` の「台本上の声」）に合わせる。新しい台詞は短い掛け声に限り、物語の台詞の追加はユーザーの確認を取る。
 
