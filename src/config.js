@@ -86,7 +86,10 @@ export const Config = {
   audio: {
     bgmVolume: 0.42,
     sfxVolume: 0.58,
-    voiceVolume: 0.72
+    voiceVolume: 0.72,
+    // Battle-start line when the stage begins and a last line after the dying scream (false = previous voice set).
+    battleVoices: true,
+    deathVoiceDelay: 1.8
   },
   map: {
     radius: 72,
@@ -239,6 +242,8 @@ export const Config = {
     motherShockwaveDuration: 0.95,
     motherShockwaveRange: 24,
     motherShockwaveDamage: 68,
+    // Warning cues for dodging by bird form: an outline at the exact range and a ring closing in until impact.
+    motherShockwaveTimingRing: true,
     matureSeconds: 8,
     hatchMin: 9.5,
     hatchMax: 14,

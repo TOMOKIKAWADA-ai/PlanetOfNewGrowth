@@ -98,6 +98,16 @@
   - アカメ: 「低めで落ち着いた若い女性の声。口数が少なく、短く言い切る。感情を抑えた、芯のある話し方。」seed 2202
   - キイチゴ: 「明るく元気な若い女性の声。軽い調子で、親しげに冗談まじりに話す。」seed 3303
 - 一括生成と確認のスクリプト: `D:\0001_App_Dev\search_survive_promo\meibuki-intro\tools\tts_batch.py`（モデルを一度だけ読み込む）と `asr_check.py`（Whisper small で文字起こしして台本と比べる）。どちらも Irodori の `.venv` の Python で実行する。
+- ゲーム用の一括生成（2026-10-23）: `scripts/assets/irodori-batch.py <lines.json> <出力先>`。台詞ごとに複数シードの候補を `<キャラ>-<id>-s<シード>.wav` で出す。台詞ファイルは `scripts/assets/voices/YYYY-MM-DD-*.json`（声質指定＋台詞ごとの演技指定 `style`）。
+  - 実行: `D:/AI/Irodori-TTS-v4_1/.venv/Scripts/python.exe scripts/assets/irodori-batch.py scripts/assets/voices/2026-10-23-b3-1.json assets_src/voice/2026-10-23`
+  - 所要時間: 短い台詞 12 本で 2 分 16 秒（モデル読み込みを含む、VRAM に空きがあるとき）。
+  - `configure()` が作業フォルダを Irodori に変えるので、引数のパスはスクリプト側で先に絶対パスにしている。
+  - 聞いて確かめられないので、Whisper small で文字起こしして台本との一致率（句読点を除いた文字列の類似度）を見る。0.7 以上なら台詞どおり。同音の漢字違い（「ひと暴れ」→「人暴れ」）は問題なし。Python の出力は `PYTHONIOENCODING=utf-8` を付けないと文字化けする。
+  - シェルの heredoc から Python に日本語を渡すと cp932 で化ける。日本語を含む置換は Edit ツールで行う。
+- ゲームに入れる後処理（FFmpeg）: 前後の無音を削り、既存の声に合わせて **-15 LUFS**（真のピーク -1.5 dB）にそろえて mp3 にする。
+  `-af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-15:TP=-1.5:LRA=11,afade=t=in:d=0.01" -ar 44100 -ac 1 -codec:a libmp3lame -q:a 4`
+  - 失敗例: `afade=t=out:st=0:d=0.001` を入れたら開始直後にフェードアウトしてほぼ無音（-60 LUFS 以下）になった。書き出したら `-af ebur128 -f null -` で音量を必ず確かめる。0.4 秒未満の短い音は ebur128 が -70 と出るが無音ではない。
+  - 既存の声の音量（2026-10-23 計測）: -13.6〜-16.6 LUFS。
 - 読み間違いやすい語は仮名で書く（例: 孵る→かえる）。**母卵の読みは「マザーエッグ」**。字幕や表示は漢字のまま。
 - 台詞はキャラクターの口調（`docs/story-direction.md` の「台本上の声」）に合わせる。新しい台詞は短い掛け声に限り、物語の台詞の追加はユーザーの確認を取る。
 

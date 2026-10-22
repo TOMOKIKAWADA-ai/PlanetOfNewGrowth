@@ -1924,7 +1924,7 @@ export class Egg {
     }
     this.shockwaveState = 'warning';
     this.shockwaveTimer = Config.egg.motherShockwaveWarning;
-    this.game.hud.showBossWarning(Config.egg.motherShockwaveWarning);
+    this.game.hud.showBossWarning(Config.egg.motherShockwaveWarning, this.game.player?.form);
     this.game.spawnMotherShockwaveWarning(
       this.position,
       Config.egg.motherShockwaveRange,

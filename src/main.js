@@ -115,6 +115,8 @@ const VOICE_URLS = {
     ],
     dying: [new URL('../assets/audio/voice/tsukimi/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -122,7 +124,9 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/akame/hit_02.mp3', import.meta.url).href
     ],
     dying: [new URL('../assets/audio/voice/akame/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href]
+    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -130,7 +134,9 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/kiichigo/hit_02.mp3', import.meta.url).href
     ],
     dying: [new URL('../assets/audio/voice/kiichigo/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href]
+    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -444,6 +450,7 @@ class Game {
     this.clock.start();
     this.cameraRig.update(0, 0);
     this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${this.stage.motherName}を破壊せよ`, 3);
+    if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
@@ -1226,6 +1233,10 @@ class Game {
 
   updateDeathBlackout(dt) {
     if (!this.deathWorldActive || !this.player?.dead) return;
+    const voiceDelay = Config.audio.deathVoiceDelay;
+    if (Config.audio.battleVoices && this.deathElapsed < voiceDelay && this.deathElapsed + dt >= voiceDelay) {
+      this.playVoice('death', { volume: 0.92 });
+    }
     this.deathElapsed += dt;
     if (this.deathBlackoutStarted) return;
     if (this.deathElapsed < Config.visuals.playerDeathBlackoutSeconds) return;
@@ -1916,6 +1927,48 @@ class Game {
         const pulse = 0.5 + Math.sin(t * Math.PI * 10) * 0.5;
         mesh.scale.setScalar(range * (0.82 + t * 0.06));
         material.opacity = (0.08 + pulse * 0.18) * Math.min(1, effect.life * 5);
+      }
+    });
+    if (Config.egg.motherShockwaveTimingRing) this.spawnMotherShockwaveTimingRings(position, range, duration);
+  }
+
+  // The outline marks how far the ground wave reaches (seen from the wide bird camera); a ring at the
+  // player's feet closes to nothing when the wave fires, shown only while a human-form player is in range.
+  spawnMotherShockwaveTimingRings(position, range, duration) {
+    const segments = Config.performance.effectSegments * 2;
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff5a60, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const edge = new THREE.Mesh(new THREE.RingGeometry(range - 0.32, range, segments), edgeMaterial);
+    edge.position.set(position.x, 0.2, position.z);
+    edge.rotation.x = -Math.PI / 2;
+    edge.renderOrder = 6;
+    const closingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff3a44, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const closing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, segments), closingMaterial);
+    closing.rotation.x = -Math.PI / 2;
+    closing.renderOrder = 7;
+    const group = new THREE.Group();
+    group.add(edge, closing);
+    this.scene.add(group);
+    const player = this.player;
+    this.effects.push({
+      object: group,
+      life: duration,
+      duration,
+      update(effect, dt) {
+        effect.life -= dt;
+        const t = clamp(1 - effect.life / effect.duration, 0, 1);
+        const fadeIn = Math.min(1, t / 0.12);
+        edgeMaterial.opacity = (0.5 + Math.sin(t * Math.PI * 12) * 0.25) * fadeIn;
+        const threatened = player && !player.dead && player.form !== 'bird'
+          && horizontalDistanceSq(position, player.position) <= range * range;
+        closing.visible = threatened;
+        if (!threatened) return;
+        closing.position.set(player.position.x, 0.22, player.position.z);
+        closing.scale.setScalar(Math.max(0.05, 3.4 * (1 - t)));
+        closingMaterial.opacity = 0.9 * fadeIn;
       }
     });
   }

@@ -198,8 +198,9 @@ export class Hud {
     this.messageTimer = seconds;
   }
 
-  showBossWarning(seconds) {
-    this.showMessage('WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2', seconds);
+  showBossWarning(seconds, form = 'human') {
+    const hint = form === 'bird' ? '\u98db\u3093\u3067\u3044\u308c\u3070\u5730\u3092\u9019\u3046\u6ce2\u306f\u5c4a\u304b\u306a\u3044' : '\u9ce5\u5f62\u614b\u3067\u98db\u3079\u3070\u304b\u308f\u305b\u308b';
+    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds);
     this.centerMessage.classList.add('boss-warning');
   }
 

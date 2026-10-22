@@ -18,6 +18,8 @@ const stageId = Number(args.stage ?? 1);
 // Simulation steps of 1/30 s per animation frame. Only the simulated time is measured; FPS is the real rAF rate.
 const speed = Number(args.speed ?? 4);
 const seedBase = Number(args.seed ?? 1);
+// --dodge 0 disables switching to bird form during the mother egg's shockwave warning (to compare with older runs).
+const dodge = args.dodge !== '0';
 const baseURL = process.env.BOT_TEST_URL || 'http://127.0.0.1:5183';
 
 const require = createRequire(import.meta.url);
@@ -25,7 +27,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed }) {
+function installBot({ speed, seed, dodge }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -39,6 +41,22 @@ function installBot({ speed, seed }) {
   };
   stats.eggKills = {};
   stats.damageAfterMother = 0;
+  stats.shockwaves = { fired: 0, reached: 0, dodged: 0, dodgeAttempts: 0 };
+  const spawnMotherShockwave = game.spawnMotherShockwave;
+  game.spawnMotherShockwave = function (...args) {
+    stats.shockwaves.fired++;
+    return spawnMotherShockwave.apply(this, args);
+  };
+  const playSfx = game.playSfx;
+  game.playSfx = function (name, ...rest) {
+    if (name === 'motherImpact') stats.shockwaves.reached++;
+    return playSfx.call(this, name, ...rest);
+  };
+  const showMessage = game.showMessage;
+  game.showMessage = function (text, ...rest) {
+    if (typeof text === 'string' && text.includes('衝撃波無効')) stats.shockwaves.dodged++;
+    return showMessage.call(this, text, ...rest);
+  };
   const onEggDestroyed = game.onEggDestroyed;
   game.onEggDestroyed = function (egg, source) {
     if (!egg.isMother) stats.eggKills[source ?? 'other'] = (stats.eggKills[source ?? 'other'] ?? 0) + 1;
@@ -47,6 +65,7 @@ function installBot({ speed, seed }) {
   let lastHp = player.hp;
   let nextSample = 0;
   let pendingRelease = null;
+  let lastWarningAt = -Infinity;
 
   const press = (action) => {
     input.pressTouchAction(action);
@@ -106,15 +125,27 @@ function installBot({ speed, seed }) {
     }
     const nearbyEggs = game.eggs.filter(egg => !egg.dead
       && (egg.position.x - player.position.x) ** 2 + (egg.position.z - player.position.z) ** 2 < 225).length;
+    const mother = game.motherEgg && !game.motherEgg.dead ? game.motherEgg : null;
+    // Stay airborne until the released wave has finished travelling, not just through the warning.
+    if (mother?.shockwaveState === 'warning') lastWarningAt = game.elapsed;
+    const waveActive = mother?.shockwaveState === 'warning'
+      || game.elapsed - lastWarningAt < Config.egg.motherShockwaveWarning + Config.egg.motherShockwaveDuration + 0.2;
+    const shockwaveComing = dodge && waveActive
+      && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2
+        < (Config.egg.motherShockwaveRange + 2) ** 2;
     if (player.form === 'human') {
-      if (player.burst >= 100 && player.burstCooldownTimer <= 0) {
+      if (shockwaveComing && player.mp > 5) {
+        stats.transforms++;
+        stats.shockwaves.dodgeAttempts++;
+        press('transform');
+      } else if (player.burst >= 100 && player.burstCooldownTimer <= 0) {
         stats.bursts++;
         press('burst');
       } else if (player.mp > player.maxMp * 0.7 && nearbyEggs >= 3) {
         stats.transforms++;
         press('transform');
       }
-    } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready') {
+    } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready' && !shockwaveComing) {
       press('transform');
     }
   }
@@ -176,6 +207,7 @@ function summarize(game, stats) {
     finalLevel: game.player.level,
     damageTaken: Math.round(stats.damageTaken),
     damageAfterMother: Math.round(stats.damageAfterMother),
+    shockwaves: stats.shockwaves,
     eggKills: stats.eggKills,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,
@@ -213,14 +245,14 @@ try {
     await page.locator('#characterConfirm').click();
     await page.locator('[data-action="skip"]').click();
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
     result.seed = seedBase + run;
     result.errors = errors;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     await context.close();
   }
@@ -231,7 +263,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

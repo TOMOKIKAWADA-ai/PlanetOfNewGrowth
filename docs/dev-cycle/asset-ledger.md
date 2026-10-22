@@ -47,3 +47,8 @@
 | 2026-10-21 | イラスト（画風比較） | `assets_src/illust/2026-10-21/bg-softsketch.png` | Forge / softsketchIllustrious_v125（Euler a 28 steps CFG 5.5） | 白い廃墟都市・花弁状の塔・冠水・朝の光（全文は同名 JSON） | 2101 | jobs.json | 不採用（比較用） |
 | 2026-10-21 | イラスト（画風比較） | `assets_src/illust/2026-10-21/bg-bluepencil.png` | Forge / bluePencilXLLCM_v200（LCM 8 steps CFG 2） | 同上 | 2101 | jobs.json | 不採用（比較用） |
 | 2026-10-21 | イラスト（画風比較） | `assets_src/illust/2026-10-21/bg-juggernaut.png` | Forge / juggernautXL_ragnarokBy（DPM++ 2M 28 steps CFG 5） | 同上（concept art 向けに調整） | 2101 | jobs.json | 不採用（比較用、背景の候補モデル） |
+| 2026-10-23 | 音声（戦闘開始） | `assets/audio/voice/akame/battle_start_01.mp3` | Irodori-TTS 4.1 Small（`--no-ref`、bf16） | 「前は、私が引き受ける。」＋アカメの声質指定＋「戦いの直前、静かに気合いを入れて短く言い切る。」 | 2202 | `scripts/assets/voices/2026-10-23-b3-1.json`、`assets_src/voice/2026-10-23/` | 採用（候補 2211・2212 は不採用） |
+| 2026-10-23 | 音声（死亡） | `assets/audio/voice/akame/death_01.mp3` | 同上 | 「……まだ、終わって……ない……」＋「深い傷を負って倒れる。苦しそうに息を切らし、かすれた声で途切れ途切れに。」 | 2202 | 同上 | 採用（候補 2221・2222 は不採用） |
+| 2026-10-23 | 音声（戦闘開始） | `assets/audio/voice/kiichigo/battle_start_01.mp3` | 同上 | 「さーて、ひと暴れしよっか！」＋キイチゴの声質指定＋「戦いの直前、楽しそうに張りのある声で。」 | 3303 | 同上 | 採用（候補 3311・3312 は不採用） |
+| 2026-10-23 | 音声（死亡） | `assets/audio/voice/kiichigo/death_01.mp3` | 同上 | 「うそ……ここまで、かぁ……」＋「深い傷を負って倒れる。苦しそうに息を切らし、力なく笑うように途切れ途切れに。」 | 3303 | 同上 | 採用（候補 3321・3322 は不採用） |
+| 2026-10-23 | 音声（変換のみ） | `assets/audio/voice/tsukimi/battle_start_01.mp3`、`death_01.mp3` | 既存の同名 .wav（Irodori-TTS、生成日不明）を FFmpeg で -15 LUFS の mp3 に | 「倒してやる！」「もうダメ」（Whisper の聞き取り） | — | 同名の .wav | 採用 |
