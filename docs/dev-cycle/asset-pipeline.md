@@ -127,4 +127,5 @@
 - 置き場所: `promo/YYYY-MM-DD/`。動画や大きな画像は git に入れない（`.gitignore` 済み）。投稿文の案 `post.md` だけコミットする。
 - プレイ動画: Playwright の `recordVideo` か、ブラウザの画面キャプチャで撮影し、FFmpeg で切り出し・縦横比の変換（9:16 / 16:9 / 1:1）・字幕を付ける。
 - 構成のある動画（トレーラー、紹介動画）は、HyperFrames のスキル（hyperframes、product-launch-video、general-video など）が使えれば使う。
+- **紹介動画の型「ゆるい3人の掛け合い」**（ユーザーが気に入った形）: HyperFrames レシピ `yurui-trio-howto` と、`D:\0001_App_Dev\search_survive_promo\_template-yurui-trio\README.md` の手順で作る。新しい紹介・SNS動画は、まずこのトーン（遊び方の説明中心、物語は一言だけ）で作る。
 - 投稿文の案は日本語で、短い本文、ハッシュタグ候補、添付する素材の一覧を書く。**投稿はしない。**
