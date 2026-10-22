@@ -1233,10 +1233,6 @@ class Game {
 
   updateDeathBlackout(dt) {
     if (!this.deathWorldActive || !this.player?.dead) return;
-    const voiceDelay = Config.audio.deathVoiceDelay;
-    if (Config.audio.battleVoices && this.deathElapsed < voiceDelay && this.deathElapsed + dt >= voiceDelay) {
-      this.playVoice('death', { volume: 0.92 });
-    }
     this.deathElapsed += dt;
     if (this.deathBlackoutStarted) return;
     if (this.deathElapsed < Config.visuals.playerDeathBlackoutSeconds) return;
@@ -2330,9 +2326,20 @@ class Game {
           if (audio !== base) this.activeSfx.delete(audio);
         });
       }
+      return audio;
     } catch {
       // Voice playback can be blocked before the first user gesture.
     }
+    return null;
+  }
+
+  // The last line waits for the dying scream to finish so the two never overlap; it keeps playing over the result screen.
+  playDeathVoices() {
+    const scream = this.playVoice('dying', { volume: 0.92, cooldown: 10 });
+    if (!Config.audio.battleVoices) return;
+    const playLastLine = () => window.setTimeout(() => this.playVoice('death', { volume: 0.92 }), Config.audio.deathVoiceGap * 1000);
+    if (scream && !scream.ended) scream.addEventListener('ended', playLastLine, { once: true });
+    else playLastLine();
   }
 
   updateBgmState() {

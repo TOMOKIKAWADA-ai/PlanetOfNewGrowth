@@ -1636,7 +1636,7 @@ export class Player {
   startDeath() {
     if (this.dead) return;
     this.dead = true;
-    this.game.playVoice('dying', { volume: 0.92, cooldown: 10 });
+    this.game.playDeathVoices();
     this.form = 'human';
     this.diveState = 'ready';
     if (this.diveTarget) this.diveTarget.claimed = false;
