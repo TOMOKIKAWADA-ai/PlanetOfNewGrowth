@@ -254,11 +254,11 @@ export const Config = {
     spacing: 3.1,
     xp: 8,
     healOnBreakRatio: 0.05,
-    // Mimic eggs (chapter 3+): look like normal eggs but pulse faster. Eating one in bird form bursts it and
+    // Mimic eggs (chapter 5+, a late-game type): look like normal eggs but pulse faster. Eating one in bird form bursts it and
     // roots the player briefly; shooting it in human form is safe. enabled: false removes them.
     mimic: {
       enabled: true,
-      fromChapter: 3,
+      fromChapter: 5,
       chance: 0.14,
       stunSeconds: 1.5,
       normalPulseHz: 0.8,
