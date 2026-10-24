@@ -102,7 +102,11 @@
 - 一括生成と確認のスクリプト: `D:\0001_App_Dev\search_survive_promo\meibuki-intro\tools\tts_batch.py`（モデルを一度だけ読み込む）と `asr_check.py`（Whisper small で文字起こしして台本と比べる）。どちらも Irodori の `.venv` の Python で実行する。
 - ゲーム用の一括生成（2026-10-23）: `scripts/assets/irodori-batch.py <lines.json> <出力先>`。台詞ごとに複数シードの候補を `<キャラ>-<id>-s<シード>.wav` で出す。台詞ファイルは `scripts/assets/voices/YYYY-MM-DD-*.json`（声質指定＋台詞ごとの演技指定 `style`）。
   - 実行: `D:/AI/Irodori-TTS-v4_1/.venv/Scripts/python.exe scripts/assets/irodori-batch.py scripts/assets/voices/2026-10-23-b3-1.json assets_src/voice/2026-10-23`
-  - 所要時間: 短い台詞 12 本で 2 分 16 秒（モデル読み込みを含む、VRAM に空きがあるとき）。
+  - 所要時間: 短い台詞 12 本で 2 分 16 秒（モデル読み込みを含む、VRAM に空きがあるとき）。6〜10 秒の台詞 21 本は、読み込みのあと約 2 分 10 秒。
+  - **参照音声（2026-10-24〜）**: 指定文だけでは台詞ごとに声がぶれるので、キャラクターの手本の声を `--ref-wavs` で渡せるようにした。台詞ファイルのキャラクターに `"refs": ["assets_src/voice/refs/<キャラ>/a.wav", ...]` を書く（台詞ごとに `refs` を書けば上書き）。`refs` が無ければ従来どおり `--no-ref`。相対パスは実行時の作業フォルダ（リポジトリの直下）から解決する。
+    - 参照音声があるとき、声質は手本から取られるので、`caption` は空か短くし、台詞ごとの `style`（演技の指定）で感情を付ける。手本の調子が出力に移りやすいので、手本には落ち着いた声と強めの声を混ぜる。
+    - Irodori は参照音声を -16 LUFS にそろえてから使う（`--ref-normalize-db` の既定値）。合計 120 秒まで。短い台詞 4 本（参照 3 本）で 1 分 7 秒（読み込み込み）。
+    - 手本の候補は `scripts/assets/voices/2026-10-24-ref-candidates.json`（3人×7本、各 6〜10 秒）で作った。選んだものを `assets_src/voice/refs/<キャラ>/` にコピーして使う予定。
   - `configure()` が作業フォルダを Irodori に変えるので、引数のパスはスクリプト側で先に絶対パスにしている。
   - 聞いて確かめられないので、Whisper small で文字起こしして台本との一致率（句読点を除いた文字列の類似度）を見る。0.7 以上なら台詞どおり。同音の漢字違い（「ひと暴れ」→「人暴れ」）は問題なし。Python の出力は `PYTHONIOENCODING=utf-8` を付けないと文字化けする。
   - シェルの heredoc から Python に日本語を渡すと cp932 で化ける。日本語を含む置換は Edit ツールで行う。

@@ -5,10 +5,13 @@ Run with the Irodori venv python (cwd does not matter):
 
 lines.json:
   {
-    "speakers": {"akame": {"caption": "voice description", "seed": 2202}},
+    "speakers": {"akame": {"caption": "voice description", "seed": 2202, "refs": ["ref1.wav", "ref2.wav"]}},
     "lines": [{"id": "battle_start", "speaker": "akame", "text": "...", "style": "extra caption", "seeds": [2202, 2203]}]
   }
 Each line writes <out_dir>/<speaker>-<id>-s<seed>.wav for every seed. "style" is appended to the speaker caption.
+"refs" (optional, on the speaker or overriding it on a line) are reference voice clips passed as --ref-wavs,
+so the voice comes from the clips and the caption mainly steers delivery. Without refs the run uses --no-ref.
+Relative ref paths are resolved from the current directory, so run from the repository root.
 Based on search_survive_promo/meibuki-intro/tools/tts_batch.py.
 """
 import json
@@ -19,6 +22,7 @@ IRODORI = Path(r"D:\AI\Irodori-TTS-v4_1")
 sys.path.insert(0, str(IRODORI))
 # configure() changes the working directory, so resolve the arguments first.
 ARGS = [str(Path(arg).resolve()) for arg in sys.argv[1:3]] + sys.argv[3:]
+START_DIR = Path.cwd()
 
 from local_runtime import configure  # noqa: E402
 
@@ -47,6 +51,11 @@ def main():
             continue
         speaker = spec["speakers"][line["speaker"]]
         caption = speaker["caption"] + line.get("style", "")
+        refs = [str((START_DIR / ref).resolve()) for ref in line.get("refs", speaker.get("refs", []))]
+        missing = [ref for ref in refs if not Path(ref).is_file()]
+        if missing:
+            raise FileNotFoundError(f"reference clip not found: {missing}")
+        ref_args = ["--ref-wavs", *refs] if refs else ["--no-ref"]
         for seed in line.get("seeds", [speaker["seed"]]):
             target = out / f"{line['speaker']}-{line['id']}-s{seed}.wav"
             sys.argv = [
@@ -56,12 +65,12 @@ def main():
                 "--model-precision", "bf16", "--codec-precision", "fp32",
                 "--text", line["text"],
                 "--caption", caption,
-                "--no-ref",
+                *ref_args,
                 "--seed", str(seed),
                 "--no-show-timings",
                 "--output-wav", str(target),
             ]
-            print(f"== {line['speaker']} {line['id']} seed={seed}", flush=True)
+            print(f"== {line['speaker']} {line['id']} seed={seed} refs={len(refs)}", flush=True)
             infer.main()
 
 
