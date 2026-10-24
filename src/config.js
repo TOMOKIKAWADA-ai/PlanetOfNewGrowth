@@ -90,9 +90,7 @@ export const Config = {
     // Battle-start line when the stage begins and a last line after the dying scream (false = previous voice set).
     battleVoices: true,
     // Pause between the end of the dying scream and the last line.
-    deathVoiceGap: 1.2,
-    // 'ref' = voices generated from chosen reference clips (2026-10-24), 'caption' = previous caption-only voices.
-    voiceSet: 'ref'
+    deathVoiceGap: 1.2
   },
   map: {
     radius: 72,

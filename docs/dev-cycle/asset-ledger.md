@@ -121,7 +121,7 @@
 
 ## 2026-10-24 手本の声を参照したゲーム内の声（B3-3）
 ツール: Irodori-TTS v4.1（`Aratako/Irodori-TTS-v4.1-Small`、bf16）、`scripts/assets/irodori-batch.py` に `refs` を指定（`--ref-wavs`、手本は上の表で採用したもの）。指定文（caption）は空にし、台詞ごとの演技の指定だけを渡した。台詞と演技の指定は前の声と同じ。台詞ファイル `scripts/assets/voices/2026-10-24-ref-remake.json`、候補は `assets_src/voice/2026-10-24-ref-remake/`（各3シード、54 本を 7 分 15 秒）。
-後処理: 前後の無音を削り loudnorm -15 LUFS のあと、平均音量を -16 dB に合わせて mp3（結果 -16.0〜-18.1 dB）。置き場所は `assets/audio/voice_ref/<キャラ>/`。`Config.audio.voiceSet: 'caption'` で前の声（`assets/audio/voice/`）に戻る。
+後処理: 前後の無音を削り loudnorm -15 LUFS のあと、平均音量を -16 dB に合わせて mp3（結果 -16.0〜-18.1 dB）。置き場所は `assets/audio/voice/<キャラ>/`（最初は `voice_ref/` に置いて前の声と切り替えられるようにしたが、ユーザーが「新しい声でよい」としたので、同日に前の声とツキミの古い .wav を消して `voice/` に移した。前の声は git の履歴にある）。
 選び方: 最初のシードを基本にし、文字起こしが違う・声が2つに分かれたものだけ別のシードにした（前回と違い、後ろに余計な語が付いた候補はなかった）。
 
 | キャラ | ファイル（hit_01 / hit_02 / dying / burst_01 / battle_start_01 / death_01） | 採用シード | 長さ（秒） |
