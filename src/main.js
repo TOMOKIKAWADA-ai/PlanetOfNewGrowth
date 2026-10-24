@@ -108,36 +108,38 @@ const SFX_URLS = {
   transformHuman: new URL('../assets/audio/sfx/transform_human.wav', import.meta.url).href,
   xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href
 };
+// Voice set: 'ref' = lines generated from reference clips (assets/audio/voice_ref), 'caption' = caption-only set (assets/audio/voice).
+const VOICE_DIR = Config.audio.voiceSet === 'caption' ? 'voice' : 'voice_ref';
 const VOICE_URLS = {
   tsukimi: {
     hit: [
-      new URL('../assets/audio/voice/tsukimi/hit_01.mp3', import.meta.url).href,
-      new URL('../assets/audio/voice/tsukimi/hit_02.mp3', import.meta.url).href
+      new URL(`../assets/audio/${VOICE_DIR}/tsukimi/hit_01.mp3`, import.meta.url).href,
+      new URL(`../assets/audio/${VOICE_DIR}/tsukimi/hit_02.mp3`, import.meta.url).href
     ],
-    dying: [new URL('../assets/audio/voice/tsukimi/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
-    battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href]
+    dying: [new URL(`../assets/audio/${VOICE_DIR}/tsukimi/dying.mp3`, import.meta.url).href],
+    burst: [new URL(`../assets/audio/${VOICE_DIR}/tsukimi/burst_01.mp3`, import.meta.url).href],
+    battleStart: [new URL(`../assets/audio/${VOICE_DIR}/tsukimi/battle_start_01.mp3`, import.meta.url).href],
+    death: [new URL(`../assets/audio/${VOICE_DIR}/tsukimi/death_01.mp3`, import.meta.url).href]
   },
   akame: {
     hit: [
-      new URL('../assets/audio/voice/akame/hit_01.mp3', import.meta.url).href,
-      new URL('../assets/audio/voice/akame/hit_02.mp3', import.meta.url).href
+      new URL(`../assets/audio/${VOICE_DIR}/akame/hit_01.mp3`, import.meta.url).href,
+      new URL(`../assets/audio/${VOICE_DIR}/akame/hit_02.mp3`, import.meta.url).href
     ],
-    dying: [new URL('../assets/audio/voice/akame/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
-    battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href]
+    dying: [new URL(`../assets/audio/${VOICE_DIR}/akame/dying.mp3`, import.meta.url).href],
+    burst: [new URL(`../assets/audio/${VOICE_DIR}/akame/burst_01.mp3`, import.meta.url).href],
+    battleStart: [new URL(`../assets/audio/${VOICE_DIR}/akame/battle_start_01.mp3`, import.meta.url).href],
+    death: [new URL(`../assets/audio/${VOICE_DIR}/akame/death_01.mp3`, import.meta.url).href]
   },
   kiichigo: {
     hit: [
-      new URL('../assets/audio/voice/kiichigo/hit_01.mp3', import.meta.url).href,
-      new URL('../assets/audio/voice/kiichigo/hit_02.mp3', import.meta.url).href
+      new URL(`../assets/audio/${VOICE_DIR}/kiichigo/hit_01.mp3`, import.meta.url).href,
+      new URL(`../assets/audio/${VOICE_DIR}/kiichigo/hit_02.mp3`, import.meta.url).href
     ],
-    dying: [new URL('../assets/audio/voice/kiichigo/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
-    battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href]
+    dying: [new URL(`../assets/audio/${VOICE_DIR}/kiichigo/dying.mp3`, import.meta.url).href],
+    burst: [new URL(`../assets/audio/${VOICE_DIR}/kiichigo/burst_01.mp3`, import.meta.url).href],
+    battleStart: [new URL(`../assets/audio/${VOICE_DIR}/kiichigo/battle_start_01.mp3`, import.meta.url).href],
+    death: [new URL(`../assets/audio/${VOICE_DIR}/kiichigo/death_01.mp3`, import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
