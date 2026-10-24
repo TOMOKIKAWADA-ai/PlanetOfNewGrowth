@@ -130,6 +130,14 @@
 
 - 置き場所: `promo/YYYY-MM-DD/`。動画や大きな画像は git に入れない（`.gitignore` 済み）。投稿文の案 `post.md` だけコミットする。
 - プレイ動画: Playwright の `recordVideo` か、ブラウザの画面キャプチャで撮影し、FFmpeg で切り出し・縦横比の変換（9:16 / 16:9 / 1:1）・字幕を付ける。
+- **プレイ動画の自動撮影（2026-10-24、B6-1）**: 開発サーバー（5183）を起動したまま
+  1. `PLAYWRIGHT_MODULE=D:/AI/Live2D_AI/mesh-avatar-studio/node_modules/playwright node scripts/bot-play.mjs --runs 1 --character tsukimi --stage 1 --seed 3 --record promo/YYYY-MM-DD/raw`
+     - `--record` を付けると実時間で遊ぶ（4分ステージなら約4分）。1280×800 の WebM と、見どころの時刻を書いた `.events.json`（母卵出現、バースト、急降下、衝撃波の回避、擬態卵の硬直）が並んで出る。headless の Edge でも 60fps で録れた。
+  2. `node scripts/promo/cut-highlights.mjs promo/YYYY-MM-DD/raw/page@xxx.webm --out promo/YYYY-MM-DD --seconds 28`
+     - 優先度順（母卵出現 → 衝撃波の回避 → 母卵への急降下 → バースト → 擬態卵 → 急降下）に場面を選び、同じ種類は2つまで、場面どうしは3秒以上離す。字幕付きの `highlight-9x16.mp4`（中央を切り抜き）と `highlight-16x9.mp4` を書き出す。2本で約1分。
+     - FFmpeg の drawtext にドライブ文字付きのフォントのパスを渡すとコロンでフィルタが壊れるので、Windows のフォントフォルダを作業フォルダにして `YuGothB.ttc` を名前だけで渡している。
+     - 母卵はプレイヤーから遠くに出現するので、「出現」の場面に母卵自体は映らない。16:9 は上下を切るので HUD の上端（タイマー）が欠ける。
+  - 確認はコマを並べた一枚で: `ffmpeg -i highlight-9x16.mp4 -vf "fps=1/2.6,scale=270:480,tile=6x2" -frames:v 1 contact.png`
 - 構成のある動画（トレーラー、紹介動画）は、HyperFrames のスキル（hyperframes、product-launch-video、general-video など）が使えれば使う。
 - **紹介動画の型「ゆるい3人の掛け合い」**（ユーザーが気に入った形）: HyperFrames レシピ `yurui-trio-howto` と、`D:\0001_App_Dev\search_survive_promo\_template-yurui-trio\README.md` の手順で作る。新しい紹介・SNS動画は、まずこのトーン（遊び方の説明中心、物語は一言だけ）で作る。
 - 投稿文の案は日本語で、短い本文、ハッシュタグ候補、添付する素材の一覧を書く。**投稿はしない。**

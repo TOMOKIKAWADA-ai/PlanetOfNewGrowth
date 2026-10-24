@@ -19,3 +19,4 @@ promo/**/*.mov
 promo/**/*.webm
 promo/**/*.png
 promo/**/*.jpg
+promo/**/*.events.json

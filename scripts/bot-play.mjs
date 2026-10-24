@@ -4,6 +4,9 @@
 //   npm run dev -- --port 5183
 //   node scripts/bot-play.mjs --runs 3 --character tsukimi --stage 1 --speed 4
 //
+// --record <dir> (backlog B6-1) plays in real time, saves a WebM per run to <dir> and an events JSON
+// (mother egg, bursts, dives, shockwave dodges, mimic stuns) with offsets into the video, for scripts/promo/cut-highlights.mjs.
+//
 // Env: PLAYWRIGHT_MODULE (path to playwright), BOT_TEST_URL, BOT_TEST_BROWSER (default msedge).
 import { createRequire } from 'node:module';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -20,6 +23,7 @@ const speed = Number(args.speed ?? 4);
 const seedBase = Number(args.seed ?? 1);
 // --dodge 0 disables switching to bird form during the mother egg's shockwave warning (to compare with older runs).
 const dodge = args.dodge !== '0';
+const recordDir = args.record ?? null;
 const baseURL = process.env.BOT_TEST_URL || 'http://127.0.0.1:5183';
 
 const require = createRequire(import.meta.url);
@@ -27,7 +31,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge }) {
+function installBot({ speed, seed, dodge, realtime }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -54,7 +58,10 @@ function installBot({ speed, seed, dodge }) {
   };
   const showMessage = game.showMessage;
   game.showMessage = function (text, ...rest) {
-    if (typeof text === 'string' && text.includes('衝撃波無効')) stats.shockwaves.dodged++;
+    if (typeof text === 'string' && text.includes('衝撃波無効')) {
+      stats.shockwaves.dodged++;
+      stats.events?.push({ type: 'shockwaveDodge', t: Math.round(game.elapsed * 10) / 10, video: Math.round(performance.now()) / 1000 });
+    }
     return showMessage.call(this, text, ...rest);
   };
   const onEggDestroyed = game.onEggDestroyed;
@@ -62,6 +69,17 @@ function installBot({ speed, seed, dodge }) {
     if (!egg.isMother) stats.eggKills[source ?? 'other'] = (stats.eggKills[source ?? 'other'] ?? 0) + 1;
     return onEggDestroyed.call(this, egg, source);
   };
+  // Offsets are from navigation start, which is close to where Playwright's video begins.
+  stats.events = [];
+  const mark = (type, extra = {}) => stats.events.push({
+    type, t: Math.round(game.elapsed * 10) / 10, video: Math.round(performance.now()) / 1000, ...extra
+  });
+  const onPlayerStunned = game.onPlayerStunned;
+  game.onPlayerStunned = function (...args) {
+    mark('mimicStun');
+    return onPlayerStunned.apply(this, args);
+  };
+  let lastDiveState = player.diveState;
   let lastHp = player.hp;
   let nextSample = 0;
   let pendingRelease = null;
@@ -140,6 +158,7 @@ function installBot({ speed, seed, dodge }) {
         press('transform');
       } else if (player.burst >= 100 && player.burstCooldownTimer <= 0) {
         stats.bursts++;
+        mark('burst');
         press('burst');
       } else if (player.mp > player.maxMp * 0.7 && nearbyEggs >= 3) {
         stats.transforms++;
@@ -171,7 +190,12 @@ function installBot({ speed, seed, dodge }) {
     lastHp = player.hp;
     stats.maxEggs = Math.max(stats.maxEggs, game.eggs.length);
     stats.maxEnemies = Math.max(stats.maxEnemies, game.enemies.length);
-    if (stats.motherSpawnedAt === null && game.motherEgg) stats.motherSpawnedAt = game.elapsed;
+    if (stats.motherSpawnedAt === null && game.motherEgg) {
+      stats.motherSpawnedAt = game.elapsed;
+      mark('motherSpawn');
+    }
+    if (player.diveState === 'dive' && lastDiveState !== 'dive') mark(player.diveTarget?.isMother ? 'motherDive' : 'dive');
+    lastDiveState = player.diveState;
     if (game.elapsed >= nextSample) {
       stats.samples.push({
         t: Math.round(game.elapsed), hp: Math.round(player.hp), level: player.level,
@@ -183,10 +207,15 @@ function installBot({ speed, seed, dodge }) {
   }
 
   const step = 1 / 30;
+  let lastFrameAt = performance.now();
   game.frame = function frame() {
-    for (let i = 0; i < speed && !this.outcome; i++) {
-      tick(step);
-      this.update(step);
+    const now = performance.now();
+    // Real-time mode for recording: one step per frame, sized to the actual frame time.
+    const dt = realtime ? Math.min(0.05, (now - lastFrameAt) / 1000) : step;
+    lastFrameAt = now;
+    for (let i = 0; i < (realtime ? 1 : speed) && !this.outcome; i++) {
+      tick(dt);
+      this.update(dt);
     }
     this.render();
     stats.frames++;
@@ -209,6 +238,8 @@ function summarize(game, stats) {
     damageAfterMother: Math.round(stats.damageAfterMother),
     shockwaves: stats.shockwaves,
     eggKills: stats.eggKills,
+    events: stats.events,
+    mimicStuns: game.mimicStuns ?? 0,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,
     birdSeconds: Math.round(stats.birdSeconds),
@@ -226,7 +257,10 @@ const browser = await chromium.launch({ headless: true, channel: process.env.BOT
 const results = [];
 try {
   for (let run = 0; run < runs; run++) {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    const viewport = { width: 1280, height: 800 };
+    const context = await browser.newContext({
+      viewport, reducedMotion: 'reduce', ...(recordDir ? { recordVideo: { dir: recordDir, size: viewport } } : {})
+    });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -245,16 +279,22 @@ try {
     await page.locator('#characterConfirm').click();
     await page.locator('[data-action="skip"]').click();
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, realtime: Boolean(recordDir) });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
     result.seed = seedBase + run;
     result.errors = errors;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
+    const video = page.video();
     await context.close();
+    if (video) {
+      result.video = await video.path();
+      await writeFile(result.video.replace(/\.webm$/, '.events.json'), JSON.stringify({ seed: result.seed, stageId, characterId, endedAt: result.endedAt, events: result.events }, null, 2));
+      console.log(`video ${result.video}`);
+    }
   }
 } finally {
   await browser.close();

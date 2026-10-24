@@ -253,7 +253,19 @@ export const Config = {
     childMaxDistance: 10,
     spacing: 3.1,
     xp: 8,
-    healOnBreakRatio: 0.05
+    healOnBreakRatio: 0.05,
+    // Mimic eggs (chapter 3+): look like normal eggs but pulse faster. Eating one in bird form bursts it and
+    // roots the player briefly; shooting it in human form is safe. enabled: false removes them.
+    mimic: {
+      enabled: true,
+      fromChapter: 3,
+      chance: 0.14,
+      stunSeconds: 1.5,
+      normalPulseHz: 0.8,
+      mimicPulseHz: 2.1,
+      normalPulseScale: 0.03,
+      mimicPulseScale: 0.06
+    }
   },
   enemy: {
     chaser: { hp: 28, speed: 3.32, damage: 12, xp: 5 },

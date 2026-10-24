@@ -362,6 +362,9 @@ class Game {
     this.modelTemplates = new Map();
     this.motherEgg = null;
     this.motherSpawned = false;
+    this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
+    this.mimicHintShown = false;
+    this.mimicStuns = 0;
     this.nextStageBeat = 0;
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
@@ -1340,6 +1343,7 @@ class Game {
   spawnEgg(position, isMother = false) {
     if (!isMother && !this.canSpawnEgg()) return null;
     const egg = new Egg(this, position, isMother);
+    if (!isMother && this.mimicEggsActive && !egg.aquatic && Math.random() < Config.egg.mimic.chance) egg.isMimic = true;
     this.scene.add(egg.object);
     if (isMother) this.motherEgg = egg;
     else this.eggs.push(egg);
@@ -1475,7 +1479,7 @@ class Game {
     this.eggsDestroyed += 1;
     this.playSfx('eggBreak', { volume: 0.68, cooldown: 0.05 });
     this.spawnXp(egg.position, Config.egg.xp);
-    this.spawnRandomPickup(egg.position, 'egg');
+    if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
     this.player.addBurst(Config.player.burstGainEgg);
     if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio, 0, this.player.maxHp);
   }
@@ -2030,6 +2034,22 @@ class Game {
     this.spawnRingEffect(position, 4.2, 0xffffff, 0.68, 0.32);
     this.spawnParticleBurst(position, 82, 0xff2534, 6.2, 0.68, 0.82);
   }
+  showMimicHint() {
+    if (this.mimicHintShown) return;
+    this.mimicHintShown = true;
+    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2);
+  }
+
+  onPlayerStunned(position, seconds) {
+    this.mimicStuns += 1;
+    this.mimicHintShown = true;
+    this.spawnRingEffect(position, 3.6, 0xc58cff, 0.86, 0.5);
+    this.spawnParticleBurst(position, 46, 0xb47aff, 4.2, 0.6, 0.7);
+    this.playSfx('eggBreak', { volume: 0.86, cooldown: 0.1 });
+    this.shake = Math.max(this.shake, 0.45);
+    this.showMessage('擬態卵！ 動けない', seconds);
+  }
+
   spawnDiveWarning(position) {
     if (Math.floor(this.elapsed * 24) % 3 !== 0) return;
     this.spawnRingEffect(position, 1.9, 0xfff078, 0.32, 0.16);
