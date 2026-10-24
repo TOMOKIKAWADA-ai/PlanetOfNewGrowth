@@ -234,6 +234,11 @@ export const Config = {
     fish: { height: 1.1, distance: 5.2, fov: 43, pitch: 0.22 },
     transitionSeconds: 0.6
   },
+  // On clearing a chapter, carry one upgrade taken that chapter and one of three chapter rewards into the
+  // following chapters (src/campaign.js keeps the choices). enabled: false hides the picker and ignores saved choices.
+  carryOver: {
+    enabled: true
+  },
   egg: {
     hp: 38,
     motherHp: 300,
@@ -511,3 +516,37 @@ export const UpgradePool = [
     }
   }
 ];
+
+const UPGRADE_BY_ID = Object.fromEntries(UpgradePool.map(upgrade => [upgrade.id, upgrade]));
+export const getUpgrade = id => UPGRADE_BY_ID[id] ?? null;
+
+// Three carry-over rewards per chapter (chapters 1-5; the final chapter ends the campaign).
+export const ChapterRewards = {
+  1: [
+    { id: 'pumpGuard', title: 'ポンプの守り', body: '防護膜2枚を張った状態で出撃する。', apply(game) { game.player.shieldCharges += 2; } },
+    { id: 'waterLine', title: '給水の列', body: '最大HP＋40。', apply(game) { game.player.maxHp += 40; game.player.hp += 40; } },
+    { id: 'patrolSteps', title: '見回りの足', body: '人間形態の移動速度＋10％。', apply(game) { game.player.humanSpeed *= 1.1; } }
+  ],
+  2: [
+    { id: 'shirayuriRecord', title: 'シラユリの記録', body: 'バーストゲージが半分たまった状態で出撃する。', apply(game) { game.player.addBurst(Config.player.burstMax * 0.5); } },
+    { id: 'leftProcedure', title: '残された手順', body: 'バーストの再使用時間－25％。', apply(game) { game.player.burstCooldownScale *= 0.75; } },
+    { id: 'sharpSeeds', title: '研いだ種', body: '自動攻撃の威力＋15％。', apply(game) { game.player.autoDamage *= 1.15; } }
+  ],
+  3: [
+    { id: 'deepBreath', title: '水底の息', body: '鳥形態・魚形態のMP消費－20％。', apply(game) { game.player.formMpCostScale *= 0.8; } },
+    { id: 'longBreath', title: '深い呼吸', body: '最大MP＋30。', apply(game) { game.player.maxMp += 30; game.player.mp += 30; } },
+    { id: 'breakSurface', title: '水面を割る', body: '急降下のダメージ＋30％。', apply(game) { game.player.diveDamageScale *= 1.3; } }
+  ],
+  4: [
+    { id: 'rootOath', title: '根の誓い', body: '鳥形態で卵を食べたときの回復が2倍になる。', apply(game) { game.player.eggHealScale *= 2; } },
+    { id: 'nightPulse', title: '夜の鼓動', body: '範囲パルスLv1を持って出撃する。', apply(game) { getUpgrade('pulse').apply(game); } },
+    { id: 'buddingSeed', title: '芽吹く種', body: '周りに浮く種が1つ増え、同時に撃つ弾が増える。', apply(game) { getUpgrade('seeds').apply(game); } }
+  ],
+  5: [
+    { id: 'carriedWater', title: '運ばれた水', body: '母卵へのダメージ＋20％。', apply(game) { game.player.motherDamageScale *= 1.2; } },
+    { id: 'firmSteps', title: '踏みしめる足', body: '母卵の衝撃波のダメージ－30％。', apply(game) { game.player.shockwaveDamageScale *= 0.7; } },
+    { id: 'seeingEye', title: '見分ける目', body: '擬態卵を食べたときに動けない時間が半分になる。', apply(game) { game.player.mimicStunScale *= 0.5; } }
+  ]
+};
+
+export const getChapterReward = (chapter, id) => ChapterRewards[chapter]?.find(reward => reward.id === id) ?? null;

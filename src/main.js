@@ -7,9 +7,10 @@ import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
 import {
-  getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest
+  getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest,
+  startCarryOver, saveCarryOver
 } from './campaign.js';
-import { Config } from './config.js';
+import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.js';
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
@@ -365,6 +366,9 @@ class Game {
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
     this.mimicStuns = 0;
+    // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
+    this.takenUpgrades = new Map();
+    this.carryChoice = null;
     this.nextStageBeat = 0;
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
@@ -445,6 +449,7 @@ class Game {
     this.player = new Player(this);
     this.scene.add(this.player.group);
     await this.player.loadVisuals();
+    const carried = this.applyCarryOver();
     this.cameraRig = new CameraRig(this.camera, this.player);
     this.spawnInitialEggs();
     this.spawnInitialEnemies();
@@ -452,7 +457,8 @@ class Game {
     this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${this.stage.motherName}を破壊せよ`, 3);
+    const carriedLine = carried ? `\n引き継いだ強化 ${carried}` : '';
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${this.stage.motherName}を破壊せよ${carriedLine}`, 3);
     if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
@@ -1481,7 +1487,7 @@ class Game {
     this.spawnXp(egg.position, Config.egg.xp);
     if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
     this.player.addBurst(Config.player.burstGainEgg);
-    if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio, 0, this.player.maxHp);
+    if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio * this.player.eggHealScale, 0, this.player.maxHp);
   }
 
   spawnProjectile(origin, target, spec) {
@@ -2026,7 +2032,7 @@ class Game {
           this.showMessage('\u9ce5\u5f62\u614b\uff1a\u885d\u6483\u6ce2\u7121\u52b9', 1.1);
           return;
         }
-        player.takeDamage(damage, { ignoreInvincibility: true });
+        player.takeDamage(damage * player.shockwaveDamageScale, { ignoreInvincibility: true });
         this.shake = Math.max(this.shake, 0.68);
       }
     });
@@ -2203,6 +2209,7 @@ class Game {
     this.hud.showLevelUp(pickUpgradeChoices(), (upgrade) => {
       this.playSfx('buttonConfirm', { volume: 0.75 });
       upgrade.apply(this);
+      this.takenUpgrades.set(upgrade.id, (this.takenUpgrades.get(upgrade.id) ?? 0) + 1);
       this.state = 'playing';
       this.showMessage(upgrade.title);
     });
@@ -2210,6 +2217,37 @@ class Game {
 
   showMessage(text, seconds = 1.25) {
     this.hud.showMessage(text, seconds);
+  }
+
+  // Applies the upgrades chosen on clearing earlier chapters and returns how many were applied.
+  applyCarryOver() {
+    if (!Config.carryOver.enabled) return 0;
+    let count = 0;
+    for (const entry of startCarryOver(this.stageId, this.characterId)) {
+      const upgrade = getUpgrade(entry.upgradeId);
+      const reward = getChapterReward(entry.chapter, entry.rewardId);
+      for (const item of [upgrade, reward]) {
+        if (!item) continue;
+        item.apply(this);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // Choices shown on the result screen after clearing a chapter that has a next one.
+  getCarryOverOptions() {
+    if (!Config.carryOver.enabled || !this.outcome?.victory || isFinalChapter(this.stageId)) return null;
+    return {
+      upgrades: [...this.takenUpgrades].map(([id, count]) => ({ ...getUpgrade(id), count })).filter(upgrade => upgrade.id),
+      rewards: ChapterRewards[this.stageId] ?? [],
+      choice: this.carryChoice ?? {}
+    };
+  }
+
+  chooseCarryOver(kind, id) {
+    this.carryChoice = { ...this.carryChoice, [kind === 'upgrade' ? 'upgradeId' : 'rewardId']: id };
+    saveCarryOver(this.stageId, this.characterId, this.carryChoice);
   }
 
   startPlayerDeath(duration) {

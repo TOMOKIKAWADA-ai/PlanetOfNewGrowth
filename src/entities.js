@@ -291,6 +291,14 @@ export class Player {
     this.pickupMagnetTimer = 0;
     this.speedBoostTimer = 0;
     this.stunTimer = 0;
+    // Multipliers set by carry-over chapter rewards (Config.carryOver).
+    this.burstCooldownScale = 1;
+    this.formMpCostScale = 1;
+    this.diveDamageScale = 1;
+    this.eggHealScale = 1;
+    this.motherDamageScale = 1;
+    this.shockwaveDamageScale = 1;
+    this.mimicStunScale = 1;
     this.shieldCharges = 0;
     this.level = 1;
     this.xp = 0;
@@ -1259,7 +1267,7 @@ export class Player {
     if (this.form === 'human') {
       this.mp = clamp(this.mp + this.humanRegenMp * dt, 0, this.maxMp);
     } else {
-      const formCost = this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost;
+      const formCost = (this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost) * this.formMpCostScale;
       this.mp = clamp(this.mp - formCost * dt, 0, this.maxMp);
       if (this.mp <= 0) this.returnToHuman(true);
     }
@@ -1346,7 +1354,7 @@ export class Player {
     }
     this.game.playSfx('burstPre', { volume: 0.8 });
     this.burst = 0;
-    this.burstCooldownTimer = Config.player.burstCooldown;
+    this.burstCooldownTimer = Config.player.burstCooldown * this.burstCooldownScale;
     this.invincibleTimer = Math.max(this.invincibleTimer, Config.player.burstInvincible);
     if (this.game.characterId === 'tsukimi') this.performTsukimiBurst();
     else if (this.game.characterId === 'kiichigo') this.startKiichigoBurst();
@@ -1563,10 +1571,10 @@ export class Player {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
     } else if (this.diveTarget.isMimic) {
       this.diveTarget.takeDamage(this.diveTarget.hp + 10, 'mimicBurst');
-      this.stun(Config.egg.mimic.stunSeconds);
+      this.stun(Config.egg.mimic.stunSeconds * this.mimicStunScale);
     } else {
       this.diveTarget.takeDamage(Math.max(this.birdDiveDamage, this.diveTarget.hp + 10), 'birdDive');
-      this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio, 0, this.maxHp);
+      this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio * this.eggHealScale, 0, this.maxHp);
       this.mp = clamp(this.mp + this.maxMp * Config.player.feedMpRatio, 0, this.maxMp);
     }
     this.game.spawnDiveImpact(this.position);
@@ -1789,11 +1797,11 @@ export class Player {
   }
 
   get birdDiveDamage() {
-    return Config.player.birdDiveDamage + this.birdDiveBonus + (this.level - 1) * 0.7;
+    return (Config.player.birdDiveDamage + this.birdDiveBonus + (this.level - 1) * 0.7) * this.diveDamageScale;
   }
 
   get birdMotherDiveDamage() {
-    return Config.player.birdMotherDiveDamage + this.birdMotherDiveBonus + (this.level - 1) * 0.35;
+    return (Config.player.birdMotherDiveDamage + this.birdMotherDiveBonus + (this.level - 1) * 0.35) * this.diveDamageScale;
   }
 }
 
@@ -1964,6 +1972,7 @@ export class Egg {
       return;
     }
     if (this.dead) return;
+    if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
     this.hp -= amount;
     if (this.isMother) {
       this.hitPulse = Math.max(this.hitPulse, clamp(amount / this.maxHp * 0.32, 0.004, 0.025));

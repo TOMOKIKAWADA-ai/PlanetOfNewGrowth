@@ -1484,3 +1484,64 @@ button:focus-visible {
   outline-offset: 4px;
   box-shadow: 0 0 0 6px rgba(255, 231, 120, 0.2);
 }
+
+/* Carry-over picker on the result screen after a cleared chapter. */
+#result {
+  overflow-y: auto;
+  align-content: safe center;
+  padding: 22px 0;
+}
+
+.carry-over {
+  width: min(860px, calc(100vw - 32px));
+  margin-bottom: 18px;
+}
+
+.screen .carry-over-lead {
+  margin: 0 0 12px;
+  text-align: center;
+  color: #ffe778;
+  font-weight: 700;
+}
+
+.carry-over-group h2 {
+  margin: 12px 0 8px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.carry-over-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.carry-over-choice {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(10, 24, 24, 0.86);
+  color: #fff;
+  font-weight: 400;
+  text-align: left;
+}
+
+.carry-over-choice b { color: #fff; font-size: 15px; }
+.carry-over-choice span { color: rgba(255, 255, 255, 0.78); font-size: 13px; line-height: 1.4; }
+.carry-over-choice:hover { border-color: rgba(255, 231, 120, 0.6); }
+
+.carry-over-choice.selected {
+  border-color: #ffe778;
+  background: rgba(74, 62, 27, 0.92);
+  box-shadow: 0 0 0 3px rgba(255, 231, 120, 0.28);
+}
+
+.carry-over-choice.selected b::before { content: '✓ '; color: #ffe778; }
+
+#nextChapterButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  FINAL_CHAPTER, getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest
+  FINAL_CHAPTER, getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest,
+  startCarryOver, saveCarryOver, loadCarryOver
 } from '../src/campaign.js';
 
 function memoryStorage() {
@@ -50,4 +51,23 @@ test('storage failures do not throw', () => {
   assert.doesNotThrow(() => saveProgress(2, 'akame', broken));
   assert.equal(loadProgress(broken), null);
   assert.equal(takeLaunchRequest(broken), null);
+});
+
+test('carry-over choices stack by chapter and drop on retry or character change', () => {
+  const storage = memoryStorage();
+  assert.deepEqual(startCarryOver(1, 'akame', storage), []);
+  saveCarryOver(1, 'akame', { upgradeId: 'damage' }, storage);
+  saveCarryOver(1, 'akame', { rewardId: 'pumpGuard' }, storage);
+  saveCarryOver(2, 'akame', { upgradeId: 'seeds', rewardId: 'shirayuriRecord' }, storage);
+  assert.deepEqual(startCarryOver(3, 'akame', storage), [
+    { chapter: 1, upgradeId: 'damage', rewardId: 'pumpGuard' },
+    { chapter: 2, upgradeId: 'seeds', rewardId: 'shirayuriRecord' }
+  ]);
+  // Retrying chapter 2 forgets what was chosen after clearing it.
+  assert.deepEqual(startCarryOver(2, 'akame', storage), [{ chapter: 1, upgradeId: 'damage', rewardId: 'pumpGuard' }]);
+  assert.deepEqual(loadCarryOver('akame', storage), { 1: { upgradeId: 'damage', rewardId: 'pumpGuard' } });
+  assert.deepEqual(startCarryOver(2, 'kiichigo', storage), []);
+  assert.deepEqual(loadCarryOver('akame', storage), {});
+  storage.setItem('searchSurvive.carryOver', '{broken');
+  assert.deepEqual(startCarryOver(3, 'akame', storage), []);
 });

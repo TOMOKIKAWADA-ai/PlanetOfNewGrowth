@@ -100,3 +100,63 @@ export function takeLaunchRequest(storage = sessionStore()) {
   write(storage, LAUNCH_KEY, null);
   return launch;
 }
+
+// 章をクリアしたときに選んだ引き継ぎ強化。{ characterId, entries: { [クリアした章]: { upgradeId, rewardId } } }
+const CARRY_KEY = 'searchSurvive.carryOver';
+
+function readCarry(storage) {
+  try {
+    const raw = storage?.getItem(CARRY_KEY);
+    const value = raw ? JSON.parse(raw) : null;
+    if (!value || !SOLDIERS.includes(value.characterId) || typeof value.entries !== 'object' || !value.entries) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function writeCarry(storage, value) {
+  try {
+    if (value && Object.keys(value.entries).length) storage?.setItem(CARRY_KEY, JSON.stringify(value));
+    else storage?.removeItem(CARRY_KEY);
+  } catch {
+    // 保存できなくても、今回のプレイは続けられる。
+  }
+}
+
+function cleanEntry(entry) {
+  const result = {};
+  if (typeof entry?.upgradeId === 'string') result.upgradeId = entry.upgradeId;
+  if (typeof entry?.rewardId === 'string') result.rewardId = entry.rewardId;
+  return result;
+}
+
+// 章を始めるときに呼ぶ。それより前の章で選んだ分を章の順に返し、その章以降の分（やり直し前の選択）は消す。
+export function startCarryOver(chapter, characterId, storage = localStore()) {
+  const saved = readCarry(storage);
+  if (!saved || saved.characterId !== characterId) {
+    writeCarry(storage, null);
+    return [];
+  }
+  const entries = {};
+  for (const [key, entry] of Object.entries(saved.entries)) {
+    if (Number(key) < chapter && STAGES[Number(key)]) entries[key] = cleanEntry(entry);
+  }
+  writeCarry(storage, { characterId, entries });
+  return Object.keys(entries).map(Number).sort((a, b) => a - b).map(key => ({ chapter: key, ...entries[key] }));
+}
+
+// クリアした章の選択を保存する。upgradeId と rewardId は片方ずつ渡してよい。
+export function saveCarryOver(chapter, characterId, choice, storage = localStore()) {
+  if (!STAGES[chapter] || !SOLDIERS.includes(characterId)) return;
+  const saved = readCarry(storage);
+  const entries = saved?.characterId === characterId ? { ...saved.entries } : {};
+  for (const key of Object.keys(entries)) if (Number(key) > chapter) delete entries[key];
+  entries[chapter] = { ...cleanEntry(entries[chapter]), ...cleanEntry(choice) };
+  writeCarry(storage, { characterId, entries });
+}
+
+export function loadCarryOver(characterId, storage = localStore()) {
+  const saved = readCarry(storage);
+  return saved?.characterId === characterId ? saved.entries : {};
+}

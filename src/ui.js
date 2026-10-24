@@ -117,6 +117,7 @@ export class Hud {
     this.result = document.getElementById('result');
     this.resultTitle = document.getElementById('resultTitle');
     this.resultBody = document.getElementById('resultBody');
+    this.carryOver = document.getElementById('carryOver');
     this.restartButton = document.getElementById('restartButton');
     this.replayStoryButton = document.getElementById('replayStoryButton');
     this.deathBlackout = document.getElementById('deathBlackout');
@@ -286,7 +287,58 @@ export class Hud {
     this.retryButton.classList.toggle('hidden', victory);
     this.resultBody.textContent = body;
     this.result.classList.remove('hidden');
-    (victory && !finale ? this.nextChapterButton : victory ? this.restartButton : this.retryButton).focus();
+    this.renderCarryOver();
+    const firstChoice = this.carryOver.querySelector('button:not(.selected)');
+    (firstChoice ?? (victory && !finale ? this.nextChapterButton : victory ? this.restartButton : this.retryButton)).focus();
+  }
+
+  // After a cleared chapter: pick one upgrade taken this chapter and one of the chapter's rewards to carry on.
+  renderCarryOver() {
+    const options = this.game.getCarryOverOptions();
+    this.carryOver.replaceChildren();
+    this.carryOver.classList.toggle('hidden', !options);
+    this.nextChapterButton.disabled = false;
+    if (!options) return;
+    const groups = [
+      { kind: 'upgrade', key: 'upgradeId', heading: 'この章で取った強化から1つ', items: options.upgrades },
+      { kind: 'reward', key: 'rewardId', heading: `${this.game.stage.label}の強化から1つ`, items: options.rewards }
+    ].filter(group => group.items.length);
+    const lead = document.createElement('p');
+    lead.className = 'carry-over-lead';
+    lead.textContent = '次の章へ持っていく強化を選ぶ（以降の章でもずっと有効）';
+    this.carryOver.appendChild(lead);
+    for (const group of groups) {
+      const section = document.createElement('section');
+      section.className = 'carry-over-group';
+      const heading = document.createElement('h2');
+      heading.textContent = group.heading;
+      const list = document.createElement('div');
+      list.className = 'carry-over-choices';
+      for (const item of group.items) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'carry-over-choice';
+        const selected = options.choice[group.key] === item.id;
+        button.classList.toggle('selected', selected);
+        button.setAttribute('aria-pressed', String(selected));
+        const title = document.createElement('b');
+        title.textContent = item.count > 1 ? `${item.title} ×${item.count}` : item.title;
+        const body = document.createElement('span');
+        body.textContent = group.kind === 'upgrade' ? `${item.body}（1回分を引き継ぐ）` : item.body;
+        button.append(title, body);
+        button.addEventListener('click', () => {
+          this.game.chooseCarryOver(group.kind, item.id);
+          this.renderCarryOver();
+          const next = this.carryOver.querySelector('.carry-over-group:not(.done) button');
+          (next ?? this.nextChapterButton).focus();
+        });
+        list.appendChild(button);
+      }
+      section.classList.toggle('done', Boolean(options.choice[group.key]));
+      section.append(heading, list);
+      this.carryOver.appendChild(section);
+    }
+    this.nextChapterButton.disabled = groups.some(group => !options.choice[group.key]);
   }
 
   showDeathBlackout(show) {
