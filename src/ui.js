@@ -1,5 +1,6 @@
 import { Config, UpgradePool } from './config.js';
 import { clamp } from './math.js';
+import { isFinalChapter } from './campaign.js';
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -126,8 +127,14 @@ export class Hud {
     this.motherAlert = document.getElementById('motherAlert');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
+    this.nextChapterButton = document.getElementById('nextChapterButton');
+    this.retryButton = document.getElementById('retryButton');
+    const motherTitle = this.motherPanel?.querySelector('.mother-title');
+    if (motherTitle) motherTitle.textContent = game.stage.motherName;
     this.restartButton.addEventListener('click', () => window.location.reload());
     this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
+    this.nextChapterButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId + 1));
+    this.retryButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId));
     this.pauseResumeButton.addEventListener('click', () => {
       if (this.game.state !== 'paused') return;
       this.game.state = 'playing';
@@ -191,8 +198,9 @@ export class Hud {
     this.messageTimer = seconds;
   }
 
-  showBossWarning(seconds) {
-    this.showMessage('WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2', seconds);
+  showBossWarning(seconds, form = 'human') {
+    const hint = form === 'bird' ? '\u98db\u3093\u3067\u3044\u308c\u3070\u5730\u3092\u9019\u3046\u6ce2\u306f\u5c4a\u304b\u306a\u3044' : '\u9ce5\u5f62\u614b\u3067\u98db\u3079\u3070\u304b\u308f\u305b\u308b';
+    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds);
     this.centerMessage.classList.add('boss-warning');
   }
 
@@ -267,14 +275,18 @@ export class Hud {
   }
 
   showResult(victory, body) {
-    const chapterComplete = victory && this.game.stageId === 1;
+    const { stage } = this.game;
+    const finale = victory && isFinalChapter(this.game.stageId);
     this.result.classList.toggle('victory', victory);
     this.result.classList.toggle('defeat', !victory);
-    this.resultTitle.textContent = chapterComplete ? '第1章 完' : victory ? 'AREA RESTORED' : 'Defeat';
-    this.replayStoryButton.classList.toggle('hidden', !chapterComplete);
+    this.resultTitle.textContent = finale ? 'END' : victory ? `${stage.label} 完` : 'Defeat';
+    this.replayStoryButton.textContent = finale ? 'エンディングを見返す' : '帰還後の会話を読み返す';
+    this.replayStoryButton.classList.toggle('hidden', !victory);
+    this.nextChapterButton.classList.toggle('hidden', !victory || finale);
+    this.retryButton.classList.toggle('hidden', victory);
     this.resultBody.textContent = body;
     this.result.classList.remove('hidden');
-    this.restartButton?.focus();
+    (victory && !finale ? this.nextChapterButton : victory ? this.restartButton : this.retryButton).focus();
   }
 
   showDeathBlackout(show) {

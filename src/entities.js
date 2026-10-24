@@ -290,6 +290,7 @@ export class Player {
     this.pickupMagnetSpeed = Config.pickups.baseMagnetSpeed;
     this.pickupMagnetTimer = 0;
     this.speedBoostTimer = 0;
+    this.stunTimer = 0;
     this.shieldCharges = 0;
     this.level = 1;
     this.xp = 0;
@@ -1174,7 +1175,7 @@ export class Player {
   }
 
   update(dt, input) {
-    if (input.actionPressed('transform')) this.toggleForm();
+    if (input.actionPressed('transform') && !(this.stunTimer > 0)) this.toggleForm();
     this.autoTimer = Math.max(0, this.autoTimer - dt);
     this.specialTimer = Math.max(0, this.specialTimer - dt);
     this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
@@ -1186,8 +1187,9 @@ export class Player {
     this.updateBurstSequence(dt);
     this.pickupMagnetTimer = Math.max(0, this.pickupMagnetTimer - dt);
     this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
+    this.stunTimer = Math.max(0, this.stunTimer - dt);
 
-    this.updateMovement(dt, input);
+    if (this.stunTimer <= 0) this.updateMovement(dt, input);
     this.updateFormResources(dt);
     this.updateDive(dt);
     this.updateCombat(dt, input);
@@ -1493,7 +1495,7 @@ export class Player {
   updateDive(dt) {
     if (this.form !== 'bird') return;
     if (this.diveState === 'ready') {
-      if (this.diveCooldown > 0) return;
+      if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
       const motherTarget = this.game.motherEgg && !this.game.motherEgg.dead
         ? this.findMotherForDive()
@@ -1559,6 +1561,9 @@ export class Player {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
+    } else if (this.diveTarget.isMimic) {
+      this.diveTarget.takeDamage(this.diveTarget.hp + 10, 'mimicBurst');
+      this.stun(Config.egg.mimic.stunSeconds);
     } else {
       this.diveTarget.takeDamage(Math.max(this.birdDiveDamage, this.diveTarget.hp + 10), 'birdDive');
       this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio, 0, this.maxHp);
@@ -1566,6 +1571,11 @@ export class Player {
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
+  }
+
+  stun(seconds) {
+    this.stunTimer = Math.max(this.stunTimer, seconds);
+    this.game.onPlayerStunned(this.position, seconds);
   }
 
   findMotherForDive() {
@@ -1618,7 +1628,7 @@ export class Player {
       this.game.showMessage(this.shieldCharges > 0 ? `防護膜 ${this.shieldCharges}` : '防護膜');
       return;
     }
-    amount *= this.damageTakenMultiplier;
+    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1);
     this.hp = Math.max(0, this.hp - amount);
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
     this.damageFlashTimer = 0.16;
@@ -1636,7 +1646,7 @@ export class Player {
   startDeath() {
     if (this.dead) return;
     this.dead = true;
-    this.game.playVoice('dying', { volume: 0.92, cooldown: 10 });
+    this.game.playDeathVoices();
     this.form = 'human';
     this.diveState = 'ready';
     if (this.diveTarget) this.diveTarget.claimed = false;
@@ -1806,6 +1816,8 @@ export class Egg {
     this.hatchTimer = randRange(Config.egg.hatchMin, Config.egg.hatchMax);
     this.reproduceTimer = Config.egg.reproduceSeconds;
     this.hitPulse = 0;
+    this.isMimic = false;
+    this.pulsePhase = Math.random() * TAU;
     this.shockwaveState = 'idle';
     this.shockwaveTimer = isMother ? Config.egg.motherShockwaveFirstDelay : 0;
     const gameplayMotherEgg = isMother ? game.cloneGameplayModel('motherEgg') : null;
@@ -1891,6 +1903,7 @@ export class Egg {
       this.updateMotherShockwave(dt);
     }
     if (this.isMother) return;
+    this.updatePulse(dt);
     this.mature = this.age >= Config.egg.matureSeconds;
     if (!this.mature) return;
     const hatchScale = this.game.getHatchRateScale();
@@ -1903,6 +1916,19 @@ export class Egg {
     if (this.reproduceTimer <= 0) {
       this.game.spawnChildEgg(this.position);
       this.reproduceTimer = Config.egg.reproduceSeconds;
+    }
+  }
+
+  // From the mimic chapters on, every egg breathes; a mimic breathes faster. That rhythm is the only tell.
+  updatePulse(dt) {
+    if (!this.game.mimicEggsActive) return;
+    const mimic = Config.egg.mimic;
+    this.pulsePhase += dt * TAU * (this.isMimic ? mimic.mimicPulseHz : mimic.normalPulseHz);
+    const amount = this.isMimic ? mimic.mimicPulseScale : mimic.normalPulseScale;
+    this.object.scale.setScalar(1 + Math.sin(this.pulsePhase) * amount);
+    if (this.isMimic && !this.game.mimicHintShown && this.mature
+      && horizontalDistanceSq(this.position, this.game.player.position) <= Config.performance.eggDetailDistance ** 2) {
+      this.game.showMimicHint();
     }
   }
 
@@ -1924,7 +1950,7 @@ export class Egg {
     }
     this.shockwaveState = 'warning';
     this.shockwaveTimer = Config.egg.motherShockwaveWarning;
-    this.game.hud.showBossWarning(Config.egg.motherShockwaveWarning);
+    this.game.hud.showBossWarning(Config.egg.motherShockwaveWarning, this.game.player?.form);
     this.game.spawnMotherShockwaveWarning(
       this.position,
       Config.egg.motherShockwaveRange,

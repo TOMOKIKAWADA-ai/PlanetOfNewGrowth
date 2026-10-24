@@ -34,6 +34,7 @@
             その姿を恐れる市民を救うため、地上を駆ける。
           </p>
           <button id="titleStartButton" class="title-start-button" type="button">GAME START</button>
+          <button id="titleContinueButton" class="title-start-button hidden" type="button">つづきから</button>
           <p class="controller-lock-note">コントローラー接続中：キーボード操作は無効</p>
         </section>
       </div>
@@ -77,7 +78,7 @@
       </div>
       <div id="debugStageSelect" class="screen debug-stage-select hidden" aria-hidden="true">
         <section class="debug-stage-panel" role="dialog" aria-modal="true" aria-labelledby="debugStageTitle">
-          <p class="debug-stage-kicker">F3 DEBUG MENU</p>
+          <p class="debug-stage-kicker">F2 DEBUG MENU</p>
           <h1 id="debugStageTitle">Stage Select</h1>
           <div class="debug-stage-grid" role="radiogroup" aria-label="Debug stage">
             <button class="debug-stage-button" type="button" role="radio" data-stage-id="1">
@@ -85,11 +86,27 @@
               <strong>Grassland</strong>
             </button>
             <button class="debug-stage-button" type="button" role="radio" data-stage-id="2">
-              <span>Stage 2 / 開発用</span>
+              <span>Stage 2</span>
+              <strong>Dusk</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="3">
+              <span>Stage 3</span>
               <strong>Water</strong>
             </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="4">
+              <span>Stage 4</span>
+              <strong>Night</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="5">
+              <span>Stage 5</span>
+              <strong>Reservoir</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="6">
+              <span>Final</span>
+              <strong>White Lotus</strong>
+            </button>
           </div>
-          <p class="debug-stage-help">F3 / Esc: Close</p>
+          <p class="debug-stage-help">F2 / Esc: Close</p>
         </section>
       </div>
       <div id="tutorial" class="screen hidden" aria-labelledby="tutorialTitle">
@@ -150,6 +167,8 @@
       <div id="result" class="screen hidden">
         <h1 id="resultTitle"></h1>
         <p id="resultBody"></p>
+        <button id="nextChapterButton" class="hidden">次の章へ</button>
+        <button id="retryButton" class="hidden">この章をやり直す</button>
         <button id="replayStoryButton" class="hidden">帰還後の会話を読み返す</button>
         <button id="restartButton">タイトルへ</button>
       </div>

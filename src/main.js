@@ -6,6 +6,9 @@ import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
+import {
+  getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest
+} from './campaign.js';
 import { Config } from './config.js';
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
@@ -112,6 +115,8 @@ const VOICE_URLS = {
     ],
     dying: [new URL('../assets/audio/voice/tsukimi/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -119,7 +124,9 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/akame/hit_02.mp3', import.meta.url).href
     ],
     dying: [new URL('../assets/audio/voice/akame/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href]
+    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -127,7 +134,9 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/kiichigo/hit_02.mp3', import.meta.url).href
     ],
     dying: [new URL('../assets/audio/voice/kiichigo/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href]
+    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -198,7 +207,23 @@ const CHARACTER_OPTIONS = {
   akame: { playerModel: 'akameGlb' },
   kiichigo: { playerModel: 'kiichigoGlb' }
 };
+const CHAPTER_RESULTS = {
+  1: 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。',
+  2: 'シラユリ観測所の記録を回収した。\n卵は、白蓮保管庫から水路をさかのぼっていた。',
+  3: '水門の母卵は沈んだ。\n白蓮保管庫の扉が開き、卵の出どころが明らかになった。',
+  4: '避難所に、卵は一つも届かなかった。\n四つの区は、孵化の夜まで水を止めると決めた。',
+  5: '旧貯水池の水を、歩いて持ち帰った。\nニレの葉が、もう一度開いた。',
+  6: '白蓮は咲かなかった。\n一斉孵化の朝は来ず、三人は戸口の内側で眠った。'
+};
+// デバッグ機能（F2 の開発情報表示とステージ選択）は、開発サーバーか URL に ?debug があるときだけ使える。
+const DEBUG_ENABLED = import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug');
+const DEBUG_KEY = 'F2';
 const appInput = new InputState(window);
+if (DEBUG_ENABLED) {
+  window.addEventListener('keydown', (event) => {
+    if (event.code === DEBUG_KEY) event.preventDefault();
+  }, true);
+}
 let activeGame = null;
 let selectedStageId = 1;
 let menuCursorButton = null;
@@ -283,8 +308,9 @@ function handleGamepadMenu(input, container, onCancel = null, linearFallback = f
 class Game {
   constructor(characterId = 'tsukimi', stageId = 1) {
     this.characterId = characterId;
-    this.stageId = stageId;
-    this.isWaterStage = stageId === 2;
+    this.stage = getStage(stageId);
+    this.stageId = this.stage.chapter;
+    this.isWaterStage = this.stage.terrain === 'water';
     this.canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -301,9 +327,8 @@ class Game {
     this.renderer.toneMapping = Config.visuals.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = Config.visuals.renderExposure;
     this.scene = new THREE.Scene();
-    const worldColor = this.isWaterStage ? 0x173a43 : 0x15201d;
-    this.scene.background = new THREE.Color(worldColor);
-    this.scene.fog = new THREE.FogExp2(worldColor, this.isWaterStage ? 0.017 : 0.012);
+    this.scene.background = new THREE.Color(this.stage.worldColor);
+    this.scene.fog = new THREE.FogExp2(this.stage.worldColor, this.stage.fog);
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
     this.assets = null;
     this.input = appInput;
@@ -337,6 +362,9 @@ class Game {
     this.modelTemplates = new Map();
     this.motherEgg = null;
     this.motherSpawned = false;
+    this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
+    this.mimicHintShown = false;
+    this.mimicStuns = 0;
     this.nextStageBeat = 0;
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
@@ -424,16 +452,19 @@ class Game {
     this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage(this.stageId === 1 ? '第1章 守る順番\n増殖を抑え、母卵を破壊せよ' : 'Start', 3);
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${this.stage.motherName}を破壊せよ`, 3);
+    if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
 
   setupLighting() {
     this.setupEnvironmentLighting();
-    const ambient = new THREE.HemisphereLight(0xcfe0ff, 0x26342b, Config.visuals.ambientLightIntensity);
+    const { light } = this.stage;
+    this.renderer.toneMappingExposure = Config.visuals.renderExposure * light.exposure;
+    const ambient = new THREE.HemisphereLight(light.sky, light.ground, Config.visuals.ambientLightIntensity);
     this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xfff0cf, Config.visuals.sunLightIntensity);
+    const sun = new THREE.DirectionalLight(light.sun, Config.visuals.sunLightIntensity);
     sun.position.set(-28, 34, 24);
     sun.castShadow = Config.performance.enableShadows;
     if (Config.performance.enableShadows) {
@@ -447,7 +478,7 @@ class Game {
     }
     if (Config.visuals.sunLightIntensity > 0) this.scene.add(sun);
     if (Config.visuals.fillLightIntensity > 0) {
-      const fill = new THREE.DirectionalLight(0xaec8ff, Config.visuals.fillLightIntensity);
+      const fill = new THREE.DirectionalLight(light.fill, Config.visuals.fillLightIntensity);
       fill.position.set(30, 22, -34);
       fill.castShadow = false;
       this.scene.add(fill);
@@ -1162,7 +1193,7 @@ class Game {
       this.cleanupLists();
       this.ensureEggsExist();
       if (this.elapsed >= Config.map.playSeconds && (!this.motherEgg || !this.motherEgg.dead)) {
-        this.finish(false, '4分以内に母卵を破壊できませんでした');
+        this.finish(false, `${Config.map.playSeconds / 60}分以内に${this.stage.motherName}を破壊できませんでした`);
       }
     }
     if (this.state === 'dying') {
@@ -1261,7 +1292,7 @@ class Game {
       return;
     }
     if (this.state === 'paused') handleGamepadMenu(this.input, this.hud.pause);
-    if (this.input.pressed('F3')) this.devVisible = !this.devVisible;
+    if (DEBUG_ENABLED && this.input.pressed(DEBUG_KEY)) this.devVisible = !this.devVisible;
     if (this.state === 'tutorial') {
       handleGamepadMenu(this.input, this.hud.tutorial.overlay, () => this.hud.skipTutorial());
       if (this.input.pressed('Escape')) this.hud.skipTutorial();
@@ -1312,6 +1343,7 @@ class Game {
   spawnEgg(position, isMother = false) {
     if (!isMother && !this.canSpawnEgg()) return null;
     const egg = new Egg(this, position, isMother);
+    if (!isMother && this.mimicEggsActive && !egg.aquatic && Math.random() < Config.egg.mimic.chance) egg.isMimic = true;
     this.scene.add(egg.object);
     if (isMother) this.motherEgg = egg;
     else this.eggs.push(egg);
@@ -1330,7 +1362,9 @@ class Game {
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
-    this.spawnEgg(position, true);
+    const mother = this.spawnEgg(position, true);
+    mother.maxHp *= this.stage.motherHpScale;
+    mother.hp = mother.maxHp;
     this.spawnBurstEffect(position, 7, 0xff8b52);
     this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
@@ -1445,7 +1479,7 @@ class Game {
     this.eggsDestroyed += 1;
     this.playSfx('eggBreak', { volume: 0.68, cooldown: 0.05 });
     this.spawnXp(egg.position, Config.egg.xp);
-    this.spawnRandomPickup(egg.position, 'egg');
+    if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
     this.player.addBurst(Config.player.burstGainEgg);
     if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio, 0, this.player.maxHp);
   }
@@ -1895,6 +1929,48 @@ class Game {
         material.opacity = (0.08 + pulse * 0.18) * Math.min(1, effect.life * 5);
       }
     });
+    if (Config.egg.motherShockwaveTimingRing) this.spawnMotherShockwaveTimingRings(position, range, duration);
+  }
+
+  // The outline marks how far the ground wave reaches (seen from the wide bird camera); a ring at the
+  // player's feet closes to nothing when the wave fires, shown only while a human-form player is in range.
+  spawnMotherShockwaveTimingRings(position, range, duration) {
+    const segments = Config.performance.effectSegments * 2;
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff5a60, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const edge = new THREE.Mesh(new THREE.RingGeometry(range - 0.32, range, segments), edgeMaterial);
+    edge.position.set(position.x, 0.2, position.z);
+    edge.rotation.x = -Math.PI / 2;
+    edge.renderOrder = 6;
+    const closingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff3a44, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const closing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, segments), closingMaterial);
+    closing.rotation.x = -Math.PI / 2;
+    closing.renderOrder = 7;
+    const group = new THREE.Group();
+    group.add(edge, closing);
+    this.scene.add(group);
+    const player = this.player;
+    this.effects.push({
+      object: group,
+      life: duration,
+      duration,
+      update(effect, dt) {
+        effect.life -= dt;
+        const t = clamp(1 - effect.life / effect.duration, 0, 1);
+        const fadeIn = Math.min(1, t / 0.12);
+        edgeMaterial.opacity = (0.5 + Math.sin(t * Math.PI * 12) * 0.25) * fadeIn;
+        const threatened = player && !player.dead && player.form !== 'bird'
+          && horizontalDistanceSq(position, player.position) <= range * range;
+        closing.visible = threatened;
+        if (!threatened) return;
+        closing.position.set(player.position.x, 0.22, player.position.z);
+        closing.scale.setScalar(Math.max(0.05, 3.4 * (1 - t)));
+        closingMaterial.opacity = 0.9 * fadeIn;
+      }
+    });
   }
 
   spawnMotherShockwave(position, range, damage, duration) {
@@ -1958,6 +2034,22 @@ class Game {
     this.spawnRingEffect(position, 4.2, 0xffffff, 0.68, 0.32);
     this.spawnParticleBurst(position, 82, 0xff2534, 6.2, 0.68, 0.82);
   }
+  showMimicHint() {
+    if (this.mimicHintShown) return;
+    this.mimicHintShown = true;
+    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2);
+  }
+
+  onPlayerStunned(position, seconds) {
+    this.mimicStuns += 1;
+    this.mimicHintShown = true;
+    this.spawnRingEffect(position, 3.6, 0xc58cff, 0.86, 0.5);
+    this.spawnParticleBurst(position, 46, 0xb47aff, 4.2, 0.6, 0.7);
+    this.playSfx('eggBreak', { volume: 0.86, cooldown: 0.1 });
+    this.shake = Math.max(this.shake, 0.45);
+    this.showMessage('擬態卵！ 動けない', seconds);
+  }
+
   spawnDiveWarning(position) {
     if (Math.floor(this.elapsed * 24) % 3 !== 0) return;
     this.spawnRingEffect(position, 1.9, 0xfff078, 0.32, 0.16);
@@ -2135,19 +2227,25 @@ class Game {
 
   finish(victory, body) {
     if (this.outcome || (victory && this.player?.dead)) return;
-    this.outcome = {
-      victory,
-      body: victory && this.stageId === 1
-        ? 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。'
-        : body
-    };
+    this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
     if (!this.deathWorldActive) this.hud.showDeathBlackout(false);
     this.settleCamera();
-    if (victory && this.stageId === 1) this.replayAftermath();
-    else this.hud.showResult(victory, this.outcome.body);
+    if (victory) {
+      if (isFinalChapter(this.stageId)) clearProgress();
+      else saveProgress(this.stageId + 1, this.characterId);
+      this.replayAftermath();
+    } else {
+      this.hud.showResult(victory, this.outcome.body);
+    }
+  }
+
+  // ゲームは再読み込みで作り直すため、次に始める章を渡してからページを読み直す。
+  launchChapter(stageId) {
+    requestLaunch(stageId, this.characterId);
+    window.location.reload();
   }
 
   replayAftermath() {
@@ -2248,9 +2346,20 @@ class Game {
           if (audio !== base) this.activeSfx.delete(audio);
         });
       }
+      return audio;
     } catch {
       // Voice playback can be blocked before the first user gesture.
     }
+    return null;
+  }
+
+  // The last line waits for the dying scream to finish so the two never overlap; it keeps playing over the result screen.
+  playDeathVoices() {
+    const scream = this.playVoice('dying', { volume: 0.92, cooldown: 10 });
+    if (!Config.audio.battleVoices) return;
+    const playLastLine = () => window.setTimeout(() => this.playVoice('death', { volume: 0.92 }), Config.audio.deathVoiceGap * 1000);
+    if (scream && !scream.ended) scream.addEventListener('ended', playLastLine, { once: true });
+    else playLastLine();
   }
 
   updateBgmState() {
@@ -2394,7 +2503,7 @@ function setupCharacterSelect() {
     const characterSelectActive = !characterSelect.classList.contains('hidden');
     const tutorialActive = !document.getElementById('tutorial')?.classList.contains('hidden');
     if (!characterSelectActive || tutorialActive) return;
-    if (event.code === 'F3') {
+    if (DEBUG_ENABLED && event.code === DEBUG_KEY) {
       event.preventDefault();
       setDebugStageSelectOpen(debugStageSelect?.classList.contains('hidden'));
     } else if (event.code === 'Escape' && !debugStageSelect?.classList.contains('hidden')) {
@@ -2439,11 +2548,37 @@ function setupCharacterSelect() {
   });
 }
 
+// 章の出撃前会話を再生してから戦闘を始める。キャラクター選択は第1章の最初だけ。
+function beginChapter(characterId, stageId) {
+  selectedStageId = stageId;
+  document.getElementById('titleScreen')?.classList.add('hidden');
+  document.getElementById('characterSelect')?.classList.add('hidden');
+  storyPlayer.show(createBriefing(characterId, stageId), () => startGameWithCharacter(characterId));
+}
+
 function setupTitleScreen() {
   const titleScreen = document.getElementById('titleScreen');
   const characterSelect = document.getElementById('characterSelect');
   const startButton = document.getElementById('titleStartButton');
+  const continueButton = document.getElementById('titleContinueButton');
   if (!titleScreen || !characterSelect || !startButton) return;
+  const launch = takeLaunchRequest();
+  if (launch) {
+    beginChapter(launch.characterId, launch.chapter);
+    return;
+  }
+  const progress = loadProgress();
+  if (progress && continueButton) {
+    const stage = getStage(progress.chapter);
+    continueButton.textContent = `つづきから（${stage.label}）`;
+    continueButton.classList.remove('hidden');
+    continueButton.addEventListener('click', () => {
+      const confirm = new Audio(SFX_URLS.buttonConfirm);
+      confirm.volume = Config.audio.sfxVolume * 0.75;
+      confirm.play()?.catch?.(() => {});
+      beginChapter(progress.characterId, progress.chapter);
+    });
+  }
   startButton.addEventListener('click', () => {
     selectedStageId = 1;
     const confirm = new Audio(SFX_URLS.buttonConfirm);
@@ -2455,7 +2590,7 @@ function setupTitleScreen() {
       characterSelect.querySelector('[data-character="tsukimi"]')?.focus({ preventScroll: true });
     });
   });
-  startButton.focus();
+  (progress && continueButton ? continueButton : startButton).focus();
 }
 
 setupCharacterSelect();

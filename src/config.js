@@ -86,7 +86,11 @@ export const Config = {
   audio: {
     bgmVolume: 0.42,
     sfxVolume: 0.58,
-    voiceVolume: 0.72
+    voiceVolume: 0.72,
+    // Battle-start line when the stage begins and a last line after the dying scream (false = previous voice set).
+    battleVoices: true,
+    // Pause between the end of the dying scream and the last line.
+    deathVoiceGap: 1.2
   },
   map: {
     radius: 72,
@@ -128,6 +132,8 @@ export const Config = {
     buildingCollapseSeconds: 0.72
   },
   player: {
+    // 全キャラ共通の被ダメージ倍率。1 で調整前（2026-10-21 以前）と同じ。
+    damageTakenScale: 0.9,
     maxHp: 120,
     maxMp: 100,
     humanSpeed: 6.72,
@@ -237,6 +243,8 @@ export const Config = {
     motherShockwaveDuration: 0.95,
     motherShockwaveRange: 24,
     motherShockwaveDamage: 68,
+    // Warning cues for dodging by bird form: an outline at the exact range and a ring closing in until impact.
+    motherShockwaveTimingRing: true,
     matureSeconds: 8,
     hatchMin: 9.5,
     hatchMax: 14,
@@ -245,7 +253,19 @@ export const Config = {
     childMaxDistance: 10,
     spacing: 3.1,
     xp: 8,
-    healOnBreakRatio: 0.05
+    healOnBreakRatio: 0.05,
+    // Mimic eggs (chapter 3+): look like normal eggs but pulse faster. Eating one in bird form bursts it and
+    // roots the player briefly; shooting it in human form is safe. enabled: false removes them.
+    mimic: {
+      enabled: true,
+      fromChapter: 3,
+      chance: 0.14,
+      stunSeconds: 1.5,
+      normalPulseHz: 0.8,
+      mimicPulseHz: 2.1,
+      normalPulseScale: 0.03,
+      mimicPulseScale: 0.06
+    }
   },
   enemy: {
     chaser: { hp: 28, speed: 3.32, damage: 12, xp: 5 },
