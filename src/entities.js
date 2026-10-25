@@ -13,6 +13,7 @@ import {
   smooth01
 } from './math.js';
 import { Config } from './config.js';
+import { getBossType } from './bosses.js';
 
 const CONTACT_SHADOW_TEXTURE_SIZE = 96;
 let contactShadowTexture = null;
@@ -1828,6 +1829,7 @@ export class Egg {
     this.pulsePhase = Math.random() * TAU;
     this.shockwaveState = 'idle';
     this.shockwaveTimer = isMother ? Config.egg.motherShockwaveFirstDelay : 0;
+    this.bossType = isMother ? getBossType(game.stage?.boss) : null;
     const gameplayMotherEgg = isMother ? game.cloneGameplayModel('motherEgg') : null;
     const sourceModel = !isMother
       ? game.cloneGameplayModel('darkseedEgg') ?? this.createFallback()
@@ -1908,7 +1910,7 @@ export class Egg {
     if (this.isMother) {
       this.hitPulse = Math.max(0, this.hitPulse - dt * 1.7);
       this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
-      this.updateMotherShockwave(dt);
+      this.bossType.update(this, dt);
     }
     if (this.isMother) return;
     this.updatePulse(dt);

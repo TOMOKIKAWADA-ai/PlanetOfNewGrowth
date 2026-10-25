@@ -266,6 +266,7 @@ export const Config = {
       fromChapter: 5,
       chance: 0.14,
       stunSeconds: 1.5,
+      stunMarker: true, // 硬直中、頭上に紫の結晶を回す（false で足元の輪だけ）
       normalPulseHz: 0.8,
       mimicPulseHz: 2.1,
       normalPulseScale: 0.03,

@@ -2054,6 +2054,41 @@ class Game {
     this.playSfx('eggBreak', { volume: 0.86, cooldown: 0.1 });
     this.shake = Math.max(this.shake, 0.45);
     this.showMessage('擬態卵！ 動けない', seconds);
+    if (Config.egg.mimic.stunMarker) this.spawnStunMarker(seconds);
+  }
+
+  // 鳥形態のカメラは遠いので、足元の輪より目立つ印を頭上に回す。硬直が解けるまでプレイヤーに付いていく。
+  spawnStunMarker(seconds) {
+    const player = this.player;
+    const group = new THREE.Group();
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xe2bcff, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, toneMapped: false, fog: false
+    });
+    const geometry = new THREE.OctahedronGeometry(0.75, 0);
+    const count = 3;
+    for (let i = 0; i < count; i++) {
+      const gem = new THREE.Mesh(geometry, material);
+      gem.userData.angle = (i / count) * Math.PI * 2;
+      gem.renderOrder = 9;
+      group.add(gem);
+    }
+    this.scene.add(group);
+    this.effects.push({
+      object: group,
+      life: seconds,
+      duration: seconds,
+      update(effect, dt) {
+        effect.life = Math.min(effect.life - dt, player.stunTimer);
+        const spin = (effect.duration - effect.life) * 5.5;
+        group.position.set(player.position.x, player.position.y + 5, player.position.z);
+        for (const gem of group.children) {
+          const angle = gem.userData.angle + spin;
+          gem.position.set(Math.cos(angle) * 2.3, Math.sin(angle * 2) * 0.25, Math.sin(angle) * 2.3);
+          gem.rotation.y = angle * 2;
+        }
+        material.opacity = 0.95 * Math.min(1, effect.life / 0.25);
+      }
+    });
   }
 
   spawnDiveWarning(position) {

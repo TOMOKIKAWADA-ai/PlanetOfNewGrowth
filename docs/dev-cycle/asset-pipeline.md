@@ -149,6 +149,11 @@
 - 作成済み（2026-10-20）: `projects/meibuki-tsukimi`・`meibuki-akame`・`meibuki-kiichigo`。元絵は表情差分 `normal.png` の上 1024×1100 を切り出したもの（背景は透過）。描き分け画像なし。アカメは横顔に近く、右目は顔の輪郭（x≈750）の内側に範囲を収めないと、閉じたときに黒目や輪郭線が残る。
 - 方眼図（`tools/grid.py`）の画像は左と上に目盛りの余白がある。全体図では「表示座標−(65, 40)」がほぼ元画像の座標。拡大図は太線（50px ごと）から縮尺を出して読む。
 - 動画用の口パク素材: `mesh-avatar-studio/work/render-talk.mjs <jobs.json> <出力先>`。ランタイムの手動モード（`manual: true` と `advance()`）で1フレームずつ進め、台詞の音量から `mouthOpen`、決まった間隔のまばたき、小さな首振りと呼吸を付けて MP4 にする。毎回同じ結果になる。Node と Playwright は `D:\AI\Live2D_AI\.tools` のものを PATH と `PLAYWRIGHT_BROWSERS_PATH` に設定して使う。
+  - 実行例（2026-10-25、Git Bash、スタジオのフォルダで）: `export PATH="/d/AI/Live2D_AI/.tools/node-v22.23.3-win-x64:$PATH" PLAYWRIGHT_BROWSERS_PATH=D:/AI/Live2D_AI/.tools/playwright` のあと `node work/render-talk.mjs jobs.json out`。スタジオのサーバー（5173）を起動しなくてよい（スクリプトが自分で vite を立てる）。GPU はほぼ使わない。3〜4 秒の動画3本で約 65 秒。
+  - jobs.json の1件: `{"id","speaker":"tsukimi|akame|kiichigo","expression":"normal|smile|half|sad|angry|surprise","duration":秒,"lineOffset":声の開始秒,"wav":声のファイル（mp3 も可）,"bg":背景画像}`。出力は 768×826、30fps、**音なし**。声を付けるには FFmpeg で `-filter_complex "[1]adelay=600|600,apad[a]" -map 0:v -map "[a]" -c:v copy -c:a aac -shortest`（600 は lineOffset のミリ秒）。
+  - 背景は単色なら `ffmpeg -f lavfi -i "color=c=0x2b3a33:s=768x826" -frames:v 1 bg.png` で作れる。
+  - 確認は `fps=2.5,scale=320:-1,tile=5x2` のコマ一覧と、口元の切り出し（`crop=300:240:330:170`）を Read で見る。
+  - 各キャラの `built/` は約 1MB（PNG 10 枚と layers.json）。
 
 ## 動画・SNS素材
 
