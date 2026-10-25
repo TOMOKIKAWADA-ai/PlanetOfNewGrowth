@@ -9,7 +9,15 @@ const AVATAR_URLS = Object.freeze({
   kiichigo: new URL('../assets/avatars/kiichigo.mavatar', import.meta.url).href
 });
 
-const EXPRESSIONS = Object.freeze({ normal: 'neutral', smile: 'smile', angry: 'angry', sad: 'sad', surprise: 'surprise' });
+// 笑顔の 'smile' はこのアバターだと目が閉じきるので、通常の顔に目元の笑みを少しだけ足す（render-talk.mjs と同じ）。
+const EXPRESSIONS = Object.freeze({ normal: 'neutral', smile: 'neutral', angry: 'angry', sad: 'sad', surprise: 'surprise' });
+const EYE_SMILE = Object.freeze({ smile: 0.28 });
+
+// 比較用: URL に ?avatarExpressions=all（または normal）を付けると Config より優先する。
+function expressionMode() {
+  const fromUrl = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('avatarExpressions');
+  return fromUrl === 'all' || fromUrl === 'normal' ? fromUrl : Config.story.avatarExpressions;
+}
 
 let elementReady = null;
 function defineElement() {
@@ -23,7 +31,7 @@ export function avatarPortraitsEnabled() {
 
 // その表情の台詞をアバターで出すか。
 export function avatarHandles(expression = 'normal') {
-  return Config.story.avatarExpressions === 'all' ? Boolean(EXPRESSIONS[expression]) : expression === 'normal';
+  return expressionMode() === 'all' ? Boolean(EXPRESSIONS[expression]) : expression === 'normal';
 }
 
 export class StoryAvatar {
@@ -57,6 +65,7 @@ export class StoryAvatar {
     const avatar = this.element.avatar;
     if (!avatar) return;
     avatar.setExpression(EXPRESSIONS[this.expression] ?? 'neutral');
+    avatar.setParameters(EYE_SMILE[this.expression] ? { eyeSmile: EYE_SMILE[this.expression] } : {});
   }
 
   // 文字送りに合わせて口を動かす（会話には声がないので、文字ごとに口の開きを決める）。
