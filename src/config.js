@@ -92,6 +92,12 @@ export const Config = {
     // Pause between the end of the dying scream and the last line.
     deathVoiceGap: 1.2
   },
+  story: {
+    // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
+    avatarPortraits: true,
+    // 'normal': 通常の表情の台詞だけアバター、ほかの表情は描き分けた静止画。'all': すべてアバターで、表情は変形で付ける。
+    avatarExpressions: 'normal'
+  },
   map: {
     radius: 72,
     safeRadius: 7,

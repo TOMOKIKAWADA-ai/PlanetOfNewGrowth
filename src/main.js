@@ -14,6 +14,7 @@ import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.j
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
+import { getBossName } from './bosses.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -458,7 +459,7 @@ class Game {
     this.clock.start();
     this.cameraRig.update(0, 0);
     const carriedLine = carried ? `\n引き継いだ強化 ${carried}` : '';
-    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${this.stage.motherName}を破壊せよ${carriedLine}`, 3);
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${getBossName(this.stage)}を破壊せよ${carriedLine}`, 3);
     if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
@@ -1199,7 +1200,7 @@ class Game {
       this.cleanupLists();
       this.ensureEggsExist();
       if (this.elapsed >= Config.map.playSeconds && (!this.motherEgg || !this.motherEgg.dead)) {
-        this.finish(false, `${Config.map.playSeconds / 60}分以内に${this.stage.motherName}を破壊できませんでした`);
+        this.finish(false, `${Config.map.playSeconds / 60}分以内に${getBossName(this.stage)}を破壊できませんでした`);
       }
     }
     if (this.state === 'dying') {

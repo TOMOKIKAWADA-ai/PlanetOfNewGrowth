@@ -140,3 +140,14 @@
 | `docs/devlog/img/2026-10-25-avatar-talk.png` | 3人のコマ一覧（0.4 秒ごと） |
 
 採用: 評価用。ゲームにはまだ組み込んでいない（B5-2 で判断）。
+
+## 2026-10-25 会話画面の動く立ち絵（B5-2）
+ツール: Mesh Avatar Studio（MIT）。2026-10-20 に作ったプロジェクト `projects/meibuki-<キャラ>` の `avatar.json`・`rig.json`・`built/` を、そのまま ZIP（無圧縮）にまとめて `.mavatar` にした（形式は `mesh-avatar-studio/docs/format.md`）。新しい生成はしていない。表示には `packages/element/dist/standalone.js`（mesh-avatar-element 0.1.1、MIT、スタジオのコミット 15d3d60）を `src/vendor/mesh-avatar-element.js` に複製し、ライセンス文を `src/vendor/mesh-avatar-element.LICENSE` に置いた。
+
+| ファイル | 内容 |
+|---|---|
+| `assets/avatars/tsukimi.mavatar` | 1.09MB。元絵は `assets/ui/characters/faces/tsukimi/normal.png` の上 1024×1100 |
+| `assets/avatars/akame.mavatar` | 1.18MB。同上（アカメ） |
+| `assets/avatars/kiichigo.mavatar` | 1.04MB。同上（キイチゴ） |
+
+採用: ゲームの会話画面で使用。`Config.story.avatarPortraits: false` で元の静止画に戻る。

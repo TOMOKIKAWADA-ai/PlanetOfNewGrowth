@@ -146,6 +146,10 @@
 - 元絵は正面向き・背景透過のバストアップPNGが向いている。既存の `assets/ui/characters/faces/<名前>/normal.png` から作る。
 - 目・口の描き分け画像（閉じた目、あ・い・おの口など）は、Mesh Avatar Studio の README どおり **Codex の画像生成** で作るのが本命（ユーザーは立ち絵・プロモ画像も Codex で作っており、画風がそろう）。`tools/variant-requests.py` が作る依頼文とマスクを Codex に渡す作業はユーザーに頼む（Claude からは Codex を操作しない）。Codex が使えない日は Forge の img2img / インペイントで代用する。
 - 作ったプロジェクトは `mesh-avatar-studio/projects/<名前>/`。ゲームで使う場合は Export `.mavatar` を `assets/avatars/` に置き、`mesh-avatar-element` で表示する。
+  - `.mavatar` はスタジオの画面を開かなくても作れる（2026-10-25）: プロジェクトの `avatar.json`・`rig.json`・`built/*` を、その相対パスのまま ZIP にまとめるだけ（Python の `zipfile`、無圧縮で可）。
+  - ゲームでは `src/story-avatars.js` が `new URL('../assets/avatars/<キャラ>.mavatar', import.meta.url)` で読む。Vite に `.mavatar` を素材として扱わせるため `vite.config.js` に `assetsInclude: ['**/*.mavatar']` を入れてある（publicDir は使っていない）。
+  - 表示部品はスタジオの `packages/element/dist/standalone.js` を `src/vendor/mesh-avatar-element.js` に複製したもの。スタジオを更新したら複製し直す。
+  - アバターを作り直したら `.mavatar` も作り直す。元絵の切り出し（上 1024×1100）を変えた場合は、`src/story.css` の `.story-actor-avatar` の高さ（71.62%）・静止画を隠す位置（71.5%）も合わせる。
 - 作成済み（2026-10-20）: `projects/meibuki-tsukimi`・`meibuki-akame`・`meibuki-kiichigo`。元絵は表情差分 `normal.png` の上 1024×1100 を切り出したもの（背景は透過）。描き分け画像なし。アカメは横顔に近く、右目は顔の輪郭（x≈750）の内側に範囲を収めないと、閉じたときに黒目や輪郭線が残る。
 - 方眼図（`tools/grid.py`）の画像は左と上に目盛りの余白がある。全体図では「表示座標−(65, 40)」がほぼ元画像の座標。拡大図は太線（50px ごと）から縮尺を出して読む。
 - 動画用の口パク素材: `mesh-avatar-studio/work/render-talk.mjs <jobs.json> <出力先>`。ランタイムの手動モード（`manual: true` と `advance()`）で1フレームずつ進め、台詞の音量から `mouthOpen`、決まった間隔のまばたき、小さな首振りと呼吸を付けて MP4 にする。毎回同じ結果になる。Node と Playwright は `D:\AI\Live2D_AI\.tools` のものを PATH と `PLAYWRIGHT_BROWSERS_PATH` に設定して使う。

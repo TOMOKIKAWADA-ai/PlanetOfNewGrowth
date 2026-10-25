@@ -1,6 +1,7 @@
 import { Config, UpgradePool } from './config.js';
 import { clamp } from './math.js';
 import { isFinalChapter } from './campaign.js';
+import { getBossName } from './bosses.js';
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -131,7 +132,7 @@ export class Hud {
     this.nextChapterButton = document.getElementById('nextChapterButton');
     this.retryButton = document.getElementById('retryButton');
     const motherTitle = this.motherPanel?.querySelector('.mother-title');
-    if (motherTitle) motherTitle.textContent = game.stage.motherName;
+    if (motherTitle) motherTitle.textContent = getBossName(game.stage);
     this.restartButton.addEventListener('click', () => window.location.reload());
     this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
     this.nextChapterButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId + 1));

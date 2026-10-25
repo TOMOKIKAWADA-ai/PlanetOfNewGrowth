@@ -3,6 +3,8 @@ import { Config } from './src/config.js';
 
 export default defineConfig({
   publicDir: Config.visuals.useAssetModels ? 'assets' : false,
+  // Animated story portraits (src/story-avatars.js).
+  assetsInclude: ['**/*.mavatar'],
   build: {
     target: 'esnext'
   },

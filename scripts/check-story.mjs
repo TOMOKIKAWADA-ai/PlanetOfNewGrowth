@@ -174,7 +174,7 @@ try {
       return failures;
     });
     assert.deepEqual(problems, [], `Text overlap at ${size.width}x${size.height}`);
-    await page.waitForFunction(() => [...document.querySelectorAll('.story-actor')].every(img => img.complete && img.naturalWidth));
+    await page.waitForFunction(() => [...document.querySelectorAll('.story-actor-image')].every(img => img.complete && img.naturalWidth));
     await page.screenshot({ path: `tmp/story-check/briefing-${size.width}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -295,7 +295,8 @@ try {
   assert.equal(await page.evaluate(() => window.__storyTest.story.index), 0);
   await page.locator('[data-action="skip"]').click();
   assert.equal(await page.evaluate(() => window.__storyTest.game.state), 'result');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'nextChapterButton');
+  // With carry-over upgrades (A16) the first choice takes focus until both picks are made.
+  assert.ok(await page.evaluate(() => document.activeElement.id === 'nextChapterButton' || document.activeElement.classList.contains('carry-over-choice')));
   await page.locator('#restartButton').click();
   await page.locator('#titleStartButton').waitFor({ state: 'visible' });
   await page.close();

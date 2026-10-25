@@ -22,3 +22,10 @@ export function getBossType(id) {
 export function isBossImplemented(id) {
   return Object.hasOwn(BOSS_TYPES, id);
 }
+
+// 画面に出すボスの名前。種類に `name` があればそれ（例: 追い手）、なければ章の motherName（母卵・白蓮の核）。
+// 各ボスを作るときに `name` を足す（2026-10-25 ユーザー承認）。
+export function getBossName(stage) {
+  const type = isBossImplemented(stage?.boss) ? BOSS_TYPES[stage.boss] : null;
+  return type?.name ?? stage?.motherName ?? '母卵';
+}
