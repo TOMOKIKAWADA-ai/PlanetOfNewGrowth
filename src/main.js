@@ -153,25 +153,25 @@ const GAMEPLAY_MODELS = {
     centerXZ: true
   },
   chaserEnemy: {
-    url: new URL('../assets/enemies/ene_001.glb', import.meta.url).href,
+    url: new URL('../assets/enemies/ene_001_anim.glb', import.meta.url).href,
     height: 1.78,
     centerXZ: true,
     forceOpaque: true
   },
   shooterEnemy: {
-    url: new URL('../assets/enemies/bombarding_001_rigged.glb', import.meta.url).href,
+    url: new URL('../assets/enemies/bombarding_001_anim.glb', import.meta.url).href,
     height: 1.6,
     centerXZ: true,
     forceOpaque: true
   },
   spawnerEnemy: {
-    url: new URL('../assets/enemies/Spawning_001.glb', import.meta.url).href,
+    url: new URL('../assets/enemies/Spawning_001_anim.glb', import.meta.url).href,
     height: 1.62,
     centerXZ: true,
     forceOpaque: true
   },
   guardianEnemy: {
-    url: new URL('../assets/enemies/defense_001.glb', import.meta.url).href,
+    url: new URL('../assets/enemies/defense_001_anim.glb', import.meta.url).href,
     height: 2.0,
     centerXZ: true,
     forceOpaque: true
