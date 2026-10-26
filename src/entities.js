@@ -6,7 +6,6 @@ import {
   clamp,
   clampToCircle,
   horizontalDistanceSq,
-  horizontalPointSegmentDistanceSq,
   normalizeXZ,
   randRange,
   randomPointInCircle,
@@ -231,12 +230,13 @@ const ENEMY_LOD_MATERIALS = Object.fromEntries(
 const SNIPER_BEAM_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
 const SNIPER_BEAM_MATERIALS = {
   warning: new THREE.MeshBasicMaterial({ color: 0xffb45a, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
-  glow: new THREE.MeshBasicMaterial({ color: 0xff4866, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
-  core: new THREE.MeshBasicMaterial({ color: 0xfff2db, transparent: true, opacity: 0.94, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+  lock: new THREE.MeshBasicMaterial({ color: 0xfff2db, transparent: true, opacity: 0.94, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
 };
 const SNIPER_MARKER_GEOMETRY = new THREE.TorusGeometry(0.42, 0.07, 6, 16);
 const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: SNIPER_COLOR, toneMapped: false });
 const SNIPER_BEAM_UP = new THREE.Vector3(0, 1, 0);
+const PROJECTILE_HOMING_DESIRED = new THREE.Vector3();
+const PROJECTILE_HOMING_CURRENT = new THREE.Vector3();
 const EGG_LOD_GEOMETRY = new THREE.DodecahedronGeometry(0.7, 0);
 const EGG_LOD_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x180c0d });
 // Primitive shapes; Config.pickups.models swaps some of them for generated meshes at load (installPickupModel).
@@ -2294,7 +2294,6 @@ export class Enemy {
     this.pendingShotTarget = new THREE.Vector3();
     this.beamState = 'idle';
     this.beamTimer = 0;
-    this.beamHitTimer = 0;
     this.beamAim = 0;
     this.beamTrackedTarget = new THREE.Vector3();
     this.beamEnd = new THREE.Vector3();
@@ -2880,8 +2879,7 @@ export class Enemy {
       return mesh;
     };
     this.beamWarning = makeBeam('SniperWarning', SNIPER_BEAM_MATERIALS.warning, 0.055);
-    this.beamGlow = makeBeam('SniperBeamGlow', SNIPER_BEAM_MATERIALS.glow, 0.45);
-    this.beamCore = makeBeam('SniperBeamCore', SNIPER_BEAM_MATERIALS.core, 0.11);
+    this.beamLock = makeBeam('SniperWarningLock', SNIPER_BEAM_MATERIALS.lock, 0.09);
     this.object.add(this.beam);
   }
 
@@ -3329,38 +3327,31 @@ export class Enemy {
     }
     if (this.beamState === 'idle') return;
 
-    if (player.form === 'bird') {
-      this.beamTrackedTarget.copy(player.position);
-    } else {
-      const follow = 1 - Math.exp(-dt / stats.groundTrackingLagSeconds);
-      this.beamTrackedTarget.lerp(player.position, follow);
-    }
-    const desiredAngle = angleToXZ(this.position, this.beamTrackedTarget);
-    const turnRate = this.beamState === 'warning' ? stats.warningTurnRate : stats.beamTurnRate;
-    this.beamAim += clamp(signedAngleDifference(desiredAngle, this.beamAim), -turnRate * dt, turnRate * dt);
+    // The warning line tracks the player, then locks briefly so the single shot is readable.
     this.beamTimer -= dt;
-    if (this.beamState === 'warning' && this.beamTimer <= 0) {
-      this.beamState = 'firing';
-      this.beamTimer = stats.beamSeconds;
-      this.beamHitTimer = 0;
-      this.playModelOneShot('attack');
-    } else if (this.beamState === 'firing' && this.beamTimer <= 0) {
-      this.beamState = 'idle';
-      this.beam.visible = false;
-      return;
+    const locked = this.beamTimer <= stats.warningLockSeconds;
+    if (!locked) {
+      if (player.form === 'bird') {
+        this.beamTrackedTarget.copy(player.position);
+      } else {
+        const follow = 1 - Math.exp(-dt / stats.groundTrackingLagSeconds);
+        this.beamTrackedTarget.lerp(player.position, follow);
+      }
+      const desiredAngle = angleToXZ(this.position, this.beamTrackedTarget);
+      const turnRate = stats.warningTurnRate;
+      this.beamAim += clamp(signedAngleDifference(desiredAngle, this.beamAim), -turnRate * dt, turnRate * dt);
     }
+    this.updateSniperBeamVisual(Math.min(distance, stats.range), player.visualHeight, locked);
+    if (this.beamTimer > 0) return;
 
-    this.updateSniperBeamVisual(Math.min(distance, stats.range), player.visualHeight);
-    if (this.beamState !== 'firing') return;
-    this.beamHitTimer = Math.max(0, this.beamHitTimer - dt);
-    const hitRadius = player.form === 'bird' ? stats.birdHitRadius : stats.humanHitRadius;
-    if (this.beamHitTimer === 0 && horizontalPointSegmentDistanceSq(player.position, this.position, this.beamEnd) <= hitRadius ** 2) {
-      player.takeDamage(stats.damage);
-      this.beamHitTimer = stats.hitInterval;
-    }
+    this.beamState = 'idle';
+    this.beam.visible = false;
+    this.playModelOneShot('attack');
+    this.beamEnd.y = player.visualHeight + 1;
+    this.game.spawnSniperProjectile(this.position, this.beamEnd, stats);
   }
 
-  updateSniperBeamVisual(horizontalLength, playerHeight) {
+  updateSniperBeamVisual(horizontalLength, playerHeight, locked) {
     const dx = Math.sin(this.beamAim) * horizontalLength;
     const dz = Math.cos(this.beamAim) * horizontalLength;
     this.beamEnd.set(this.position.x + dx, 0, this.position.z + dz);
@@ -3368,9 +3359,9 @@ export class Enemy {
     const length = Math.max(0.01, this.beamDirection.length());
     this.beam.quaternion.setFromUnitVectors(SNIPER_BEAM_UP, this.beamDirection.normalize());
     this.beam.visible = true;
-    this.beamWarning.visible = this.beamState === 'warning';
-    this.beamGlow.visible = this.beamCore.visible = this.beamState === 'firing';
-    for (const mesh of [this.beamWarning, this.beamGlow, this.beamCore]) {
+    this.beamWarning.visible = !locked;
+    this.beamLock.visible = locked;
+    for (const mesh of [this.beamWarning, this.beamLock]) {
       mesh.position.y = length * 0.5;
       mesh.scale.set(mesh.userData.radius, length, mesh.userData.radius);
     }
@@ -3603,6 +3594,8 @@ export class Projectile {
     this.radius = spec.radius ?? this.radius;
     this.pierce = spec.pierce ?? 0;
     this.pierceGain = spec.pierceGain ?? 0;
+    this.homingTurnRate = spec.homingTurnRate ?? 0;
+    this.birdHitBonus = spec.birdHitBonus ?? 0;
     this.hitSet.clear();
     this.spriteFrames = spec.spriteFrames ?? [];
     this.spriteFrameRate = spec.spriteFrameRate ?? 24;
@@ -3630,6 +3623,7 @@ export class Projectile {
   update(dt) {
     if (!this.active) return;
     this.life -= dt;
+    if (this.homingTurnRate > 0) this.updateHoming(dt);
     this.previousPosition.copy(this.position);
     this.position.addScaledVector(this.velocity, dt);
     this.mesh.rotation.y += dt * 12;
@@ -3654,6 +3648,29 @@ export class Projectile {
     if (this.kind === 'enemy') this.checkPlayerHit();
     else if (this.kind === 'eggSpecial') this.checkEggHit();
     else this.checkEnemyHit();
+  }
+
+  updateHoming(dt) {
+    const player = this.game.player;
+    // Homing only locks onto a flying bird; once the player is on foot the shot flies straight for good.
+    if (player.form !== 'bird' || player.dead) {
+      this.homingTurnRate = 0;
+      return;
+    }
+    const speed = this.velocity.length();
+    PROJECTILE_HOMING_DESIRED.set(
+      player.position.x - this.position.x,
+      player.visualHeight + 1.1 - this.position.y,
+      player.position.z - this.position.z
+    );
+    if (speed < 0.001 || PROJECTILE_HOMING_DESIRED.lengthSq() < 0.001) return;
+    PROJECTILE_HOMING_DESIRED.normalize();
+    PROJECTILE_HOMING_CURRENT.copy(this.velocity).divideScalar(speed);
+    const angle = Math.acos(clamp(PROJECTILE_HOMING_CURRENT.dot(PROJECTILE_HOMING_DESIRED), -1, 1));
+    if (angle < 1e-4) return;
+    const t = Math.min(1, (this.homingTurnRate * dt) / angle);
+    PROJECTILE_HOMING_CURRENT.lerp(PROJECTILE_HOMING_DESIRED, t).normalize();
+    this.velocity.copy(PROJECTILE_HOMING_CURRENT).multiplyScalar(speed);
   }
 
   configureTrail(useSprite, spec) {
@@ -3716,7 +3733,7 @@ export class Projectile {
   checkPlayerHit() {
     const player = this.game.player;
     if (player.invincibleTimer > 0) return;
-    const hitRadius = this.radius + 0.55;
+    const hitRadius = this.radius + 0.55 + (player.form === 'bird' ? this.birdHitBonus : 0);
     const dx = this.position.x - player.position.x;
     const dz = this.position.z - player.position.z;
     const playerHitY = player.visualHeight + 1.1;

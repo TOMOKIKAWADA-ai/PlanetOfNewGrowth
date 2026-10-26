@@ -2324,6 +2324,29 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.projectiles.push(projectile);
   }
 
+  spawnSniperProjectile(origin, target, stats) {
+    const projectile = this.projectilePool.acquire();
+    projectile.setMaterial(this.enemyProjectileMaterial);
+    const start = origin.clone();
+    start.y = 1.4;
+    projectile.reset(start, target, {
+      kind: 'enemy',
+      damage: stats.damage,
+      speed: stats.bulletSpeed,
+      radius: stats.bulletRadius,
+      life: stats.bulletLife,
+      homingTurnRate: stats.homingTurnRate,
+      birdHitBonus: stats.birdHitBonus,
+      spriteFrames: this.enemyProjectileTextures,
+      spriteFrameRate: 24,
+      spriteSize: 1.5,
+      spriteOpacity: 1,
+      spriteTrailCount: 4,
+      spriteTrailOpacity: 0.45
+    });
+    this.projectiles.push(projectile);
+  }
+
   releaseProjectile(projectile) {
     this.projectilePool.release(projectile);
   }
