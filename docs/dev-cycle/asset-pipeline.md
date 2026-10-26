@@ -11,7 +11,7 @@
 | Stable Diffusion WebUI Forge | `D:\AI\webui_forge_cu121_torch231` | **画像生成の本命**。SDXL・Illustrious・Pony のモデル、LoRA、ControlNet（AnyTest）、タグ付け拡張が入っている | API 起動を確認済み（2026-10-21）。`scripts/assets/start-forge-api.bat` |
 | ComfyUI | `D:\AI\ComfyUI` | 細かいワークフロー（背景透過、連続生成、将来の動画生成） | 2024年末の版。起動方法を初回に確認。動かなければ更新か入れ直しで可 |
 | A1111 | `D:\AI\A1111` | SD1.5 しかないので基本は使わない | 予備 |
-| Hunyuan3D 2 | `D:\AI\3D_local` | 画像から3Dモデル | 形状のみ確認済み。テクスチャ生成は未検証 |
+| Hunyuan3D 2 | `D:\AI\3D_local` | 画像から3Dモデル | 形状のみ API で使用（2026-10-26、`scripts/assets/start-hunyuan-api.bat`）。テクスチャ生成は未検証 |
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1` | 3Dの整形、ポリゴン削減、ターンテーブル画像 | 使用可 |
 | Stable Audio 3 Small-SFX | `D:\0001_App_Dev\audioMCP` | 効果音 | 認証済み、生成確認済み |
 | Irodori-TTS 4.1 | `D:\AI\Irodori-TTS-v4_1` | キャラクター音声 | 生成確認済み。v4（`D:\AI\Irodori-TTS-v4`）は旧版なので使わない |
@@ -64,12 +64,20 @@
 - `POST /generate` に JSON `{"image": <base64 PNG>, "seed": 1234, "octree_resolution": 256, "num_inference_steps": 5, "face_count": 8000, "texture": false}` を送ると GLB が返る。
 - テクスチャ生成は未検証（README 参照）。まずは形状だけを作り、色は Blender で頂点カラーかゲーム側のマテリアルで付ける。テクスチャ生成を試す日は、所要時間とVRAM使用量を記録する。
 - 終了は起動したプロセスを止める（`Stop-Hunyuan3D.bat` はインストール時の処理用）。
+- **2026-10-26 に動作確認（形状のみ）**:
+  - 起動: PowerShell から `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive_daily\scripts\assets\start-hunyuan-api.bat"'`。ログは `tmp/hunyuan-api.log`。約1分で `curl http://127.0.0.1:8081/status/x` が 200 を返す（low VRAM の指定なしで 8GB に収まった）。
+  - 生成: `node scripts/assets/hunyuan-img2glb.mjs <出力先> <画像.png> ...`。背景は API 側で自動で抜く（白背景の元絵で問題なし）。**1個 4〜7 秒**。出力は 23万〜68万三角形・7〜18MB と重いので、必ず Blender で削る。
+  - 終了: `Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like 'D:\AI\3D_local\*' } | % { Stop-Process -Id $_.ProcessId -Force }`
+  - 気づいたこと: 平たい物（葉1枚）は立体にすると薄く崩れるので、元絵の段階で厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
+  - `.bat` は Write ツールで書いてから CRLF に変換する（シェルの printf で書いたら `\3`・`\0`・`\t` が化けた。2026-10-26 にも1回起きた）。
 
 ## 3Dの整形（Blender）
 
 - `C:\Program Files\Blender Foundation\Blender 5.1\blender.exe -b --python <script>` でバックグラウンド実行する。
 - やること: 原点を接地面の中心へ、Y-up、ゲームの単位に合わせた大きさ、ポリゴン数の削減（目安: 拾うアイテム 500〜1500、敵 3000〜8000）、glTF 出力。
 - スクリプトは `scripts/assets/blender/` に置く。
+- 拾うアイテム: `blender -b --python scripts/assets/blender/prep-pickups.py -- <GLBのフォルダ> <出力先> <確認画像.png> [三角形の数]`。ファイル名の `-` より前（`hp-2601.glb` なら `hp`）を種類として `pickup_<種類>.glb` を書き出し、色を付けた並びの確認画像（Workbench）も出す。結晶（burst）だけ面を平らに塗る。5個で約20秒。
+- 単色で描く小物には、ゲーム側で陰影の出るマテリアル（`MeshStandardMaterial`、発光は弱め 0.16）を使う。光を受けないマテリアルだと形が影絵になる。
 
 ## 効果音（Stable Audio 3 Small-SFX）
 

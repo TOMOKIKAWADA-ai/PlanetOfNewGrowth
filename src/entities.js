@@ -190,6 +190,7 @@ const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: SNIPER_COLOR
 const SNIPER_BEAM_UP = new THREE.Vector3(0, 1, 0);
 const EGG_LOD_GEOMETRY = new THREE.DodecahedronGeometry(0.7, 0);
 const EGG_LOD_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x180c0d });
+// Primitive shapes; Config.pickups.models swaps some of them for generated meshes at load (installPickupModel).
 const PICKUP_GEOMETRIES = {
   xp: new THREE.OctahedronGeometry(0.23, 0),
   hp: new THREE.IcosahedronGeometry(0.28, 0),
@@ -214,6 +215,18 @@ const PICKUP_MATERIALS = Object.fromEntries(
     new THREE.MeshBasicMaterial({ color: spec.color, toneMapped: false })
   ])
 );
+
+// A generated pickup mesh has real shape, so it gets a lit material (an unlit one would flatten it to a silhouette).
+// The geometry arrives normalized to a longest side of 1 (scripts/assets/blender/prep-pickups.py).
+export function installPickupModel(type, geometry, size) {
+  const spec = PICKUP_SPECS[type];
+  if (!spec) return;
+  geometry.scale(size, size, size);
+  PICKUP_GEOMETRIES[type] = geometry;
+  PICKUP_MATERIALS[type] = new THREE.MeshStandardMaterial({
+    color: spec.color, emissive: spec.color, emissiveIntensity: 0.16, roughness: 0.4, metalness: 0.05
+  });
+}
 
 function createLodObject(name, highDetail, lowDetail, lowDistance, hideDistance = 0) {
   const lod = new THREE.LOD();

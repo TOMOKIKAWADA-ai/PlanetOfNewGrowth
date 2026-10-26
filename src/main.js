@@ -11,7 +11,7 @@ import {
   startCarryOver, saveCarryOver
 } from './campaign.js';
 import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.js';
-import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
+import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
 import { getBossName } from './bosses.js';
@@ -142,6 +142,14 @@ const VOICE_URLS = {
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
+// Installed once per page: the geometries are shared module state, and a new game (next chapter) reuses them.
+let pickupModelsInstalled = false;
+const PICKUP_MODELS = {
+  hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href,
+  mp: new URL('../assets/pickups/pickup_mp.glb', import.meta.url).href,
+  burst: new URL('../assets/pickups/pickup_burst.glb', import.meta.url).href,
+  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href
+};
 const GAMEPLAY_MODELS = {
   darkseedEgg: {
     url: new URL('../assets/eggs/darkseed.glb', import.meta.url).href,
@@ -367,6 +375,8 @@ class Game {
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
     this.mimicStuns = 0;
+    this.thirstHintShown = false;
+    this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -856,6 +866,19 @@ class Game {
           console.warn(`Failed to load gameplay model: ${key}`, error);
         }
       }));
+      if (Config.pickups.models.enabled && !pickupModelsInstalled) {
+        pickupModelsInstalled = true;
+        await Promise.all(Object.entries(PICKUP_MODELS).map(async ([type, url]) => {
+          try {
+            const gltf = await loader.loadAsync(url);
+            let geometry = null;
+            gltf.scene.traverse((child) => { if (!geometry && child.isMesh) geometry = child.geometry; });
+            if (geometry) installPickupModel(type, geometry, Config.pickups.models.size);
+          } catch (error) {
+            console.warn(`Failed to load pickup model: ${type}`, error);
+          }
+        }));
+      }
     } catch (error) {
       console.warn('Failed to initialize gameplay model loader.', error);
     }
@@ -2041,6 +2064,90 @@ class Game {
     this.spawnRingEffect(position, 4.2, 0xffffff, 0.68, 0.32);
     this.spawnParticleBurst(position, 82, 0xff2534, 6.2, 0.68, 0.82);
   }
+
+  // Thirst mother (src/bosses.js): tether the chosen eggs; each tether fades as soon as its egg is broken.
+  onThirstDrainStart(mother, eggs, seconds) {
+    this.thirstStats.drains += 1;
+    if (!this.thirstHintShown) {
+      this.thirstHintShown = true;
+      this.showMessage(`${getBossName(this.stage)}が卵を吸っている\n吸われる前に壊せば回復させない。鳥や魚で先に食べよう`, 3.2);
+    } else {
+      this.showMessage('卵が吸われている！', 1.4);
+    }
+    this.playSfx('motherCharge', { volume: 0.6, cooldown: 0.4 });
+    for (const egg of eggs) this.spawnThirstTether(mother, egg, seconds);
+  }
+
+  onThirstDrainEnd(mother, consumed, total, heal) {
+    this.thirstStats.eggsConsumed += consumed;
+    this.thirstStats.eggsDenied += total - consumed;
+    this.thirstStats.healed += heal;
+    if (consumed > 0) {
+      mother.hitPulse = Math.max(mother.hitPulse, 0.03);
+      this.spawnRingEffect(mother.position, 4.4, 0x7fe9ff, 0.8, 0.5);
+      this.spawnParticleBurst(mother.position, 40, 0x9ff3ff, 3.2, 0.6, 0.8);
+      this.showMessage(`${getBossName(this.stage)}が回復した（卵 ${consumed} 個）`, 1.6);
+    } else {
+      this.showMessage('全部壊した！ 回復させなかった', 1.6);
+    }
+  }
+
+  // An egg swallowed by the boss vanishes without dropping XP or items.
+  consumeEggForBoss(egg) {
+    egg.dead = true;
+    this.scene.remove(egg.object);
+    this.spawnParticleBurst(egg.position, 14, 0x9ff3ff, 1.1, 0.42, 0.7);
+  }
+
+  spawnThirstTether(mother, egg, duration) {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x7fe9ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+    });
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.32, 1, 6, 1, true), material);
+    const droplets = [];
+    const dropletGeometry = new THREE.SphereGeometry(0.34, 8, 6);
+    for (let i = 0; i < 3; i++) droplets.push(new THREE.Mesh(dropletGeometry, material));
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: 0x7fe9ff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.25, 1.6, Config.performance.effectSegments), ringMaterial);
+    ring.rotation.x = -Math.PI / 2;
+    const group = new THREE.Group();
+    group.add(beam, ring, ...droplets);
+    group.renderOrder = 6;
+    this.scene.add(group);
+    const from = new THREE.Vector3();
+    const to = new THREE.Vector3();
+    const axis = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+    this.effects.push({
+      object: group,
+      life: duration,
+      duration,
+      update(effect, dt) {
+        effect.life -= dt;
+        if (egg.dead) effect.life = Math.min(effect.life, 0.18);
+        from.set(egg.position.x, 1.1, egg.position.z);
+        to.set(mother.position.x, 2.6, mother.position.z);
+        axis.subVectors(to, from);
+        const length = axis.length();
+        beam.position.copy(from).addScaledVector(axis, 0.5);
+        beam.scale.set(1, length, 1);
+        beam.quaternion.setFromUnitVectors(up, axis.normalize());
+        const t = clamp(1 - effect.life / effect.duration, 0, 1);
+        for (let i = 0; i < droplets.length; i++) {
+          const s = (t * 3 + i / droplets.length) % 1;
+          droplets[i].position.lerpVectors(from, to, s);
+        }
+        ring.position.set(egg.position.x, 0.22, egg.position.z);
+        ring.scale.setScalar(1 - t * 0.35);
+        const fade = Math.min(1, effect.life * 6, (effect.duration - effect.life) * 6);
+        material.opacity = (0.45 + Math.sin(t * Math.PI * 12) * 0.2) * fade;
+        ringMaterial.opacity = 0.8 * fade;
+      }
+    });
+  }
+
   showMimicHint() {
     if (this.mimicHintShown) return;
     this.mimicHintShown = true;

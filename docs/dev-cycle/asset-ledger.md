@@ -37,8 +37,23 @@
 
 ## 置き換え候補（B0-1 で埋める）
 
+2026-10-26 に棚卸し。優先度は「プレイ中に目に入る頻度 × 今の見た目の弱さ」で付けた（高: 毎回何度も見る、中: 場面による、低: ほぼ見えない・予備）。
+
 | 対象 | 今の状態 | 場所 | 優先度 | 状態 |
 |---|---|---|---|---|
+| 拾うアイテム6種（HP・MP・バースト・磁石・シールド・スピード） | 単色の多面体・球・輪・円柱・円錐 | `src/entities.js` `PICKUP_GEOMETRIES` | 高 | B1-1。2026-10-26 に HP・MP・バースト・シールドを置き換え。磁石・スピードは作り直し |
+| 水没ステージの装飾（葦・草・岩） | 円錐と十二面体のインスタンス | `src/main.js` 671〜679 行付近 | 高（第2・3・5・6章で常に画面にある） | B1-6 |
+| 渇きの母の吸い上げの管・しずく | 円柱と球（2026-10-26 追加。効果なので当面このまま） | `src/main.js` `spawnThirstTether` | 低 | 見た目の調整候補 |
+| 経験値オーブ | 八面体（`usePrimitiveXp: true`。`assets/xp/blue_crystal.glb` は使っていない） | `src/entities.js` `ExperienceOrb` | 中（数が多いので軽さ優先） | B1-2 |
+| 卵の遠景表示 | 十二面体1つ | `src/entities.js` `EGG_LOD_GEOMETRY` | 低（遠くて小さい） | B1-5 |
+| 魚形態の体 | 球＋三角錐（魚のモデルが無い時の予備） | `src/entities.js` `createFishModel` | 中（第2・3・5・6章の水中で見る。モデルの有無を要確認） | 未着手 |
+| プレイヤーの予備の体 | 円柱＋十二面体＋円錐 | `src/entities.js` `createFallbackBody` | 低（モデルの読み込み失敗時だけ） | 対象外 |
+| 卵・母卵の予備の体 | 十二面体 | `src/entities.js` `Egg.createFallback` | 低（読み込み失敗時だけ） | 対象外 |
+| 予備の装飾（草・岩・木） | 円錐・十二面体（`usePrimitiveDecor: false` で普段は不使用） | `src/main.js` `createPrimitiveDecor` | 低 | 対象外 |
+| 硬直の印 | 紫の八面体3つ | `src/main.js` `spawnStunMarker` | 低（目印として形は単純でよい） | 対象外 |
+| 第1章のポンプ | 無い（台本のみ） | — | 中 | B1-7 |
+| 効果音: アイテム取得、卵の孵化、母卵出現の警告、残り1分、メニューのカーソル移動、文字送り、渇きの母の吸い上げ | 無い（吸い上げは `motherCharge` を小さく流用） | `assets/audio/sfx`（今あるのは20種） | 中 | B2-1 に追加 |
+| 声: 母卵出現・レベルアップ・残り1分の一言 | 無い | `assets/audio/voice` | 中 | B3-2 |
 
 ## 生成済み
 
@@ -153,3 +168,21 @@
 | `assets/avatars/kiichigo.mavatar` | 1.04MB。同上（キイチゴ） |
 
 採用: ゲームの会話画面で使用。`Config.story.avatarPortraits: false` で元の静止画に戻る。
+
+## 2026-10-26 拾うアイテムの3Dモデル（B1-1）
+ツール: Forge（`juggernautXL_ragnarokBy`、DPM++ 2M、28 steps、CFG 5、1024×1024）で元絵 → Hunyuan3D-2mini turbo（形状のみ、octree 256、5 steps、seed 1234）→ Blender 5.1（`scripts/assets/blender/prep-pickups.py`、約 1200 三角形に削減、中心を原点、最長辺 1、マテリアルなし）。色はゲーム側（`PICKUP_SPECS` の色で陰影つきのマテリアル）。
+元絵・途中の GLB: `assets_src/3d/2026-10-26-pickups/`（jobs.json にプロンプト全文。git 対象外）。
+共通プロンプト（後半）: `, single small game item, centered, three-quarter view, whole object in frame, isolated on plain pure white background, no shadow, stylized hand-painted 3d game asset, soft natural colors, clean simple silhouette, chunky readable shape`
+ネガティブ: `text, watermark, logo, multiple objects, hands, person, background scenery, ground, cast shadow, frame, border, cropped, blurry, photo of a table`
+
+| ファイル | 元絵（シード） | プロンプト（前半） | 採用 |
+|---|---|---|---|
+| `assets/pickups/pickup_hp.glb`（22KB） | hp-2601 | a plump glossy red berry with a small curled green leaf on top, organic healing fruit | 採用 |
+| `assets/pickups/pickup_mp.glb`（22KB） | mp-2601 | a clear teardrop-shaped seed capsule filled with glowing blue water | 採用 |
+| `assets/pickups/pickup_burst.glb`（94KB、面を平らに塗るため頂点が多い） | burst-2601 | a jagged golden amber crystal shard glowing from inside, warm yellow | 採用 |
+| `assets/pickups/pickup_shield.glb`（21KB） | shield-2602 | a closed pale mint translucent flower bud shell, layered petals like armor | 採用 |
+| （`assets_src` のみ）pickup_magnet.glb | magnet-2601 | a smooth violet river stone with a carved spiral groove, faint lavender glow | 不採用: ゲームのカメラからは渦巻きが見えず、ただの球に見えた。元の輪の形のまま |
+| — | speed-2601 / 2602 | a lime-yellow winged maple seed (samara) with a single swept wing | 不採用: 2601 は鳥の顔が出た、2602 は薄い葉で立体に向かない |
+
+採用: ゲームで使用。`Config.pickups.models.enabled: false` で元の多面体に戻る。大きさは `Config.pickups.models.size`（0.72）。
+ライセンス: juggernautXL（CreativeML Open RAIL++-M 系）と Hunyuan3D-2mini（Tencent Hunyuan Community License。地域の制限あり）の条件は、公開前に上の「ライセンス」の節で再確認する。

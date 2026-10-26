@@ -245,6 +245,19 @@ export const Config = {
   carryOver: {
     enabled: true
   },
+  // Per-boss tuning (src/bosses.js). Chapter 5's thirst mother tethers nearby eggs and heals by the eggs still alive
+  // when the drain ends; breaking them first (bird dive on land, fish bite in water) denies the heal. Set the stage's boss to 'motherEgg' to remove it.
+  boss: {
+    thirstMother: {
+      firstDelay: 7,
+      interval: 12,
+      retryDelay: 2.5,
+      drainSeconds: 3.4,
+      range: 22,
+      count: 4,
+      healRatioPerEgg: 0.035
+    }
+  },
   egg: {
     hp: 38,
     motherHp: 300,
@@ -340,6 +353,12 @@ export const Config = {
     orbSpeed: 9
   },
   pickups: {
+    // Generated meshes for dropped items (Hunyuan3D, 2026-10-26; see docs/dev-cycle/asset-ledger.md and PICKUP_MODELS in
+    // src/main.js). Types without a model keep the primitive shape (magnet read as a blob from the game camera, speed has none yet). enabled: false brings back all primitives.
+    models: {
+      enabled: true,
+      size: 0.72
+    },
     spawnOffsetRadius: 1.35,
     pickupRange: 0.95,
     baseMagnetRange: 5.2,
