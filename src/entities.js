@@ -2050,6 +2050,8 @@ export class Enemy {
     this.modelActions = {};
     this.activeModelAction = null;
     this.modelAnimationTimer = 0;
+    this.modelBaseAnimation = 'idle';
+    this.lastAnimationPosition = this.position.clone();
     this.initializeModelAnimations();
     this.hpBar = this.createHpBar();
     this.object.add(this.hpBar);
@@ -2181,23 +2183,38 @@ export class Enemy {
   }
 
   initializeModelAnimations() {
-    if (this.type !== 'shooter' && this.type !== 'sniper') return;
     const root = this.getModelAnimationRoot();
     const clips = root?.animations ?? [];
-    const idleClip = clips.find((clip) => clip.name.toLowerCase() === 'anim2');
-    const shootClip = clips.find((clip) => clip.name.toLowerCase() === 'anim1');
-    if (!root || !idleClip || !shootClip) return;
+    const findClip = (name) => clips.find((clip) => clip.name.toLowerCase() === name);
+    const idleClip = findClip('idle');
+    const walkClip = findClip('walk');
+    if (!root || !idleClip || !walkClip) return;
 
     this.modelMixer = new THREE.AnimationMixer(root);
-    this.modelActions.idle = this.modelMixer.clipAction(idleClip);
-    this.modelActions.idle.setLoop(THREE.LoopRepeat, Infinity);
-    this.modelActions.shoot = this.modelMixer.clipAction(shootClip);
-    this.modelActions.shoot.setLoop(THREE.LoopOnce, 1);
-    this.modelActions.shoot.clampWhenFinished = false;
-    this.playModelAnimation('idle', 0);
+    const clipSet = { idle: idleClip, walk: walkClip, attack: findClip('attack'), hit: findClip('hit'), die: findClip('die') };
+    for (const [name, clip] of Object.entries(clipSet)) {
+      if (!clip) continue;
+      const action = this.modelMixer.clipAction(clip);
+      const loops = name === 'idle' || name === 'walk';
+      action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+      action.clampWhenFinished = name === 'die';
+      this.modelActions[name] = action;
+    }
+    this.modelBaseAnimation = 'walk';
+    this.playModelAnimation('walk', 0);
+    // 群れの足並みがそろわないように開始位置をずらす
+    this.modelActions.walk.time = Math.random() * walkClip.duration;
   }
 
-  playModelAnimation(name, fade = Config.enemy.shooter.animationFade) {
+  getAnimationSetting(key) {
+    return this.stats[key] ?? Config.enemy.animation[key];
+  }
+
+  get modelAnimationFade() {
+    return this.stats.animationFade ?? Config.enemy.animation.fade;
+  }
+
+  playModelAnimation(name, fade = this.modelAnimationFade) {
     const next = this.modelActions[name];
     if (!next || this.activeModelAction === next) return;
     const previous = this.activeModelAction;
@@ -2214,18 +2231,73 @@ export class Enemy {
     if (this.modelMixer && root?.visible) this.modelMixer.update(dt);
     if (this.modelAnimationTimer <= 0) return;
     this.modelAnimationTimer = Math.max(0, this.modelAnimationTimer - dt);
-    if (this.modelAnimationTimer === 0) this.playModelAnimation('idle');
+    if (this.modelAnimationTimer === 0) this.playModelAnimation(this.modelBaseAnimation);
+  }
+
+  playModelOneShot(name) {
+    const action = this.modelActions[name];
+    if (!action) return false;
+    if (this.activeModelAction === action) this.activeModelAction = null;
+    this.playModelAnimation(name);
+    this.modelAnimationTimer = action.getClip().duration;
+    return true;
+  }
+
+  updateLocomotionAnimation(dt) {
+    const walk = this.modelActions.walk;
+    if (!walk) return;
+    const speed = Math.sqrt(horizontalDistanceSq(this.position, this.lastAnimationPosition)) / dt;
+    this.lastAnimationPosition.copy(this.position);
+    this.modelBaseAnimation = speed > this.getAnimationSetting('walkThreshold') ? 'walk' : 'idle';
+    walk.timeScale = clamp(
+      speed / (this.stats.walkAnimationSpeed ?? this.speed),
+      this.getAnimationSetting('walkTimeScaleMin'),
+      this.getAnimationSetting('walkTimeScaleMax')
+    );
+    if (this.modelAnimationTimer === 0) this.playModelAnimation(this.modelBaseAnimation);
+  }
+
+  spawnDeathCorpse() {
+    const dieAction = this.modelActions.die;
+    const root = this.getModelAnimationRoot();
+    if (!dieAction || !root?.visible) return false;
+    const corpse = new THREE.Group();
+    corpse.name = `EnemyCorpse_${this.type}`;
+    corpse.position.copy(this.position);
+    corpse.add(this.model);
+    this.game.scene.add(corpse);
+    if (this.beam) this.beam.visible = false;
+    this.playModelAnimation('die', 0.06);
+    const mixer = this.modelMixer;
+    const model = this.model;
+    const baseY = model.userData.baseY ?? 0;
+    const sinkSeconds = this.getAnimationSetting('corpseSinkSeconds');
+    const sinkDepth = this.getAnimationSetting('corpseSinkDepth');
+    const duration = dieAction.getClip().duration + this.getAnimationSetting('corpseLingerSeconds') + sinkSeconds;
+    // 敵モデルはジオメトリとマテリアルをテンプレートと共有しているので破棄しない
+    this.game.effects.push({
+      object: corpse,
+      life: duration,
+      duration,
+      dispose: false,
+      update(effect, dt) {
+        effect.life -= dt;
+        mixer.update(dt);
+        if (effect.life < sinkSeconds) {
+          const t = clamp(1 - effect.life / sinkSeconds, 0, 1);
+          model.position.y = baseY - t * t * sinkDepth;
+        }
+      }
+    });
+    return true;
   }
 
   beginShooterAttack(target) {
     this.pendingShotTarget.copy(target);
-    const shootAction = this.modelActions.shoot;
-    if (!shootAction) {
+    if (!this.playModelOneShot('attack')) {
       this.game.spawnEnemyProjectile(this.position, this.pendingShotTarget, Config.enemy.shooter);
       return;
     }
-    this.playModelAnimation('shoot');
-    this.modelAnimationTimer = shootAction.getClip().duration;
     this.pendingShotTimer = Config.enemy.shooter.fireWindup;
   }
 
@@ -2280,7 +2352,8 @@ export class Enemy {
     clampToCircle(this.position, Config.map.radius - 1.2);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' ? Math.PI : 0);
-    this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
+    if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
+    else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();
     this.updateHpBar();
   }
@@ -2395,7 +2468,7 @@ export class Enemy {
       this.beamState = 'firing';
       this.beamTimer = stats.beamSeconds;
       this.beamHitTimer = 0;
-      this.playModelAnimation('shoot');
+      this.playModelOneShot('attack');
     } else if (this.beamState === 'firing' && this.beamTimer <= 0) {
       this.beamState = 'idle';
       this.beam.visible = false;
@@ -2477,7 +2550,9 @@ export class Enemy {
       return;
     }
     const egg = this.game.spawnEgg(position);
-    if (egg) this.game.spawnDust(position, 0xdfff85);
+    if (!egg) return;
+    this.game.spawnDust(position, 0xdfff85);
+    this.playModelOneShot('attack');
   }
 
   moveToward(target, dt, speed) {
@@ -2520,6 +2595,7 @@ export class Enemy {
     this.attackTimer = 0.75;
     const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
     player.takeDamage(this.stats.damage * multiplier);
+    if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
   }
 
   updateHpBar() {
@@ -2540,12 +2616,14 @@ export class Enemy {
       this.knock.z += tempVec2.z * (strongKnock ? 14 : 4);
     }
     if (this.hp <= 0) this.die(true, burstReward);
+    else if (this.activeModelAction !== this.modelActions.hit) this.playModelOneShot('hit');
   }
 
   die(reward, burstReward = reward) {
     if (this.dead) return;
     this.dead = true;
     this.object.visible = false;
+    if (reward) this.spawnDeathCorpse();
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
       if (burstReward) this.game.player.addBurst(this.type === 'spawner' ? Config.player.burstGainSpawner : Config.player.burstGainEnemy);
