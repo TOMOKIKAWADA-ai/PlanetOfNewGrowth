@@ -249,7 +249,17 @@ export const Config = {
     healOnBreakRatio: 0.05
   },
   enemy: {
-    chaser: { hp: 28, speed: 3.32, damage: 12, xp: 5 },
+    // GLB に idle / walk / attack / hit / die を持つ敵の共通設定。種類ごとの値があればそちらを優先する
+    animation: {
+      fade: 0.15,
+      walkThreshold: 0.35,
+      walkTimeScaleMin: 0.6,
+      walkTimeScaleMax: 1.8,
+      corpseLingerSeconds: 0.6,
+      corpseSinkSeconds: 0.5,
+      corpseSinkDepth: 0.7
+    },
+    chaser: { hp: 28, speed: 3.32, damage: 12, xp: 5, walkAnimationSpeed: 2.2 },
     shooter: {
       hp: 24,
       speed: 2.46,
@@ -259,13 +269,16 @@ export const Config = {
       fireInterval: 2.1,
       bulletSpeed: 10,
       fireWindup: 0.2,
-      animationFade: 0.08
+      animationFade: 0.08,
+      walkAnimationSpeed: 2.0
     },
     sniper: {
       hp: 24,
       speed: 2.46,
       damage: 10,
       xp: 9,
+      animationFade: 0.08,
+      walkAnimationSpeed: 2.0,
       range: 21,
       fireInterval: 3.6,
       warningSeconds: 1.15,
@@ -279,12 +292,14 @@ export const Config = {
       maxAliveBeforeRush: 2,
       maxAliveDuringRush: 6
     },
-    guardian: { hp: 72, speed: 2.14, damage: 15, xp: 10 },
+    guardian: { hp: 72, speed: 2.14, damage: 15, xp: 10, walkAnimationSpeed: 1.8, corpseSinkDepth: 0.9 },
     spawner: {
       hp: 48,
       speed: 8.77,
       damage: 5,
       xp: 13,
+      walkAnimationSpeed: 5.5,
+      corpseSinkDepth: 1.1,
       lifeSeconds: 58,
       layMin: 5,
       layMax: 8.3,
