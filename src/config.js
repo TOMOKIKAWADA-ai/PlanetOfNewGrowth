@@ -38,6 +38,7 @@ export const Config = {
     useBackgroundObjects: true,
     usePrimitiveDecor: false,
     floorTileSize: 16,
+    waterStageTileSize: 14,
     useToneMapping: true,
     useUnlitGround: false,
     useUnlitBackgroundModels: false,
