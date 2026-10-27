@@ -5,6 +5,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
+import { buildForecast, ForecastCard } from './forecast.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
 import {
   getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest,
@@ -107,7 +108,9 @@ const SFX_URLS = {
   projectileHit: new URL('../assets/audio/sfx/projectile_hit.wav', import.meta.url).href,
   transformBird: new URL('../assets/audio/sfx/transform_bird.wav', import.meta.url).href,
   transformHuman: new URL('../assets/audio/sfx/transform_human.wav', import.meta.url).href,
-  xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href
+  xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href,
+  itemPickup: new URL('../assets/audio/sfx/item_pickup.wav', import.meta.url).href,
+  thirstDrain: new URL('../assets/audio/sfx/thirst_drain.wav', import.meta.url).href
 };
 const VOICE_URLS = {
   tsukimi: {
@@ -2074,7 +2077,8 @@ class Game {
     } else {
       this.showMessage('卵が吸われている！', 1.4);
     }
-    this.playSfx('motherCharge', { volume: 0.6, cooldown: 0.4 });
+    if (Config.audio.newSfx) this.playSfx('thirstDrain', { volume: 0.75, cooldown: 0.4 });
+    else this.playSfx('motherCharge', { volume: 0.6, cooldown: 0.4 });
     for (const egg of eggs) this.spawnThirstTether(mother, egg, seconds);
   }
 
@@ -2611,6 +2615,18 @@ class Game {
 }
 
 const storyPlayer = new StoryPlayer();
+const forecastCard = new ForecastCard();
+
+// 出撃前会話 → 朝の孵化予報（Config.forecast.enabled） → 戦闘。
+function showBriefingThenStart(characterId, stageId) {
+  storyPlayer.show(createBriefing(characterId, stageId), () => {
+    if (!Config.forecast.enabled) {
+      startGameWithCharacter(characterId);
+      return;
+    }
+    forecastCard.show(buildForecast(getStage(stageId)), () => startGameWithCharacter(characterId));
+  });
+}
 
 function handleStoryGamepad(input) {
   if (storyPlayer.logOpen) {
@@ -2711,16 +2727,14 @@ function setupCharacterSelect() {
     });
   });
   confirmButton.addEventListener('click', () => {
-    if (activeGame || storyPlayer.active) return;
+    if (activeGame || storyPlayer.active || forecastCard.active) return;
     const confirm = new Audio(SFX_URLS.buttonConfirm);
     confirm.volume = Config.audio.sfxVolume * 0.75;
     confirm.play()?.catch?.(() => {});
     buttons.forEach(button => { button.disabled = true; });
     confirmButton.disabled = true;
     characterSelect.classList.add('hidden');
-    storyPlayer.show(createBriefing(selectedCharacterId, selectedStageId), () => {
-      startGameWithCharacter(selectedCharacterId);
-    });
+    showBriefingThenStart(selectedCharacterId, selectedStageId);
   });
   document.getElementById('tutorialButton')?.addEventListener('click', () => {
     getTutorialGuide().show(() => {
@@ -2734,7 +2748,7 @@ function beginChapter(characterId, stageId) {
   selectedStageId = stageId;
   document.getElementById('titleScreen')?.classList.add('hidden');
   document.getElementById('characterSelect')?.classList.add('hidden');
-  storyPlayer.show(createBriefing(characterId, stageId), () => startGameWithCharacter(characterId));
+  showBriefingThenStart(characterId, stageId);
 }
 
 function setupTitleScreen() {
@@ -2786,6 +2800,8 @@ function updatePreGamepadMenus() {
   const tutorial = document.getElementById('tutorial');
   if (storyPlayer.active) {
     handleStoryGamepad(appInput);
+  } else if (forecastCard.active) {
+    handleGamepadMenu(appInput, forecastCard.root);
   } else if (tutorial && !tutorial.classList.contains('hidden')) {
     handleGamepadMenu(appInput, tutorial, () => getTutorialGuide().finish());
   } else if (debugStageSelect && !debugStageSelect.classList.contains('hidden')) {

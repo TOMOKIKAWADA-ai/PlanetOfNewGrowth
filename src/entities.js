@@ -2875,7 +2875,8 @@ export class ExperienceOrb {
 
   collect(player) {
     const spec = PICKUP_SPECS[this.type] ?? PICKUP_SPECS.xp;
-    this.game.playSfx('xpPickup', { volume: this.type === 'xp' ? 0.45 : 0.62, cooldown: this.type === 'xp' ? 0.025 : 0.075 });
+    if (this.type !== 'xp' && Config.audio.newSfx) this.game.playSfx('itemPickup', { volume: 0.7, cooldown: 0.075 });
+    else this.game.playSfx('xpPickup', { volume: this.type === 'xp' ? 0.45 : 0.62, cooldown: this.type === 'xp' ? 0.025 : 0.075 });
     if (this.type !== 'xp') {
       this.game.spawnRingEffect(this.position, this.type === 'magnet' ? 2.4 : 1.55, spec.color, 0.34, 0.32);
       if (spec.label) this.game.showMessage(spec.label, 0.8);

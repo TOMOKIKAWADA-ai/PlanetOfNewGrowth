@@ -92,6 +92,9 @@
   スクリプトは `stable-audio-3` フォルダを作業ディレクトリにして実行する。
 - プロンプトは英語。末尾に `no music, no speech` を付ける。1つの音につき候補を3〜4本作り、devlog に選んだ理由を書く。
 - 後処理: 無音のトリム、短いフェード、ラウドネスの正規化。FFmpeg は `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-*\bin` にある。
+- 一括生成（2026-10-27 追加）: `scripts/assets/stable-audio-batch.py`。`stable-audio-3` フォルダで `.venv/Scripts/python.exe <スクリプト> <jobs.json> <出力フォルダ>`。jobs.json の書き方はスクリプトの先頭。モデルの読み込み約 20 秒、1本 1〜2 秒（3.4 秒の音でも）、GPU は最大 2.1GB。処理が終わるとプロセスごと終わるので、止める作業は要らない。
+- **長さは 2 秒以上で作る**（2026-10-27）。1.2 秒を指定したら4本とも、半分以上が振り切れた白色雑音になった。2 秒・3 秒は正常。短い音は 2〜3 秒で作って後から切る。
+- 候補の選び方（音を聞けない自動のサイクル用）: ffmpeg の `ebur128` でラウドネス、`silencedetect=n=-45dB:d=0.15` で途中の無音、`showspectrumpic` で周波数の絵、numpy で 0.1 秒ごとの音量の推移と主な周波数を見る。振り切れ（|x|>0.99 の割合）が出ていたら失敗。既存の効果音の大きさは -18〜-10 LUFS（xp_pickup -17.8、egg_break -12.4、mother_charge -10.3）なので、その範囲に合わせる。
 
 ## 音声（Irodori-TTS v4.1）
 

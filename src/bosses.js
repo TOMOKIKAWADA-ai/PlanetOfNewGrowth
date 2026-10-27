@@ -7,6 +7,8 @@ export const BOSS_TYPES = Object.freeze({
   // 第1章のボス。一定の間隔で地面を走る衝撃波を出す。鳥形態なら当たらない。
   motherEgg: Object.freeze({
     id: 'motherEgg',
+    // 出撃前の孵化予報（src/forecast.js）に出す一言。
+    forecast: '動かない。地面を走る衝撃波は、鳥形態で浮けば当たらない',
     update(egg, dt) {
       egg.updateMotherShockwave(dt);
     }
@@ -16,6 +18,7 @@ export const BOSS_TYPES = Object.freeze({
   thirstMother: Object.freeze({
     id: 'thirstMother',
     name: '渇きの母',
+    forecast: '周りの卵を吸って回復する。光の管でつながった卵を、鳥や魚で先に食べよう',
     update(egg, dt) {
       egg.updateMotherShockwave(dt);
       updateThirstDrain(egg, dt);

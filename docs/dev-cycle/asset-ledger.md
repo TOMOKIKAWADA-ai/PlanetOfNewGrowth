@@ -52,7 +52,7 @@
 | 予備の装飾（草・岩・木） | 円錐・十二面体（`usePrimitiveDecor: false` で普段は不使用） | `src/main.js` `createPrimitiveDecor` | 低 | 対象外 |
 | 硬直の印 | 紫の八面体3つ | `src/main.js` `spawnStunMarker` | 低（目印として形は単純でよい） | 対象外 |
 | 第1章のポンプ | 無い（台本のみ） | — | 中 | B1-7 |
-| 効果音: アイテム取得、卵の孵化、母卵出現の警告、残り1分、メニューのカーソル移動、文字送り、渇きの母の吸い上げ | 無い（吸い上げは `motherCharge` を小さく流用） | `assets/audio/sfx`（今あるのは20種） | 中 | B2-1 に追加 |
+| 効果音: アイテム取得、卵の孵化、母卵出現の警告、残り1分、メニューのカーソル移動、文字送り、渇きの母の吸い上げ（2026-10-27 アイテム取得と吸い上げは作成済み） | 無い（吸い上げは `motherCharge` を小さく流用） | `assets/audio/sfx`（今あるのは20種） | 中 | B2-1 に追加 |
 | 声: 母卵出現・レベルアップ・残り1分の一言 | 無い | `assets/audio/voice` | 中 | B3-2 |
 
 ## 生成済み
@@ -186,3 +186,20 @@
 
 採用: ゲームで使用。`Config.pickups.models.enabled: false` で元の多面体に戻る。大きさは `Config.pickups.models.size`（0.72）。
 ライセンス: juggernautXL（CreativeML Open RAIL++-M 系）と Hunyuan3D-2mini（Tencent Hunyuan Community License。地域の制限あり）の条件は、公開前に上の「ライセンス」の節で再確認する。
+
+## 2026-10-27 効果音: アイテム取得と渇きの母の吸い上げ（B2-1）
+ツール: Stable Audio 3 Small-SFX（`D:\0001_App_Dev\audioMCP`、steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で一括生成（プロンプトの末尾に `, no music, no speech` を自動で付ける）。
+候補と jobs: `assets_src/sfx/2026-10-27/`（git 対象外）。後処理は FFmpeg（先頭の無音を削る → 長さを切る → フェード → ラウドネスを合わせる → 0.89 でリミッター）。
+
+| ファイル | 元（シード、長さ） | プロンプト | 後処理 | 採用 |
+|---|---|---|---|---|
+| `assets/audio/sfx/item_pickup.wav`（0.9 秒、-15.9 LUFS） | item_pickup3_s11（3 秒） | A short bright magical pickup chime, two quick rising glassy notes with a soft sparkle tail, video game item collect sound | 0.9 秒に切り、0.6 秒から 0.3 秒のフェードアウト | 採用: 1046 Hz → 2093 Hz（ド→上のド）の2音がはっきりしていて、ノイズ寄りの `xp_pickup`（中心周波数 8.5 kHz）と聞き分けやすい |
+| — | item_pickup3_s23 / s37 / s51、item_pickup2_s11 | 同上 | — | 不採用: どれも同じ 2093 Hz の音で、s11 より2音目の立ち上がりが弱い（候補として残す） |
+| — | item_pickup_s11〜s51（**1.2 秒**） | 同上 | — | 失敗: 半分以上の標本が振り切れた白色雑音。短すぎる長さを指定すると壊れる（asset-pipeline.md に記録） |
+| `assets/audio/sfx/thirst_drain.wav`（2.9 秒、-15.6 LUFS） | thirst_drain_s11（3.4 秒） | A deep wet sucking sound of water being drawn up through a hollow plant stem, gurgling liquid suction slowly rising in pitch, creature draining fluid | 先頭の無音 0.4 秒を削り、2.8 秒から 0.4 秒のフェードアウト | 採用: 途切れずに続き、低い成分（156 Hz）が一番強い。吸い上げの 3.4 秒にほぼ重なる |
+| — | thirst_drain_s37 | 同上 | — | 次点: 途切れないが高め（556 Hz） |
+| — | thirst_drain_s23 / s51 | 同上 | — | 不採用: 途中に 0.8〜1.3 秒の無音がある |
+
+使い方: アイテム（xp 以外）を拾うと `itemPickup`、渇きの母が吸い始めると `thirstDrain`。`Config.audio.newSfx: false` で元の `xp_pickup` / `mother_charge` の流用に戻る。
+ライセンス: Stable Audio 3（Stability AI Community License）。商用で公開する前の登録は上の「ライセンス」の節のとおり。
+**耳での確認はまだ**（自動のサイクルでは音を聞けないので、波形・周波数・ラウドネスで選んだ）。

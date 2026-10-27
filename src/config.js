@@ -90,7 +90,9 @@ export const Config = {
     // Battle-start line when the stage begins and a last line after the dying scream (false = previous voice set).
     battleVoices: true,
     // Pause between the end of the dying scream and the last line.
-    deathVoiceGap: 1.2
+    deathVoiceGap: 1.2,
+    // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
+    newSfx: true
   },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
@@ -243,6 +245,11 @@ export const Config = {
   // On clearing a chapter, carry one upgrade taken that chapter and one of three chapter rewards into the
   // following chapters (src/campaign.js keeps the choices). enabled: false hides the picker and ignores saved choices.
   carryOver: {
+    enabled: true
+  },
+  // Morning hatch forecast (src/forecast.js): after the pre-sortie dialogue, one card with the chapter's new species
+  // and boss before the battle starts. enabled: false goes straight from the dialogue to the battle.
+  forecast: {
     enabled: true
   },
   // Per-boss tuning (src/bosses.js). Chapter 5's thirst mother tethers nearby eggs and heals by the eggs still alive
