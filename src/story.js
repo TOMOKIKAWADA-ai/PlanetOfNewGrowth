@@ -125,7 +125,7 @@ export class StoryPlayer {
     const speakerSide = otherPortrait && firstAppearance(otherPortrait) < firstAppearance(speakerId) ? 'right' : 'left';
     for (const actor of this.root.querySelectorAll('.story-actor')) {
       const id = actor.dataset.actor;
-      const src = getCharacterPortrait(id, id === line.speaker ? line.expression : 'normal');
+      const src = getCharacterPortrait(STORY_CHARACTERS[id].portraitId ?? id, id === line.speaker ? line.expression : 'normal');
       if (actor.getAttribute('src') !== src) actor.src = src;
       actor.dataset.side = id === speakerId ? speakerSide : speakerSide === 'left' ? 'right' : 'left';
       actor.classList.toggle('is-visible', id === speakerId || id === otherPortrait);

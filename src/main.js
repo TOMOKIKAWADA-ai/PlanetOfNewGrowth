@@ -1,11 +1,13 @@
 import './styles.css';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
+import { CAMPAIGN_STAGES, getCampaignStage, getNextCampaignStage } from './campaign.js';
 import { Config } from './config.js';
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
@@ -14,8 +16,19 @@ import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
+import {
+  createWaterStageTerrainMaterial,
+  createWaterSurfaceMaterial,
+  createWaveNormalTexture,
+  loadTiledTexture,
+  waterStageShoreDistance
+} from './water-stage.js';
 
 const FLOOR_TEXTURE_URL = new URL('../assets/floor/flr_001.png', import.meta.url).href;
+const WATER_STAGE_LAND_TEXTURE_URL = new URL('../assets/floor/flr_water_land_001.jpg', import.meta.url).href;
+const WATER_STAGE_SHORE_TEXTURE_URL = new URL('../assets/floor/flr_water_shore_001.jpg', import.meta.url).href;
+const WATER_STAGE_BED_TEXTURE_URL = new URL('../assets/floor/flr_water_bed_001.jpg', import.meta.url).href;
+const WATER_STAGE_REEDS_TEXTURE_URL = new URL('../assets/floor/water_reeds_001.png', import.meta.url).href;
 const PLAYER_PROJECTILE_FRAME_URLS = [
   new URL('../assets/projectiles/player-bullet/frame_0000.png', import.meta.url).href,
   new URL('../assets/projectiles/player-bullet/frame_0001.png', import.meta.url).href,
@@ -193,6 +206,26 @@ const WATER_STAGE_LAND_PATCHES = [
   { x: 34, z: -31, radius: 14, scaleX: 1.15, scaleZ: 0.75, rotation: -0.28, seed: 4.2 },
   { x: -25, z: 37, radius: 12, scaleX: 1.0, scaleZ: 0.8, rotation: 0.92, seed: 5.5 }
 ];
+// asset indexes into BACKGROUND_OBJECTS; sink lowers a model into the flood water.
+const WATER_STAGE_BUILDINGS = [
+  { asset: 2, x: 12, z: -5, height: 3.2, rotation: 0.4 },
+  { asset: 3, x: -18, z: 5, height: 3.2, rotation: 2.1 },
+  { asset: 0, x: 22, z: 7, height: 3.4, rotation: -0.7 },
+  { asset: 3, x: -39, z: -12, height: 3.0, rotation: 0.9 },
+  { asset: 0, x: 31, z: 28, height: 3.2, rotation: 1.8 },
+  { asset: 3, x: 36, z: -32, height: 3.0, rotation: -1.2 },
+  { asset: 2, x: -25, z: 37, height: 2.8, rotation: 2.6 },
+  { asset: 1, x: -21, z: -22, height: 3.0, rotation: 0.6, sink: 0.35 },
+  { asset: 3, x: -11, z: 27, height: 4.6, rotation: 1.3, sink: 1.3 },
+  { asset: 0, x: 13, z: -28, height: 4.4, rotation: 0.2, sink: 1.4 },
+  { asset: 3, x: 53, z: 4, height: 5.0, rotation: -0.5, sink: 1.6 },
+  { asset: 2, x: -51, z: 17, height: 3.6, rotation: 1.0, sink: 1.2 },
+  { asset: 0, x: 7, z: 46, height: 4.2, rotation: 2.4, sink: 1.5 }
+];
+const WATER_STAGE_REED_CLUMPS = 26;
+const WATER_STAGE_SHORE_ROCKS = 18;
+const WATER_STAGE_ISLAND_ROCKS = 8;
+const WATER_STAGE_GROUND_PATCHES = 8;
 const CHARACTER_OPTIONS = {
   tsukimi: { playerModel: 'tsukimiGlb' },
   akame: { playerModel: 'akameGlb' },
@@ -202,6 +235,28 @@ const appInput = new InputState(window);
 let activeGame = null;
 let selectedStageId = 1;
 let menuCursorButton = null;
+let setDebugStageSelectOpen = () => {};
+const CAMPAIGN_RESUME_KEY = 'mebuki-campaign-resume';
+
+function queueCampaignStage(stageId, characterId) {
+  const stage = getCampaignStage(stageId);
+  sessionStorage.setItem(CAMPAIGN_RESUME_KEY, JSON.stringify({ stageId: stage.id, characterId }));
+  window.location.reload();
+}
+
+function consumeCampaignResume() {
+  const raw = sessionStorage.getItem(CAMPAIGN_RESUME_KEY);
+  sessionStorage.removeItem(CAMPAIGN_RESUME_KEY);
+  if (!raw) return null;
+  try {
+    const resume = JSON.parse(raw);
+    if (!CAMPAIGN_STAGES.some(stage => stage.id === resume.stageId)) return null;
+    if (!CHARACTER_OPTIONS[resume.characterId]) return null;
+    return resume;
+  } catch {
+    return null;
+  }
+}
 
 function setMenuCursor(button) {
   if (menuCursorButton === button) return;
@@ -284,7 +339,8 @@ class Game {
   constructor(characterId = 'tsukimi', stageId = 1) {
     this.characterId = characterId;
     this.stageId = stageId;
-    this.isWaterStage = stageId === 2;
+    this.stage = getCampaignStage(stageId);
+    this.isWaterStage = this.stage.terrain === 'water';
     this.canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -301,7 +357,7 @@ class Game {
     this.renderer.toneMapping = Config.visuals.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = Config.visuals.renderExposure;
     this.scene = new THREE.Scene();
-    const worldColor = this.isWaterStage ? 0x173a43 : 0x15201d;
+    const worldColor = this.stage.worldColor;
     this.scene.background = new THREE.Color(worldColor);
     this.scene.fog = new THREE.FogExp2(worldColor, this.isWaterStage ? 0.017 : 0.012);
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
@@ -424,7 +480,7 @@ class Game {
     this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage(this.stageId === 1 ? '第1章 守る順番\n増殖を抑え、母卵を破壊せよ' : 'Start', 3);
+    this.hud.showMessage(`第${this.stageId}章 ${this.stage.title}\n${this.stage.objective}`, 3);
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
@@ -435,6 +491,7 @@ class Game {
     this.scene.add(ambient);
     const sun = new THREE.DirectionalLight(0xfff0cf, Config.visuals.sunLightIntensity);
     sun.position.set(-28, 34, 24);
+    this.sunDirection = sun.position.clone().normalize();
     sun.castShadow = Config.performance.enableShadows;
     if (Config.performance.enableShadows) {
       sun.shadow.mapSize.set(1024, 1024);
@@ -488,6 +545,9 @@ class Game {
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    if (!this.isWaterStage && this.stage.groundTint !== 0xffffff) {
+      ground.material.color?.setHex(this.stage.groundTint);
+    }
     this.scene.add(ground);
     if (this.isWaterStage) {
       this.createWaterStageEnvironment(ground);
@@ -498,7 +558,7 @@ class Game {
       new THREE.MeshBasicMaterial({ color: 0x83a97c, transparent: true, opacity: 0.28, side: THREE.DoubleSide })
     );
     boundary.rotation.x = -Math.PI / 2;
-    boundary.position.y = 0.035;
+    boundary.position.y = this.isWaterStage ? 0.09 : 0.035;
     this.scene.add(boundary);
 
     if (this.isWaterStage) {
@@ -510,75 +570,54 @@ class Game {
     } else if (Config.visuals.usePrimitiveDecor) {
       this.createPrimitiveDecor();
     }
-    if (Config.visuals.useBackgroundObjects && !this.isWaterStage) this.loadBackgroundObjects();
+    if (Config.visuals.useBackgroundObjects) {
+      if (this.isWaterStage) this.loadWaterStageProps();
+      else this.loadBackgroundObjects();
+    }
   }
 
   createWaterStageEnvironment(ground) {
+    const tileSize = Config.visuals.waterStageTileSize;
+    const bedMap = loadTiledTexture(WATER_STAGE_BED_TEXTURE_URL, this.renderer);
     ground.material.dispose();
-    ground.material = new THREE.MeshStandardMaterial({ color: 0x1d5963, roughness: 0.92 });
+    ground.material = createWaterStageTerrainMaterial({
+      patches: WATER_STAGE_LAND_PATCHES,
+      landMap: loadTiledTexture(WATER_STAGE_LAND_TEXTURE_URL, this.renderer),
+      shoreMap: loadTiledTexture(WATER_STAGE_SHORE_TEXTURE_URL, this.renderer),
+      bedMap,
+      tileSize
+    });
 
     const water = new THREE.Mesh(
       new THREE.CircleGeometry(Config.map.radius, Config.performance.groundSegments),
-      new THREE.MeshPhysicalMaterial({
-        color: 0x4fc2d2,
-        transparent: true,
-        opacity: 0.48,
-        roughness: 0.22,
-        metalness: 0.05,
-        depthWrite: false,
-        side: THREE.DoubleSide
+      createWaterSurfaceMaterial({
+        patches: WATER_STAGE_LAND_PATCHES,
+        bedMap,
+        normalMap: createWaveNormalTexture(),
+        tileSize,
+        sunDirection: this.sunDirection
       })
     );
     water.name = 'WaterStageSurface';
     water.rotation.x = -Math.PI / 2;
-    water.position.y = 0.045;
+    water.position.y = 0.06;
     water.renderOrder = 0;
     this.scene.add(water);
-
-    const shoreMaterial = new THREE.MeshStandardMaterial({ color: 0xb2a874, roughness: 0.98 });
-    const landMaterial = new THREE.MeshStandardMaterial({ color: 0x557649, roughness: 0.96 });
-    for (const patch of WATER_STAGE_LAND_PATCHES) {
-      const island = new THREE.Group();
-      island.name = 'WaterStageIsland';
-      island.position.set(patch.x, 0, patch.z);
-      island.rotation.y = patch.rotation;
-
-      const shore = new THREE.Mesh(
-        this.createIrregularDiscGeometry(patch.radius * 1.04, patch.seed),
-        shoreMaterial
-      );
-      shore.rotation.x = -Math.PI / 2;
-      shore.position.y = 0.07;
-      shore.scale.set(patch.scaleX, patch.scaleZ, 1);
-
-      const land = new THREE.Mesh(
-        this.createIrregularDiscGeometry(patch.radius * 0.93, patch.seed + 0.45),
-        landMaterial
-      );
-      land.rotation.x = -Math.PI / 2;
-      land.position.y = 0.085;
-      land.scale.set(patch.scaleX, patch.scaleZ, 1);
-      land.receiveShadow = true;
-      island.add(shore, land);
-      this.scene.add(island);
-    }
+    this.waterSurface = water;
   }
 
-  createIrregularDiscGeometry(radius, seed) {
-    const geometry = new THREE.CircleGeometry(radius, 48);
-    const positions = geometry.getAttribute('position');
-    for (let i = 1; i < positions.count; i++) {
-      const x = positions.getX(i);
-      const y = positions.getY(i);
-      const angle = Math.atan2(y, x);
-      const edgeScale = 1
-        + Math.sin(angle * 3 + seed) * 0.055
-        + Math.sin(angle * 7 - seed * 1.3) * 0.025;
-      positions.setXY(i, x * edgeScale, y * edgeScale);
+  waterStageShoreDistance(position) {
+    return waterStageShoreDistance(WATER_STAGE_LAND_PATCHES, position.x, position.z);
+  }
+
+  randomWaterStagePoint(minShore, maxShore, minCenterDistance = 0) {
+    let point = randomPointInCircle(Config.map.radius - 4, minCenterDistance);
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const shore = this.waterStageShoreDistance(point);
+      if (shore >= minShore && shore <= maxShore) return point;
+      point = randomPointInCircle(Config.map.radius - 4, minCenterDistance);
     }
-    positions.needsUpdate = true;
-    geometry.computeVertexNormals();
-    return geometry;
+    return point;
   }
 
   isWaterStageLand(position, margin = 1) {
@@ -628,56 +667,147 @@ class Game {
   }
 
   createWaterStageDecor() {
-    const reedGeometry = new THREE.ConeGeometry(0.11, 1, 4);
-    const reedMaterial = new THREE.MeshStandardMaterial({ color: 0x55a779, roughness: 0.92 });
-    const reeds = new THREE.InstancedMesh(reedGeometry, reedMaterial, 90);
+    const texture = new THREE.TextureLoader().load(WATER_STAGE_REEDS_TEXTURE_URL);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
+    const reedHeight = 2.4;
+    const cards = [0, 1, 2].map((index) => {
+      const card = new THREE.PlaneGeometry(reedHeight * 0.667, reedHeight);
+      card.translate(0, reedHeight * 0.5, 0);
+      card.rotateY(index * Math.PI / 3);
+      return card;
+    });
+    const reedGeometry = mergeGeometries(cards);
+    cards.forEach((card) => card.dispose());
+    // Upward normals keep both sides of the crossed cards evenly lit.
+    const normals = reedGeometry.getAttribute('normal');
+    for (let i = 0; i < normals.count; i++) normals.setXYZ(i, 0, 1, 0);
+    const reedMaterial = new THREE.MeshStandardMaterial({
+      map: texture,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+      roughness: 0.9
+    });
+    const windTime = { value: 0 };
+    reedMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = windTime;
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uWindTime;')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+float windBend = pow(clamp(position.y / ${reedHeight.toFixed(1)}, 0.0, 1.0), 2.0);
+float windPhase = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23;
+transformed.x += sin(uWindTime * 1.4 + windPhase) * 0.11 * windBend;
+transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
+        );
+    };
+    this.reedWindTime = windTime;
+
+    const reedsPerClump = 5;
+    const reeds = new THREE.InstancedMesh(reedGeometry, reedMaterial, WATER_STAGE_REED_CLUMPS * reedsPerClump);
     reeds.name = 'WaterStageReeds';
-    const grassGeometry = new THREE.ConeGeometry(0.09, 0.52, 3);
-    const grassMaterial = new THREE.MeshStandardMaterial({ color: 0x78a85b, roughness: 0.96 });
-    const grass = new THREE.InstancedMesh(grassGeometry, grassMaterial, 110);
-    grass.name = 'WaterStageGrass';
-    const rockGeometry = new THREE.DodecahedronGeometry(0.45, 0);
-    const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x718078, roughness: 0.96 });
-    const rocks = new THREE.InstancedMesh(rockGeometry, rockMaterial, 30);
-    rocks.name = 'WaterStageRocks';
     const matrix = new THREE.Matrix4();
     const quaternion = new THREE.Quaternion();
     const scale = new THREE.Vector3();
-
-    for (let i = 0; i < reeds.count; i++) {
-      let point = randomPointInCircle(Config.map.radius - 4, 8);
-      for (let attempt = 0; attempt < 12 && !this.isWaterPosition(point); attempt++) {
-        point = randomPointInCircle(Config.map.radius - 4, 8);
+    const position = new THREE.Vector3();
+    let index = 0;
+    for (let clump = 0; clump < WATER_STAGE_REED_CLUMPS; clump++) {
+      const center = this.randomWaterStagePoint(-0.6, 3.2, Config.map.safeRadius + 4);
+      for (let i = 0; i < reedsPerClump; i++) {
+        const angle = Math.random() * TAU;
+        const distance = Math.sqrt(Math.random()) * 1.7;
+        position.set(center.x + Math.cos(angle) * distance, 0, center.z + Math.sin(angle) * distance);
+        quaternion.setFromEuler(new THREE.Euler(0, Math.random() * TAU, 0));
+        const size = randRange(0.62, 1.15);
+        scale.set(size * randRange(0.85, 1.2), size, size * randRange(0.85, 1.2));
+        matrix.compose(position, quaternion, scale);
+        reeds.setMatrixAt(index++, matrix);
       }
-      point.y = 0.46;
-      quaternion.setFromEuler(new THREE.Euler(0, Math.random() * TAU, 0));
-      const height = randRange(0.8, 2.1);
-      scale.set(randRange(0.7, 1.25), height, randRange(0.7, 1.25));
-      matrix.compose(point, quaternion, scale);
-      reeds.setMatrixAt(i, matrix);
-    }
-    for (let i = 0; i < grass.count; i++) {
-      const point = this.randomWaterStageLandPoint(0.82);
-      point.y = 0.34;
-      quaternion.setFromEuler(new THREE.Euler(0, Math.random() * TAU, 0));
-      const size = randRange(0.7, 1.45);
-      scale.set(size, size, size);
-      matrix.compose(point, quaternion, scale);
-      grass.setMatrixAt(i, matrix);
-    }
-    for (let i = 0; i < rocks.count; i++) {
-      const point = this.randomWaterStageLandPoint(0.78);
-      point.y = 0.34;
-      quaternion.setFromEuler(new THREE.Euler(randRange(-0.18, 0.18), Math.random() * TAU, randRange(-0.18, 0.18)));
-      const size = randRange(0.5, 1.35);
-      scale.set(size * randRange(0.8, 1.25), size * randRange(0.55, 0.9), size);
-      matrix.compose(point, quaternion, scale);
-      rocks.setMatrixAt(i, matrix);
     }
     reeds.instanceMatrix.needsUpdate = true;
-    grass.instanceMatrix.needsUpdate = true;
-    rocks.instanceMatrix.needsUpdate = true;
-    this.scene.add(reeds, grass, rocks);
+    this.scene.add(reeds);
+  }
+
+  async loadWaterStageProps() {
+    try {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const loader = new GLTFLoader();
+      const assetIndexes = [...new Set([...WATER_STAGE_BUILDINGS.map((entry) => entry.asset), 4, 5, 6])];
+      const scenes = new Map();
+      await Promise.all(assetIndexes.map(async (assetIndex) => {
+        const gltf = await loader.loadAsync(BACKGROUND_OBJECTS[assetIndex].url);
+        scenes.set(assetIndex, gltf.scene);
+      }));
+
+      let waterContacts = 0;
+      WATER_STAGE_BUILDINGS.forEach((entry, index) => {
+        const object = scenes.get(entry.asset).clone(true);
+        object.name = `WaterStageBuilding${index + 1}`;
+        this.prepareBackgroundModel(object);
+        object.rotation.y = entry.rotation;
+        this.fitObjectHeight(object, entry.height, true);
+        object.position.x += entry.x;
+        object.position.z += entry.z;
+        object.position.y -= entry.sink ?? 0;
+        this.scene.add(object);
+        this.backgroundObjects.push(object);
+        const obstacle = this.registerBuildingObstacle(object, entry);
+        if (obstacle && this.waterStageShoreDistance(obstacle.position) > -obstacle.radius) {
+          obstacle.waterContact = this.waterSurface.material.uniforms.uContacts.value[waterContacts++];
+          obstacle.waterContact?.set(obstacle.position.x, obstacle.position.z, obstacle.radius * 0.9);
+        }
+      });
+
+      const rockPoints = [
+        ...Array.from({ length: WATER_STAGE_SHORE_ROCKS }, () => this.randomWaterStagePoint(-1.4, 1.2, Config.map.safeRadius + 3)),
+        ...Array.from({ length: WATER_STAGE_ISLAND_ROCKS }, () => this.randomWaterStagePoint(-14, -3, Config.map.safeRadius + 3))
+      ];
+      this.addInstancedWaterStageProp(scenes.get(6), 'WaterStageRocks', rockPoints, 0.55, 1.35, -0.12);
+      const patchPoints = Array.from({ length: WATER_STAGE_GROUND_PATCHES }, () => this.randomWaterStagePoint(-16, -3.5, 9));
+      this.addInstancedWaterStageProp(scenes.get(4), 'WaterStageGroundPatches', patchPoints.slice(0, 4), 0.16, 0.2, 0.01, 3.2);
+      this.addInstancedWaterStageProp(scenes.get(5), 'WaterStageMossPatches', patchPoints.slice(4), 0.3, 0.4, 0.01, 3.2);
+    } catch (error) {
+      console.warn('Failed to load one or more water stage props.', error);
+    }
+  }
+
+  addInstancedWaterStageProp(sourceScene, name, points, minHeight, maxHeight, yOffset, footprint = null) {
+    sourceScene.updateMatrixWorld(true);
+    let sourceMesh = null;
+    sourceScene.traverse((child) => {
+      if (!sourceMesh && child.isMesh) sourceMesh = child;
+    });
+    if (!sourceMesh || points.length === 0) return;
+    const geometry = sourceMesh.geometry.clone().applyMatrix4(sourceMesh.matrixWorld);
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    geometry.translate(-center.x, -box.min.y, -center.z);
+    const material = Array.isArray(sourceMesh.material) ? sourceMesh.material[0].clone() : sourceMesh.material.clone();
+    this.applyMaterialBrightness(material, Config.visuals.backgroundModelBrightness);
+    const instanced = new THREE.InstancedMesh(geometry, material, points.length);
+    instanced.name = name;
+    instanced.receiveShadow = true;
+    const matrix = new THREE.Matrix4();
+    const quaternion = new THREE.Quaternion();
+    const scale = new THREE.Vector3();
+    points.forEach((point, index) => {
+      const height = randRange(minHeight, maxHeight);
+      const verticalScale = height / Math.max(size.y, 0.0001);
+      // Flat ground patches are sized by footprint so they stay thin decals.
+      const horizontalScale = footprint
+        ? footprint * randRange(0.8, 1.25) / Math.max(size.x, size.z, 0.0001)
+        : verticalScale * randRange(0.85, 1.2);
+      point.y = yOffset;
+      quaternion.setFromEuler(new THREE.Euler(0, Math.random() * TAU, 0));
+      scale.set(horizontalScale, verticalScale, horizontalScale);
+      matrix.compose(point, quaternion, scale);
+      instanced.setMatrixAt(index, matrix);
+    });
+    instanced.instanceMatrix.needsUpdate = true;
+    this.scene.add(instanced);
   }
 
   applyPlanarTileUv(geometry, tileSize) {
@@ -884,27 +1014,7 @@ class Game {
         for (let copyIndex = 0; copyIndex < count; copyIndex++) {
           const object = gltf.scene.clone(true);
           object.name = `BackgroundObject${assetIndex + 1}_${copyIndex + 1}`;
-          object.traverse((child) => {
-            if (child.isMesh || child.isSkinnedMesh) {
-              child.castShadow = Config.performance.enableShadows;
-              child.receiveShadow = true;
-              if (child.material) {
-                child.material = Array.isArray(child.material)
-                  ? child.material.map((material) => material.clone())
-                  : child.material.clone();
-                if (Config.visuals.useUnlitBackgroundModels) {
-                  child.material = Array.isArray(child.material)
-                    ? child.material.map((material) => this.createUnlitModelMaterial(material, Config.visuals.backgroundModelBrightness))
-                    : this.createUnlitModelMaterial(child.material, Config.visuals.backgroundModelBrightness);
-                }
-                const materials = Array.isArray(child.material) ? child.material : [child.material];
-                const brightness = Config.visuals.useUnlitBackgroundModels ? 1 : Config.visuals.backgroundModelBrightness;
-                for (const material of materials) {
-                  this.applyMaterialBrightness(material, brightness);
-                }
-              }
-            }
-          });
+          this.prepareBackgroundModel(object);
           this.fitObjectHeight(object, entry.height);
           const placementIndex = this.backgroundObjects.length;
           const angle = placementIndex * 2.399963 + assetIndex * 0.41;
@@ -920,6 +1030,30 @@ class Game {
     } catch (error) {
       console.warn('Failed to load one or more background GLB objects.', error);
     }
+  }
+
+  prepareBackgroundModel(object) {
+    object.traverse((child) => {
+      if (child.isMesh || child.isSkinnedMesh) {
+        child.castShadow = Config.performance.enableShadows;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material = Array.isArray(child.material)
+            ? child.material.map((material) => material.clone())
+            : child.material.clone();
+          if (Config.visuals.useUnlitBackgroundModels) {
+            child.material = Array.isArray(child.material)
+              ? child.material.map((material) => this.createUnlitModelMaterial(material, Config.visuals.backgroundModelBrightness))
+              : this.createUnlitModelMaterial(child.material, Config.visuals.backgroundModelBrightness);
+          }
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          const brightness = Config.visuals.useUnlitBackgroundModels ? 1 : Config.visuals.backgroundModelBrightness;
+          for (const material of materials) {
+            this.applyMaterialBrightness(material, brightness);
+          }
+        }
+      }
+    });
   }
 
   createUnlitModelMaterial(source, brightness = 1) {
@@ -1034,6 +1168,7 @@ class Game {
   collapseBuilding(building, origin = null) {
     if (building.dead) return;
     building.dead = true;
+    building.waterContact?.setZ(0);
     const object = building.object;
     const startY = object.position.y;
     const startScale = object.scale.clone();
@@ -1084,7 +1219,7 @@ class Game {
   }
 
   spawnInitialEggs() {
-    for (let i = 0; i < Config.map.initialEggs; i++) {
+    for (let i = 0; i < Config.map.initialEggs + this.stage.extraEnemies; i++) {
       const point = i < 2
         ? this.findEggSpawnPosition(this.player.position, 12, 19)
         : randomPointInCircle(Config.map.radius * 0.52, 14);
@@ -1094,7 +1229,7 @@ class Game {
   }
 
   spawnInitialEnemies() {
-    for (let i = 0; i < Config.map.initialEnemies; i++) {
+    for (let i = 0; i < Config.map.initialEnemies + this.stage.extraEnemies; i++) {
       const point = this.findEnemySpawnPosition(14, 19);
       if (point) this.spawnEnemy('chaser', point);
     }
@@ -1111,6 +1246,10 @@ class Game {
       for (const type of beat.enemies) {
         const point = this.findEnemySpawnPosition(14, 24);
         if (point) this.spawnEnemy(type, point);
+      }
+      for (let i = 0; i < this.stage.extraEnemies; i++) {
+        const point = this.findEnemySpawnPosition(14, 24);
+        if (point) this.spawnEnemy(this.stageId === 5 ? 'guardian' : 'chaser', point);
       }
     }
   }
@@ -1132,6 +1271,8 @@ class Game {
 
   frame() {
     const dt = Math.min(0.033, this.clock.getDelta());
+    if (this.waterSurface) this.waterSurface.material.uniforms.uTime.value += dt;
+    if (this.reedWindTime) this.reedWindTime.value += dt;
     this.update(dt);
     this.render();
     requestAnimationFrame(() => this.frame());
@@ -1248,6 +1389,10 @@ class Game {
       handleStoryGamepad(this.input);
       return;
     }
+    if (this.state === 'debug') {
+      handleGamepadMenu(this.input, document.getElementById('debugStageSelect'), () => setDebugStageSelectOpen(false));
+      return;
+    }
     if (this.state === 'levelup') {
       handleGamepadMenu(this.input, this.hud.levelUp, null, true);
       return;
@@ -1261,7 +1406,7 @@ class Game {
       return;
     }
     if (this.state === 'paused') handleGamepadMenu(this.input, this.hud.pause);
-    if (this.input.pressed('F3')) this.devVisible = !this.devVisible;
+    if (this.input.pressed('F4')) this.devVisible = !this.devVisible;
     if (this.state === 'tutorial') {
       handleGamepadMenu(this.input, this.hud.tutorial.overlay, () => this.hud.skipTutorial());
       if (this.input.pressed('Escape')) this.hud.skipTutorial();
@@ -1331,6 +1476,15 @@ class Game {
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
     this.spawnEgg(position, true);
+    if (this.motherEgg) {
+      this.motherEgg.maxHp = Math.round(this.motherEgg.maxHp * this.stage.bossScale);
+      this.motherEgg.hp = this.motherEgg.maxHp;
+      if (this.stageId === 5) {
+        this.motherEgg.baseModelScale.multiplyScalar(1.25);
+        this.motherEgg.model.scale.copy(this.motherEgg.baseModelScale);
+        this.motherEgg.ring.scale.setScalar(1.25);
+      }
+    }
     this.spawnBurstEffect(position, 7, 0xff8b52);
     this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
@@ -2137,17 +2291,30 @@ class Game {
     if (this.outcome || (victory && this.player?.dead)) return;
     this.outcome = {
       victory,
-      body: victory && this.stageId === 1
-        ? 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。'
-        : body
+      body: victory ? this.stage.result : body
     };
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
     if (!this.deathWorldActive) this.hud.showDeathBlackout(false);
     this.settleCamera();
-    if (victory && this.stageId === 1) this.replayAftermath();
+    if (victory) this.replayAftermath();
     else this.hud.showResult(victory, this.outcome.body);
+  }
+
+  debugCompleteBattle() {
+    if (this.outcome || this.player?.dead || !['playing', 'paused', 'levelup', 'debug'].includes(this.state)) return;
+    this.finish(true, this.stage.result);
+  }
+
+  goToNextStage() {
+    if (!this.outcome?.victory) return;
+    const next = getNextCampaignStage(this.stageId);
+    if (next) queueCampaignStage(next.id, this.characterId);
+  }
+
+  retryStage() {
+    queueCampaignStage(this.stageId, this.characterId);
   }
 
   replayAftermath() {
@@ -2343,6 +2510,7 @@ function setupCharacterSelect() {
   const characterSelect = document.getElementById('characterSelect');
   const debugStageSelect = document.getElementById('debugStageSelect');
   const stageButtons = [...document.querySelectorAll('[data-stage-id]')];
+  const skipBattleButton = document.getElementById('debugSkipBattle');
   const buttons = [...document.querySelectorAll('[data-character]')];
   const confirmButton = document.getElementById('characterConfirm');
   const selectionSummary = document.getElementById('characterSelectionSummary');
@@ -2378,22 +2546,34 @@ function setupCharacterSelect() {
       button.setAttribute('aria-checked', String(selected));
     });
   };
-  const setDebugStageSelectOpen = (open) => {
+  setDebugStageSelectOpen = (open) => {
     if (!debugStageSelect) return;
+    if (open && activeGame) {
+      activeGame.debugPreviousState = activeGame.state;
+      activeGame.state = 'debug';
+      activeGame.touchControls.setEnabled(false);
+    } else if (!open && activeGame?.state === 'debug') {
+      activeGame.state = activeGame.debugPreviousState ?? 'playing';
+    }
     debugStageSelect.classList.toggle('hidden', !open);
     debugStageSelect.setAttribute('aria-hidden', String(!open));
+    skipBattleButton?.classList.toggle('hidden', !activeGame || Boolean(activeGame.outcome) || activeGame.player?.dead);
     if (open) {
       updateDebugStageSelection();
-      stageButtons.find((button) => Number(button.dataset.stageId) === selectedStageId)?.focus();
-    } else {
+      stageButtons.find((button) => Number(button.dataset.stageId) === (activeGame?.stageId ?? selectedStageId))?.focus();
+    } else if (!activeGame) {
       characterSelect.querySelector(`[data-character="${selectedCharacterId}"]`)?.focus();
+    } else if (activeGame.state === 'result') {
+      const next = activeGame.hud.nextStageButton;
+      (next?.classList.contains('hidden') ? activeGame.hud.replayStoryButton : next)?.focus();
     }
   };
 
   window.addEventListener('keydown', (event) => {
     const characterSelectActive = !characterSelect.classList.contains('hidden');
     const tutorialActive = !document.getElementById('tutorial')?.classList.contains('hidden');
-    if (!characterSelectActive || tutorialActive) return;
+    if (tutorialActive || storyPlayer.active || !characterSelectActive && !activeGame) return;
+    if (activeGame && !['playing', 'paused', 'levelup', 'result', 'debug'].includes(activeGame.state)) return;
     if (event.code === 'F3') {
       event.preventDefault();
       setDebugStageSelectOpen(debugStageSelect?.classList.contains('hidden'));
@@ -2405,12 +2585,22 @@ function setupCharacterSelect() {
 
   stageButtons.forEach((button) => {
     button.addEventListener('click', () => {
-      selectedStageId = Number(button.dataset.stageId) || 1;
+      const stageId = Number(button.dataset.stageId) || 1;
+      if (activeGame) {
+        queueCampaignStage(stageId, activeGame.characterId);
+        return;
+      }
+      selectedStageId = stageId;
       const confirm = new Audio(SFX_URLS.buttonConfirm);
       confirm.volume = Config.audio.sfxVolume * 0.75;
       confirm.play()?.catch?.(() => {});
       setDebugStageSelectOpen(false);
     });
+  });
+  skipBattleButton?.addEventListener('click', () => {
+    if (!activeGame) return;
+    setDebugStageSelectOpen(false);
+    activeGame.debugCompleteBattle();
   });
 
   buttons.forEach((button) => {
@@ -2444,6 +2634,15 @@ function setupTitleScreen() {
   const characterSelect = document.getElementById('characterSelect');
   const startButton = document.getElementById('titleStartButton');
   if (!titleScreen || !characterSelect || !startButton) return;
+  const resume = consumeCampaignResume();
+  if (resume) {
+    selectedStageId = resume.stageId;
+    titleScreen.classList.add('hidden');
+    storyPlayer.show(createBriefing(resume.characterId, resume.stageId), () => {
+      startGameWithCharacter(resume.characterId);
+    });
+    return;
+  }
   startButton.addEventListener('click', () => {
     selectedStageId = 1;
     const confirm = new Audio(SFX_URLS.buttonConfirm);
