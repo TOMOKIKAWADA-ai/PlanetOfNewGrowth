@@ -77,6 +77,7 @@ USBまたはBluetoothで接続し、ブラウザ上でいずれかのボタン�
 - 敵検索用の空間グリッド
 - 弾と経験値オーブのオブジェクトプール
 - 草、岩、木の `InstancedMesh` 配置
+- 水没ステージの水面シェーダー（波の法線、浅瀬の透け、コースティクス、岸と水没建物まわりの白波）と、島・岸・水底をブレンドする地面シェーダー（`src/water-stage.js`）
 
 ## 主な設定場所
 
@@ -97,6 +98,7 @@ USBまたはBluetoothで接続し、ブラウザ上でいずれかのボタン�
 - `assets/eggs/darkseed.glb`
 - `assets/background/*.glb`
 - `assets/floor/flr_001.png`
+- `assets/floor/flr_water_land_001.jpg` / `flr_water_shore_001.jpg` / `flr_water_bed_001.jpg` / `water_reeds_001.png`: 水没ステージ用。Codex の画像生成で作成。水没ステージの建物・岩・苔パッチは `assets/background` のGLBを `WATER_STAGE_BUILDINGS`（`src/main.js`）の配置で流用
 - Kenney `Nature Kit` / `Graveyard Kit` の CC0 GLB
 - Kenney と Tsuyukusa 系GLBは段階的に追加し直すために残していますが、現在は `visuals.useAssetModels: false` のため使用していません
 - 外部モデルOFF時は Vite の `publicDir` も無効化されるため、`dist` へGLB/JPGはコピーされません
