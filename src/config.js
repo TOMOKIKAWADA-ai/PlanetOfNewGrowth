@@ -249,8 +249,9 @@ export const Config = {
   },
   // Morning hatch forecast (src/forecast.js): after the pre-sortie dialogue, one card with the chapter's new species
   // and boss before the battle starts. enabled: false goes straight from the dialogue to the battle.
+  // Off since 2026-10-27 (user: not needed for now). true brings the card back.
   forecast: {
-    enabled: true
+    enabled: false
   },
   // Per-boss tuning (src/bosses.js). Chapter 5's thirst mother tethers nearby eggs and heals by the eggs still alive
   // when the drain ends; breaking them first (bird dive on land, fish bite in water) denies the heal. Set the stage's boss to 'motherEgg' to remove it.

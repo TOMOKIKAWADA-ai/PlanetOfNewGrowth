@@ -56,8 +56,11 @@ async function startBattle(page, id, stage = 1) {
   await page.locator('#characterConfirm').click();
   assert.equal(await page.locator('.story-header h2').textContent(), createBriefing(id, stage).subtitle);
   await page.locator('[data-action="skip"]').click();
-  assert.equal(await page.locator('#forecastStart').evaluate(el => el === document.activeElement), true);
-  await page.locator('#forecastStart').click();
+  // 朝の孵化予報（Config.forecast.enabled）が有効なら、「出撃」にフォーカスがあることを確かめて進む。
+  if (await page.locator('#forecastStart').isVisible()) {
+    assert.equal(await page.locator('#forecastStart').evaluate(el => el === document.activeElement), true);
+    await page.locator('#forecastStart').click();
+  }
   await page.waitForFunction(() => window.__storyTest.game?.state === 'playing', null, { timeout: 45000 });
   assert.equal(await page.locator('#game').evaluate(el => el.inert), false);
 }
@@ -189,7 +192,7 @@ try {
   assert.equal(await page.locator('.story-player').evaluate(el => el.classList.contains('is-npc')), true);
   await page.screenshot({ path: 'tmp/story-check/minari.png' });
   await page.locator('[data-action="skip"]').click();
-  await page.locator('#forecastStart').click();
+  if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click();
   await page.waitForFunction(() => window.__storyTest.game?.state === 'playing', null, { timeout: 45000 });
   assert.match(await page.locator('#clock').textContent(), /^(?:0?4:00|3:5\d)$/);
   assert.equal(await page.evaluate(() => window.__storyTest.Config.map.playSeconds), 240);

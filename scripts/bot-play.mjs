@@ -279,7 +279,7 @@ try {
     await page.locator(`[data-character="${characterId}"]`).click();
     await page.locator('#characterConfirm').click();
     await page.locator('[data-action="skip"]').click();
-    await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
+    if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
     await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, realtime: Boolean(recordDir) });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });

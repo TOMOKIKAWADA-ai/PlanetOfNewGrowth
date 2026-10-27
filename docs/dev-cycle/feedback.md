@@ -9,6 +9,8 @@
 
 ## 反映済み
 
+- 「孵化予報は今は必要ない機能かな」（2026-10-27）→ `Config.forecast.enabled: false` にして、出撃前会話から直接戦闘に入る元の流れに戻した。コード（`src/forecast.js`）は残してあり、true で戻る。予報とつながる E6（卵は学ぶ）は保留にした → 反映: 2026-10-27
+
 - 「avatarExpressions を 'all' と比べられるようにして」→ URL の `?avatarExpressions=all` で切り替えられるようにし、比較画像を devlog に貼った。続けて「'all' に切り替えて」→ `Config.story.avatarExpressions: 'all'` にした（2026-10-25） → 反映: 2026-10-25
 
 - 「各章のボスを作るとき、画面に出るボスの名前を変えてよいか」「会話画面の立ち絵をアバターに置き換える試作（B5-2）に進めてよいか」→「このふたつは進めて」（2026-10-25）→ ボスの名前は `src/bosses.js` の `getBossName` で、種類に `name` があればそれを出すようにした（各ボスを作るときに名前を足す）。B5-2 は同日に試作（`Config.story.avatarPortraits`） → 反映: 2026-10-25
