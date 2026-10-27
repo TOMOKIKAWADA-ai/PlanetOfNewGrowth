@@ -1,6 +1,7 @@
 import { Config, UpgradePool } from './config.js';
 import { clamp } from './math.js';
-import { FINAL_STAGE_ID, getNextCampaignStage } from './campaign.js';
+import { isFinalChapter } from './campaign.js';
+import { getBossName } from './bosses.js';
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -109,7 +110,6 @@ export class Hud {
     this.mpText = document.getElementById('mpText');
     this.burstText = document.getElementById('burstText');
     this.clock = document.getElementById('clock');
-    this.chapterObjective = document.getElementById('chapterObjective');
     this.statsLine = document.getElementById('statsLine');
     this.hintLine = document.getElementById('hintLine');
     this.centerMessage = document.getElementById('centerMessage');
@@ -118,25 +118,25 @@ export class Hud {
     this.result = document.getElementById('result');
     this.resultTitle = document.getElementById('resultTitle');
     this.resultBody = document.getElementById('resultBody');
+    this.carryOver = document.getElementById('carryOver');
     this.restartButton = document.getElementById('restartButton');
     this.replayStoryButton = document.getElementById('replayStoryButton');
-    this.nextStageButton = document.getElementById('nextStageButton');
-    this.retryStageButton = document.getElementById('retryStageButton');
     this.deathBlackout = document.getElementById('deathBlackout');
     this.pause = document.getElementById('pause');
     this.pauseResumeButton = document.getElementById('pauseResumeButton');
     this.motherPanel = document.getElementById('motherPanel');
-    this.motherTitle = this.motherPanel.querySelector('.mother-title');
     this.motherBar = document.getElementById('motherBar');
     this.motherAlert = document.getElementById('motherAlert');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
-    this.chapterObjective.textContent = `第${game.stageId}章 ${game.stage.title} · ${game.stage.objective}`;
-    this.motherTitle.textContent = game.stageId === FINAL_STAGE_ID ? '巨大母卵' : '母卵';
+    this.nextChapterButton = document.getElementById('nextChapterButton');
+    this.retryButton = document.getElementById('retryButton');
+    const motherTitle = this.motherPanel?.querySelector('.mother-title');
+    if (motherTitle) motherTitle.textContent = getBossName(game.stage);
     this.restartButton.addEventListener('click', () => window.location.reload());
     this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
-    this.nextStageButton.addEventListener('click', () => this.game.goToNextStage());
-    this.retryStageButton.addEventListener('click', () => this.game.retryStage());
+    this.nextChapterButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId + 1));
+    this.retryButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId));
     this.pauseResumeButton.addEventListener('click', () => {
       if (this.game.state !== 'paused') return;
       this.game.state = 'playing';
@@ -200,8 +200,9 @@ export class Hud {
     this.messageTimer = seconds;
   }
 
-  showBossWarning(seconds) {
-    this.showMessage('WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2', seconds);
+  showBossWarning(seconds, form = 'human') {
+    const hint = form === 'bird' ? '\u98db\u3093\u3067\u3044\u308c\u3070\u5730\u3092\u9019\u3046\u6ce2\u306f\u5c4a\u304b\u306a\u3044' : '\u9ce5\u5f62\u614b\u3067\u98db\u3079\u3070\u304b\u308f\u305b\u308b';
+    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds);
     this.centerMessage.classList.add('boss-warning');
   }
 
@@ -276,19 +277,69 @@ export class Hud {
   }
 
   showResult(victory, body) {
-    const nextStage = victory ? getNextCampaignStage(this.game.stageId) : null;
+    const { stage } = this.game;
+    const finale = victory && isFinalChapter(this.game.stageId);
     this.result.classList.toggle('victory', victory);
     this.result.classList.toggle('defeat', !victory);
-    this.resultTitle.textContent = victory
-      ? this.game.stageId === FINAL_STAGE_ID ? 'THE END' : `第${this.game.stageId}章 完`
-      : 'Defeat';
+    this.resultTitle.textContent = finale ? 'END' : victory ? `${stage.label} 完` : 'Defeat';
+    this.replayStoryButton.textContent = finale ? 'エンディングを見返す' : '帰還後の会話を読み返す';
     this.replayStoryButton.classList.toggle('hidden', !victory);
-    this.nextStageButton.classList.toggle('hidden', !nextStage);
-    this.nextStageButton.textContent = nextStage ? `第${nextStage.id}章へ進む` : '';
-    this.retryStageButton.classList.toggle('hidden', victory);
+    this.nextChapterButton.classList.toggle('hidden', !victory || finale);
+    this.retryButton.classList.toggle('hidden', victory);
     this.resultBody.textContent = body;
     this.result.classList.remove('hidden');
-    (nextStage ? this.nextStageButton : victory ? this.replayStoryButton : this.retryStageButton)?.focus();
+    this.renderCarryOver();
+    const firstChoice = this.carryOver.querySelector('button:not(.selected)');
+    (firstChoice ?? (victory && !finale ? this.nextChapterButton : victory ? this.restartButton : this.retryButton)).focus();
+  }
+
+  // After a cleared chapter: pick one upgrade taken this chapter and one of the chapter's rewards to carry on.
+  renderCarryOver() {
+    const options = this.game.getCarryOverOptions();
+    this.carryOver.replaceChildren();
+    this.carryOver.classList.toggle('hidden', !options);
+    this.nextChapterButton.disabled = false;
+    if (!options) return;
+    const groups = [
+      { kind: 'upgrade', key: 'upgradeId', heading: 'この章で取った強化から1つ', items: options.upgrades },
+      { kind: 'reward', key: 'rewardId', heading: `${this.game.stage.label}の強化から1つ`, items: options.rewards }
+    ].filter(group => group.items.length);
+    const lead = document.createElement('p');
+    lead.className = 'carry-over-lead';
+    lead.textContent = '次の章へ持っていく強化を選ぶ（以降の章でもずっと有効）';
+    this.carryOver.appendChild(lead);
+    for (const group of groups) {
+      const section = document.createElement('section');
+      section.className = 'carry-over-group';
+      const heading = document.createElement('h2');
+      heading.textContent = group.heading;
+      const list = document.createElement('div');
+      list.className = 'carry-over-choices';
+      for (const item of group.items) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'carry-over-choice';
+        const selected = options.choice[group.key] === item.id;
+        button.classList.toggle('selected', selected);
+        button.setAttribute('aria-pressed', String(selected));
+        const title = document.createElement('b');
+        title.textContent = item.count > 1 ? `${item.title} ×${item.count}` : item.title;
+        const body = document.createElement('span');
+        body.textContent = group.kind === 'upgrade' ? `${item.body}（1回分を引き継ぐ）` : item.body;
+        button.append(title, body);
+        button.addEventListener('click', () => {
+          this.game.chooseCarryOver(group.kind, item.id);
+          this.renderCarryOver();
+          const next = this.carryOver.querySelector('.carry-over-group:not(.done) button');
+          (next ?? this.nextChapterButton).focus();
+        });
+        list.appendChild(button);
+      }
+      section.classList.toggle('done', Boolean(options.choice[group.key]));
+      section.append(heading, list);
+      this.carryOver.appendChild(section);
+    }
+    this.nextChapterButton.disabled = groups.some(group => !options.choice[group.key]);
   }
 
   showDeathBlackout(show) {

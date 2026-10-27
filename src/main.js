@@ -6,12 +6,17 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
+import { buildForecast, ForecastCard } from './forecast.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
-import { CAMPAIGN_STAGES, getCampaignStage, getNextCampaignStage } from './campaign.js';
-import { Config } from './config.js';
-import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
+import {
+  getStage, isFinalChapter, loadProgress, saveProgress, clearProgress, requestLaunch, takeLaunchRequest,
+  startCarryOver, saveCarryOver
+} from './campaign.js';
+import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.js';
+import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
+import { getBossName } from './bosses.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -115,7 +120,9 @@ const SFX_URLS = {
   projectileHit: new URL('../assets/audio/sfx/projectile_hit.wav', import.meta.url).href,
   transformBird: new URL('../assets/audio/sfx/transform_bird.wav', import.meta.url).href,
   transformHuman: new URL('../assets/audio/sfx/transform_human.wav', import.meta.url).href,
-  xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href
+  xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href,
+  itemPickup: new URL('../assets/audio/sfx/item_pickup.wav', import.meta.url).href,
+  thirstDrain: new URL('../assets/audio/sfx/thirst_drain.wav', import.meta.url).href
 };
 const VOICE_URLS = {
   tsukimi: {
@@ -125,6 +132,8 @@ const VOICE_URLS = {
     ],
     dying: [new URL('../assets/audio/voice/tsukimi/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -132,7 +141,9 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/akame/hit_02.mp3', import.meta.url).href
     ],
     dying: [new URL('../assets/audio/voice/akame/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href]
+    burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -140,10 +151,20 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/kiichigo/hit_02.mp3', import.meta.url).href
     ],
     dying: [new URL('../assets/audio/voice/kiichigo/dying.mp3', import.meta.url).href],
-    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href]
+    burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
+    battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
+    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
+// Installed once per page: the geometries are shared module state, and a new game (next chapter) reuses them.
+let pickupModelsInstalled = false;
+const PICKUP_MODELS = {
+  hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href,
+  mp: new URL('../assets/pickups/pickup_mp.glb', import.meta.url).href,
+  burst: new URL('../assets/pickups/pickup_burst.glb', import.meta.url).href,
+  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href
+};
 const GAMEPLAY_MODELS = {
   darkseedEgg: {
     url: new URL('../assets/eggs/darkseed.glb', import.meta.url).href,
@@ -231,32 +252,26 @@ const CHARACTER_OPTIONS = {
   akame: { playerModel: 'akameGlb' },
   kiichigo: { playerModel: 'kiichigoGlb' }
 };
+const CHAPTER_RESULTS = {
+  1: 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。',
+  2: 'シラユリ観測所の記録を回収した。\n卵は、白蓮保管庫から水路をさかのぼっていた。',
+  3: '水門の母卵は沈んだ。\n白蓮保管庫の扉が開き、卵の出どころが明らかになった。',
+  4: '避難所に、卵は一つも届かなかった。\n四つの区は、孵化の夜まで水を止めると決めた。',
+  5: '旧貯水池の水を、歩いて持ち帰った。\nニレの葉が、もう一度開いた。',
+  6: '白蓮は咲かなかった。\n一斉孵化の朝は来ず、三人は戸口の内側で眠った。'
+};
+// デバッグ機能（F2 の開発情報表示とステージ選択）は、開発サーバーか URL に ?debug があるときだけ使える。
+const DEBUG_ENABLED = import.meta.env.DEV || new URLSearchParams(window.location.search).has('debug');
+const DEBUG_KEY = 'F2';
 const appInput = new InputState(window);
+if (DEBUG_ENABLED) {
+  window.addEventListener('keydown', (event) => {
+    if (event.code === DEBUG_KEY) event.preventDefault();
+  }, true);
+}
 let activeGame = null;
 let selectedStageId = 1;
 let menuCursorButton = null;
-let setDebugStageSelectOpen = () => {};
-const CAMPAIGN_RESUME_KEY = 'mebuki-campaign-resume';
-
-function queueCampaignStage(stageId, characterId) {
-  const stage = getCampaignStage(stageId);
-  sessionStorage.setItem(CAMPAIGN_RESUME_KEY, JSON.stringify({ stageId: stage.id, characterId }));
-  window.location.reload();
-}
-
-function consumeCampaignResume() {
-  const raw = sessionStorage.getItem(CAMPAIGN_RESUME_KEY);
-  sessionStorage.removeItem(CAMPAIGN_RESUME_KEY);
-  if (!raw) return null;
-  try {
-    const resume = JSON.parse(raw);
-    if (!CAMPAIGN_STAGES.some(stage => stage.id === resume.stageId)) return null;
-    if (!CHARACTER_OPTIONS[resume.characterId]) return null;
-    return resume;
-  } catch {
-    return null;
-  }
-}
 
 function setMenuCursor(button) {
   if (menuCursorButton === button) return;
@@ -338,8 +353,8 @@ function handleGamepadMenu(input, container, onCancel = null, linearFallback = f
 class Game {
   constructor(characterId = 'tsukimi', stageId = 1) {
     this.characterId = characterId;
-    this.stageId = stageId;
-    this.stage = getCampaignStage(stageId);
+    this.stage = getStage(stageId);
+    this.stageId = this.stage.chapter;
     this.isWaterStage = this.stage.terrain === 'water';
     this.canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({
@@ -357,9 +372,8 @@ class Game {
     this.renderer.toneMapping = Config.visuals.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = Config.visuals.renderExposure;
     this.scene = new THREE.Scene();
-    const worldColor = this.stage.worldColor;
-    this.scene.background = new THREE.Color(worldColor);
-    this.scene.fog = new THREE.FogExp2(worldColor, this.isWaterStage ? 0.017 : 0.012);
+    this.scene.background = new THREE.Color(this.stage.worldColor);
+    this.scene.fog = new THREE.FogExp2(this.stage.worldColor, this.stage.fog);
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
     this.assets = null;
     this.input = appInput;
@@ -393,6 +407,14 @@ class Game {
     this.modelTemplates = new Map();
     this.motherEgg = null;
     this.motherSpawned = false;
+    this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
+    this.mimicHintShown = false;
+    this.mimicStuns = 0;
+    this.thirstHintShown = false;
+    this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
+    // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
+    this.takenUpgrades = new Map();
+    this.carryChoice = null;
     this.nextStageBeat = 0;
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
@@ -473,6 +495,7 @@ class Game {
     this.player = new Player(this);
     this.scene.add(this.player.group);
     await this.player.loadVisuals();
+    const carried = this.applyCarryOver();
     this.cameraRig = new CameraRig(this.camera, this.player);
     this.spawnInitialEggs();
     this.spawnInitialEnemies();
@@ -480,16 +503,20 @@ class Game {
     this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage(`第${this.stageId}章 ${this.stage.title}\n${this.stage.objective}`, 3);
+    const carriedLine = carried ? `\n引き継いだ強化 ${carried}` : '';
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${getBossName(this.stage)}を破壊せよ${carriedLine}`, 3);
+    if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
 
   setupLighting() {
     this.setupEnvironmentLighting();
-    const ambient = new THREE.HemisphereLight(0xcfe0ff, 0x26342b, Config.visuals.ambientLightIntensity);
+    const { light } = this.stage;
+    this.renderer.toneMappingExposure = Config.visuals.renderExposure * light.exposure;
+    const ambient = new THREE.HemisphereLight(light.sky, light.ground, Config.visuals.ambientLightIntensity);
     this.scene.add(ambient);
-    const sun = new THREE.DirectionalLight(0xfff0cf, Config.visuals.sunLightIntensity);
+    const sun = new THREE.DirectionalLight(light.sun, Config.visuals.sunLightIntensity);
     sun.position.set(-28, 34, 24);
     this.sunDirection = sun.position.clone().normalize();
     sun.castShadow = Config.performance.enableShadows;
@@ -504,7 +531,7 @@ class Game {
     }
     if (Config.visuals.sunLightIntensity > 0) this.scene.add(sun);
     if (Config.visuals.fillLightIntensity > 0) {
-      const fill = new THREE.DirectionalLight(0xaec8ff, Config.visuals.fillLightIntensity);
+      const fill = new THREE.DirectionalLight(light.fill, Config.visuals.fillLightIntensity);
       fill.position.set(30, 22, -34);
       fill.castShadow = false;
       this.scene.add(fill);
@@ -545,9 +572,6 @@ class Game {
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
-    if (!this.isWaterStage && this.stage.groundTint !== 0xffffff) {
-      ground.material.color?.setHex(this.stage.groundTint);
-    }
     this.scene.add(ground);
     if (this.isWaterStage) {
       this.createWaterStageEnvironment(ground);
@@ -595,7 +619,9 @@ class Game {
         bedMap,
         normalMap: createWaveNormalTexture(),
         tileSize,
-        sunDirection: this.sunDirection
+        sunDirection: this.sunDirection,
+        sunColor: this.stage.light.sun,
+        skyColor: this.stage.light.sky
       })
     );
     water.name = 'WaterStageSurface';
@@ -948,6 +974,19 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
           console.warn(`Failed to load gameplay model: ${key}`, error);
         }
       }));
+      if (Config.pickups.models.enabled && !pickupModelsInstalled) {
+        pickupModelsInstalled = true;
+        await Promise.all(Object.entries(PICKUP_MODELS).map(async ([type, url]) => {
+          try {
+            const gltf = await loader.loadAsync(url);
+            let geometry = null;
+            gltf.scene.traverse((child) => { if (!geometry && child.isMesh) geometry = child.geometry; });
+            if (geometry) installPickupModel(type, geometry, Config.pickups.models.size);
+          } catch (error) {
+            console.warn(`Failed to load pickup model: ${type}`, error);
+          }
+        }));
+      }
     } catch (error) {
       console.warn('Failed to initialize gameplay model loader.', error);
     }
@@ -1219,7 +1258,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   spawnInitialEggs() {
-    for (let i = 0; i < Config.map.initialEggs + this.stage.extraEnemies; i++) {
+    for (let i = 0; i < Config.map.initialEggs; i++) {
       const point = i < 2
         ? this.findEggSpawnPosition(this.player.position, 12, 19)
         : randomPointInCircle(Config.map.radius * 0.52, 14);
@@ -1229,7 +1268,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   spawnInitialEnemies() {
-    for (let i = 0; i < Config.map.initialEnemies + this.stage.extraEnemies; i++) {
+    for (let i = 0; i < Config.map.initialEnemies; i++) {
       const point = this.findEnemySpawnPosition(14, 19);
       if (point) this.spawnEnemy('chaser', point);
     }
@@ -1246,10 +1285,6 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       for (const type of beat.enemies) {
         const point = this.findEnemySpawnPosition(14, 24);
         if (point) this.spawnEnemy(type, point);
-      }
-      for (let i = 0; i < this.stage.extraEnemies; i++) {
-        const point = this.findEnemySpawnPosition(14, 24);
-        if (point) this.spawnEnemy(this.stageId === 5 ? 'guardian' : 'chaser', point);
       }
     }
   }
@@ -1303,7 +1338,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.cleanupLists();
       this.ensureEggsExist();
       if (this.elapsed >= Config.map.playSeconds && (!this.motherEgg || !this.motherEgg.dead)) {
-        this.finish(false, '4分以内に母卵を破壊できませんでした');
+        this.finish(false, `${Config.map.playSeconds / 60}分以内に${getBossName(this.stage)}を破壊できませんでした`);
       }
     }
     if (this.state === 'dying') {
@@ -1389,10 +1424,6 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       handleStoryGamepad(this.input);
       return;
     }
-    if (this.state === 'debug') {
-      handleGamepadMenu(this.input, document.getElementById('debugStageSelect'), () => setDebugStageSelectOpen(false));
-      return;
-    }
     if (this.state === 'levelup') {
       handleGamepadMenu(this.input, this.hud.levelUp, null, true);
       return;
@@ -1406,7 +1437,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       return;
     }
     if (this.state === 'paused') handleGamepadMenu(this.input, this.hud.pause);
-    if (this.input.pressed('F4')) this.devVisible = !this.devVisible;
+    if (DEBUG_ENABLED && this.input.pressed(DEBUG_KEY)) this.devVisible = !this.devVisible;
     if (this.state === 'tutorial') {
       handleGamepadMenu(this.input, this.hud.tutorial.overlay, () => this.hud.skipTutorial());
       if (this.input.pressed('Escape')) this.hud.skipTutorial();
@@ -1457,6 +1488,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   spawnEgg(position, isMother = false) {
     if (!isMother && !this.canSpawnEgg()) return null;
     const egg = new Egg(this, position, isMother);
+    if (!isMother && this.mimicEggsActive && !egg.aquatic && Math.random() < Config.egg.mimic.chance) egg.isMimic = true;
     this.scene.add(egg.object);
     if (isMother) this.motherEgg = egg;
     else this.eggs.push(egg);
@@ -1475,16 +1507,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
-    this.spawnEgg(position, true);
-    if (this.motherEgg) {
-      this.motherEgg.maxHp = Math.round(this.motherEgg.maxHp * this.stage.bossScale);
-      this.motherEgg.hp = this.motherEgg.maxHp;
-      if (this.stageId === 5) {
-        this.motherEgg.baseModelScale.multiplyScalar(1.25);
-        this.motherEgg.model.scale.copy(this.motherEgg.baseModelScale);
-        this.motherEgg.ring.scale.setScalar(1.25);
-      }
-    }
+    const mother = this.spawnEgg(position, true);
+    mother.maxHp *= this.stage.motherHpScale;
+    mother.hp = mother.maxHp;
     this.spawnBurstEffect(position, 7, 0xff8b52);
     this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
@@ -1599,9 +1624,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.eggsDestroyed += 1;
     this.playSfx('eggBreak', { volume: 0.68, cooldown: 0.05 });
     this.spawnXp(egg.position, Config.egg.xp);
-    this.spawnRandomPickup(egg.position, 'egg');
+    if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
     this.player.addBurst(Config.player.burstGainEgg);
-    if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio, 0, this.player.maxHp);
+    if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio * this.player.eggHealScale, 0, this.player.maxHp);
   }
 
   spawnProjectile(origin, target, spec) {
@@ -2049,6 +2074,48 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
         material.opacity = (0.08 + pulse * 0.18) * Math.min(1, effect.life * 5);
       }
     });
+    if (Config.egg.motherShockwaveTimingRing) this.spawnMotherShockwaveTimingRings(position, range, duration);
+  }
+
+  // The outline marks how far the ground wave reaches (seen from the wide bird camera); a ring at the
+  // player's feet closes to nothing when the wave fires, shown only while a human-form player is in range.
+  spawnMotherShockwaveTimingRings(position, range, duration) {
+    const segments = Config.performance.effectSegments * 2;
+    const edgeMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff5a60, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const edge = new THREE.Mesh(new THREE.RingGeometry(range - 0.32, range, segments), edgeMaterial);
+    edge.position.set(position.x, 0.2, position.z);
+    edge.rotation.x = -Math.PI / 2;
+    edge.renderOrder = 6;
+    const closingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff3a44, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const closing = new THREE.Mesh(new THREE.RingGeometry(0.86, 1, segments), closingMaterial);
+    closing.rotation.x = -Math.PI / 2;
+    closing.renderOrder = 7;
+    const group = new THREE.Group();
+    group.add(edge, closing);
+    this.scene.add(group);
+    const player = this.player;
+    this.effects.push({
+      object: group,
+      life: duration,
+      duration,
+      update(effect, dt) {
+        effect.life -= dt;
+        const t = clamp(1 - effect.life / effect.duration, 0, 1);
+        const fadeIn = Math.min(1, t / 0.12);
+        edgeMaterial.opacity = (0.5 + Math.sin(t * Math.PI * 12) * 0.25) * fadeIn;
+        const threatened = player && !player.dead && player.form !== 'bird'
+          && horizontalDistanceSq(position, player.position) <= range * range;
+        closing.visible = threatened;
+        if (!threatened) return;
+        closing.position.set(player.position.x, 0.22, player.position.z);
+        closing.scale.setScalar(Math.max(0.05, 3.4 * (1 - t)));
+        closingMaterial.opacity = 0.9 * fadeIn;
+      }
+    });
   }
 
   spawnMotherShockwave(position, range, damage, duration) {
@@ -2104,7 +2171,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
           this.showMessage('\u9ce5\u5f62\u614b\uff1a\u885d\u6483\u6ce2\u7121\u52b9', 1.1);
           return;
         }
-        player.takeDamage(damage, { ignoreInvincibility: true });
+        player.takeDamage(damage * player.shockwaveDamageScale, { ignoreInvincibility: true });
         this.shake = Math.max(this.shake, 0.68);
       }
     });
@@ -2112,6 +2179,142 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(position, 4.2, 0xffffff, 0.68, 0.32);
     this.spawnParticleBurst(position, 82, 0xff2534, 6.2, 0.68, 0.82);
   }
+
+  // Thirst mother (src/bosses.js): tether the chosen eggs; each tether fades as soon as its egg is broken.
+  onThirstDrainStart(mother, eggs, seconds) {
+    this.thirstStats.drains += 1;
+    if (!this.thirstHintShown) {
+      this.thirstHintShown = true;
+      this.showMessage(`${getBossName(this.stage)}が卵を吸っている\n吸われる前に壊せば回復させない。鳥や魚で先に食べよう`, 3.2);
+    } else {
+      this.showMessage('卵が吸われている！', 1.4);
+    }
+    if (Config.audio.newSfx) this.playSfx('thirstDrain', { volume: 0.75, cooldown: 0.4 });
+    else this.playSfx('motherCharge', { volume: 0.6, cooldown: 0.4 });
+    for (const egg of eggs) this.spawnThirstTether(mother, egg, seconds);
+  }
+
+  onThirstDrainEnd(mother, consumed, total, heal) {
+    this.thirstStats.eggsConsumed += consumed;
+    this.thirstStats.eggsDenied += total - consumed;
+    this.thirstStats.healed += heal;
+    if (consumed > 0) {
+      mother.hitPulse = Math.max(mother.hitPulse, 0.03);
+      this.spawnRingEffect(mother.position, 4.4, 0x7fe9ff, 0.8, 0.5);
+      this.spawnParticleBurst(mother.position, 40, 0x9ff3ff, 3.2, 0.6, 0.8);
+      this.showMessage(`${getBossName(this.stage)}が回復した（卵 ${consumed} 個）`, 1.6);
+    } else {
+      this.showMessage('全部壊した！ 回復させなかった', 1.6);
+    }
+  }
+
+  // An egg swallowed by the boss vanishes without dropping XP or items.
+  consumeEggForBoss(egg) {
+    egg.dead = true;
+    this.scene.remove(egg.object);
+    this.spawnParticleBurst(egg.position, 14, 0x9ff3ff, 1.1, 0.42, 0.7);
+  }
+
+  spawnThirstTether(mother, egg, duration) {
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x7fe9ff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+    });
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.32, 1, 6, 1, true), material);
+    const droplets = [];
+    const dropletGeometry = new THREE.SphereGeometry(0.34, 8, 6);
+    for (let i = 0; i < 3; i++) droplets.push(new THREE.Mesh(dropletGeometry, material));
+    const ringMaterial = new THREE.MeshBasicMaterial({
+      color: 0x7fe9ff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.25, 1.6, Config.performance.effectSegments), ringMaterial);
+    ring.rotation.x = -Math.PI / 2;
+    const group = new THREE.Group();
+    group.add(beam, ring, ...droplets);
+    group.renderOrder = 6;
+    this.scene.add(group);
+    const from = new THREE.Vector3();
+    const to = new THREE.Vector3();
+    const axis = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+    this.effects.push({
+      object: group,
+      life: duration,
+      duration,
+      update(effect, dt) {
+        effect.life -= dt;
+        if (egg.dead) effect.life = Math.min(effect.life, 0.18);
+        from.set(egg.position.x, 1.1, egg.position.z);
+        to.set(mother.position.x, 2.6, mother.position.z);
+        axis.subVectors(to, from);
+        const length = axis.length();
+        beam.position.copy(from).addScaledVector(axis, 0.5);
+        beam.scale.set(1, length, 1);
+        beam.quaternion.setFromUnitVectors(up, axis.normalize());
+        const t = clamp(1 - effect.life / effect.duration, 0, 1);
+        for (let i = 0; i < droplets.length; i++) {
+          const s = (t * 3 + i / droplets.length) % 1;
+          droplets[i].position.lerpVectors(from, to, s);
+        }
+        ring.position.set(egg.position.x, 0.22, egg.position.z);
+        ring.scale.setScalar(1 - t * 0.35);
+        const fade = Math.min(1, effect.life * 6, (effect.duration - effect.life) * 6);
+        material.opacity = (0.45 + Math.sin(t * Math.PI * 12) * 0.2) * fade;
+        ringMaterial.opacity = 0.8 * fade;
+      }
+    });
+  }
+
+  showMimicHint() {
+    if (this.mimicHintShown) return;
+    this.mimicHintShown = true;
+    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2);
+  }
+
+  onPlayerStunned(position, seconds) {
+    this.mimicStuns += 1;
+    this.mimicHintShown = true;
+    this.spawnRingEffect(position, 3.6, 0xc58cff, 0.86, 0.5);
+    this.spawnParticleBurst(position, 46, 0xb47aff, 4.2, 0.6, 0.7);
+    this.playSfx('eggBreak', { volume: 0.86, cooldown: 0.1 });
+    this.shake = Math.max(this.shake, 0.45);
+    this.showMessage('擬態卵！ 動けない', seconds);
+    if (Config.egg.mimic.stunMarker) this.spawnStunMarker(seconds);
+  }
+
+  // 鳥形態のカメラは遠いので、足元の輪より目立つ印を頭上に回す。硬直が解けるまでプレイヤーに付いていく。
+  spawnStunMarker(seconds) {
+    const player = this.player;
+    const group = new THREE.Group();
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xe2bcff, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false, toneMapped: false, fog: false
+    });
+    const geometry = new THREE.OctahedronGeometry(0.75, 0);
+    const count = 3;
+    for (let i = 0; i < count; i++) {
+      const gem = new THREE.Mesh(geometry, material);
+      gem.userData.angle = (i / count) * Math.PI * 2;
+      gem.renderOrder = 9;
+      group.add(gem);
+    }
+    this.scene.add(group);
+    this.effects.push({
+      object: group,
+      life: seconds,
+      duration: seconds,
+      update(effect, dt) {
+        effect.life = Math.min(effect.life - dt, player.stunTimer);
+        const spin = (effect.duration - effect.life) * 5.5;
+        group.position.set(player.position.x, player.position.y + 5, player.position.z);
+        for (const gem of group.children) {
+          const angle = gem.userData.angle + spin;
+          gem.position.set(Math.cos(angle) * 2.3, Math.sin(angle * 2) * 0.25, Math.sin(angle) * 2.3);
+          gem.rotation.y = angle * 2;
+        }
+        material.opacity = 0.95 * Math.min(1, effect.life / 0.25);
+      }
+    });
+  }
+
   spawnDiveWarning(position) {
     if (Math.floor(this.elapsed * 24) % 3 !== 0) return;
     this.spawnRingEffect(position, 1.9, 0xfff078, 0.32, 0.16);
@@ -2265,6 +2468,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.hud.showLevelUp(pickUpgradeChoices(), (upgrade) => {
       this.playSfx('buttonConfirm', { volume: 0.75 });
       upgrade.apply(this);
+      this.takenUpgrades.set(upgrade.id, (this.takenUpgrades.get(upgrade.id) ?? 0) + 1);
       this.state = 'playing';
       this.showMessage(upgrade.title);
     });
@@ -2272,6 +2476,37 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   showMessage(text, seconds = 1.25) {
     this.hud.showMessage(text, seconds);
+  }
+
+  // Applies the upgrades chosen on clearing earlier chapters and returns how many were applied.
+  applyCarryOver() {
+    if (!Config.carryOver.enabled) return 0;
+    let count = 0;
+    for (const entry of startCarryOver(this.stageId, this.characterId)) {
+      const upgrade = getUpgrade(entry.upgradeId);
+      const reward = getChapterReward(entry.chapter, entry.rewardId);
+      for (const item of [upgrade, reward]) {
+        if (!item) continue;
+        item.apply(this);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  // Choices shown on the result screen after clearing a chapter that has a next one.
+  getCarryOverOptions() {
+    if (!Config.carryOver.enabled || !this.outcome?.victory || isFinalChapter(this.stageId)) return null;
+    return {
+      upgrades: [...this.takenUpgrades].map(([id, count]) => ({ ...getUpgrade(id), count })).filter(upgrade => upgrade.id),
+      rewards: ChapterRewards[this.stageId] ?? [],
+      choice: this.carryChoice ?? {}
+    };
+  }
+
+  chooseCarryOver(kind, id) {
+    this.carryChoice = { ...this.carryChoice, [kind === 'upgrade' ? 'upgradeId' : 'rewardId']: id };
+    saveCarryOver(this.stageId, this.characterId, this.carryChoice);
   }
 
   startPlayerDeath(duration) {
@@ -2289,32 +2524,25 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   finish(victory, body) {
     if (this.outcome || (victory && this.player?.dead)) return;
-    this.outcome = {
-      victory,
-      body: victory ? this.stage.result : body
-    };
+    this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
     if (!this.deathWorldActive) this.hud.showDeathBlackout(false);
     this.settleCamera();
-    if (victory) this.replayAftermath();
-    else this.hud.showResult(victory, this.outcome.body);
+    if (victory) {
+      if (isFinalChapter(this.stageId)) clearProgress();
+      else saveProgress(this.stageId + 1, this.characterId);
+      this.replayAftermath();
+    } else {
+      this.hud.showResult(victory, this.outcome.body);
+    }
   }
 
-  debugCompleteBattle() {
-    if (this.outcome || this.player?.dead || !['playing', 'paused', 'levelup', 'debug'].includes(this.state)) return;
-    this.finish(true, this.stage.result);
-  }
-
-  goToNextStage() {
-    if (!this.outcome?.victory) return;
-    const next = getNextCampaignStage(this.stageId);
-    if (next) queueCampaignStage(next.id, this.characterId);
-  }
-
-  retryStage() {
-    queueCampaignStage(this.stageId, this.characterId);
+  // ゲームは再読み込みで作り直すため、次に始める章を渡してからページを読み直す。
+  launchChapter(stageId) {
+    requestLaunch(stageId, this.characterId);
+    window.location.reload();
   }
 
   replayAftermath() {
@@ -2415,9 +2643,20 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
           if (audio !== base) this.activeSfx.delete(audio);
         });
       }
+      return audio;
     } catch {
       // Voice playback can be blocked before the first user gesture.
     }
+    return null;
+  }
+
+  // The last line waits for the dying scream to finish so the two never overlap; it keeps playing over the result screen.
+  playDeathVoices() {
+    const scream = this.playVoice('dying', { volume: 0.92, cooldown: 10 });
+    if (!Config.audio.battleVoices) return;
+    const playLastLine = () => window.setTimeout(() => this.playVoice('death', { volume: 0.92 }), Config.audio.deathVoiceGap * 1000);
+    if (scream && !scream.ended) scream.addEventListener('ended', playLastLine, { once: true });
+    else playLastLine();
   }
 
   updateBgmState() {
@@ -2488,6 +2727,18 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 }
 
 const storyPlayer = new StoryPlayer();
+const forecastCard = new ForecastCard();
+
+// 出撃前会話 → 朝の孵化予報（Config.forecast.enabled） → 戦闘。
+function showBriefingThenStart(characterId, stageId) {
+  storyPlayer.show(createBriefing(characterId, stageId), () => {
+    if (!Config.forecast.enabled) {
+      startGameWithCharacter(characterId);
+      return;
+    }
+    forecastCard.show(buildForecast(getStage(stageId)), () => startGameWithCharacter(characterId));
+  });
+}
 
 function handleStoryGamepad(input) {
   if (storyPlayer.logOpen) {
@@ -2510,7 +2761,6 @@ function setupCharacterSelect() {
   const characterSelect = document.getElementById('characterSelect');
   const debugStageSelect = document.getElementById('debugStageSelect');
   const stageButtons = [...document.querySelectorAll('[data-stage-id]')];
-  const skipBattleButton = document.getElementById('debugSkipBattle');
   const buttons = [...document.querySelectorAll('[data-character]')];
   const confirmButton = document.getElementById('characterConfirm');
   const selectionSummary = document.getElementById('characterSelectionSummary');
@@ -2546,35 +2796,23 @@ function setupCharacterSelect() {
       button.setAttribute('aria-checked', String(selected));
     });
   };
-  setDebugStageSelectOpen = (open) => {
+  const setDebugStageSelectOpen = (open) => {
     if (!debugStageSelect) return;
-    if (open && activeGame) {
-      activeGame.debugPreviousState = activeGame.state;
-      activeGame.state = 'debug';
-      activeGame.touchControls.setEnabled(false);
-    } else if (!open && activeGame?.state === 'debug') {
-      activeGame.state = activeGame.debugPreviousState ?? 'playing';
-    }
     debugStageSelect.classList.toggle('hidden', !open);
     debugStageSelect.setAttribute('aria-hidden', String(!open));
-    skipBattleButton?.classList.toggle('hidden', !activeGame || Boolean(activeGame.outcome) || activeGame.player?.dead);
     if (open) {
       updateDebugStageSelection();
-      stageButtons.find((button) => Number(button.dataset.stageId) === (activeGame?.stageId ?? selectedStageId))?.focus();
-    } else if (!activeGame) {
+      stageButtons.find((button) => Number(button.dataset.stageId) === selectedStageId)?.focus();
+    } else {
       characterSelect.querySelector(`[data-character="${selectedCharacterId}"]`)?.focus();
-    } else if (activeGame.state === 'result') {
-      const next = activeGame.hud.nextStageButton;
-      (next?.classList.contains('hidden') ? activeGame.hud.replayStoryButton : next)?.focus();
     }
   };
 
   window.addEventListener('keydown', (event) => {
     const characterSelectActive = !characterSelect.classList.contains('hidden');
     const tutorialActive = !document.getElementById('tutorial')?.classList.contains('hidden');
-    if (tutorialActive || storyPlayer.active || !characterSelectActive && !activeGame) return;
-    if (activeGame && !['playing', 'paused', 'levelup', 'result', 'debug'].includes(activeGame.state)) return;
-    if (event.code === 'F3') {
+    if (!characterSelectActive || tutorialActive) return;
+    if (DEBUG_ENABLED && event.code === DEBUG_KEY) {
       event.preventDefault();
       setDebugStageSelectOpen(debugStageSelect?.classList.contains('hidden'));
     } else if (event.code === 'Escape' && !debugStageSelect?.classList.contains('hidden')) {
@@ -2585,22 +2823,12 @@ function setupCharacterSelect() {
 
   stageButtons.forEach((button) => {
     button.addEventListener('click', () => {
-      const stageId = Number(button.dataset.stageId) || 1;
-      if (activeGame) {
-        queueCampaignStage(stageId, activeGame.characterId);
-        return;
-      }
-      selectedStageId = stageId;
+      selectedStageId = Number(button.dataset.stageId) || 1;
       const confirm = new Audio(SFX_URLS.buttonConfirm);
       confirm.volume = Config.audio.sfxVolume * 0.75;
       confirm.play()?.catch?.(() => {});
       setDebugStageSelectOpen(false);
     });
-  });
-  skipBattleButton?.addEventListener('click', () => {
-    if (!activeGame) return;
-    setDebugStageSelectOpen(false);
-    activeGame.debugCompleteBattle();
   });
 
   buttons.forEach((button) => {
@@ -2611,16 +2839,14 @@ function setupCharacterSelect() {
     });
   });
   confirmButton.addEventListener('click', () => {
-    if (activeGame || storyPlayer.active) return;
+    if (activeGame || storyPlayer.active || forecastCard.active) return;
     const confirm = new Audio(SFX_URLS.buttonConfirm);
     confirm.volume = Config.audio.sfxVolume * 0.75;
     confirm.play()?.catch?.(() => {});
     buttons.forEach(button => { button.disabled = true; });
     confirmButton.disabled = true;
     characterSelect.classList.add('hidden');
-    storyPlayer.show(createBriefing(selectedCharacterId, selectedStageId), () => {
-      startGameWithCharacter(selectedCharacterId);
-    });
+    showBriefingThenStart(selectedCharacterId, selectedStageId);
   });
   document.getElementById('tutorialButton')?.addEventListener('click', () => {
     getTutorialGuide().show(() => {
@@ -2629,19 +2855,36 @@ function setupCharacterSelect() {
   });
 }
 
+// 章の出撃前会話を再生してから戦闘を始める。キャラクター選択は第1章の最初だけ。
+function beginChapter(characterId, stageId) {
+  selectedStageId = stageId;
+  document.getElementById('titleScreen')?.classList.add('hidden');
+  document.getElementById('characterSelect')?.classList.add('hidden');
+  showBriefingThenStart(characterId, stageId);
+}
+
 function setupTitleScreen() {
   const titleScreen = document.getElementById('titleScreen');
   const characterSelect = document.getElementById('characterSelect');
   const startButton = document.getElementById('titleStartButton');
+  const continueButton = document.getElementById('titleContinueButton');
   if (!titleScreen || !characterSelect || !startButton) return;
-  const resume = consumeCampaignResume();
-  if (resume) {
-    selectedStageId = resume.stageId;
-    titleScreen.classList.add('hidden');
-    storyPlayer.show(createBriefing(resume.characterId, resume.stageId), () => {
-      startGameWithCharacter(resume.characterId);
-    });
+  const launch = takeLaunchRequest();
+  if (launch) {
+    beginChapter(launch.characterId, launch.chapter);
     return;
+  }
+  const progress = loadProgress();
+  if (progress && continueButton) {
+    const stage = getStage(progress.chapter);
+    continueButton.textContent = `つづきから（${stage.label}）`;
+    continueButton.classList.remove('hidden');
+    continueButton.addEventListener('click', () => {
+      const confirm = new Audio(SFX_URLS.buttonConfirm);
+      confirm.volume = Config.audio.sfxVolume * 0.75;
+      confirm.play()?.catch?.(() => {});
+      beginChapter(progress.characterId, progress.chapter);
+    });
   }
   startButton.addEventListener('click', () => {
     selectedStageId = 1;
@@ -2654,7 +2897,7 @@ function setupTitleScreen() {
       characterSelect.querySelector('[data-character="tsukimi"]')?.focus({ preventScroll: true });
     });
   });
-  startButton.focus();
+  (progress && continueButton ? continueButton : startButton).focus();
 }
 
 setupCharacterSelect();
@@ -2669,6 +2912,8 @@ function updatePreGamepadMenus() {
   const tutorial = document.getElementById('tutorial');
   if (storyPlayer.active) {
     handleStoryGamepad(appInput);
+  } else if (forecastCard.active) {
+    handleGamepadMenu(appInput, forecastCard.root);
   } else if (tutorial && !tutorial.classList.contains('hidden')) {
     handleGamepadMenu(appInput, tutorial, () => getTutorialGuide().finish());
   } else if (debugStageSelect && !debugStageSelect.classList.contains('hidden')) {

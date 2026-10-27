@@ -13,3 +13,10 @@ tmp/
 .env
 .env.*
 search-survive-itchio.zip
+assets_src/
+promo/**/*.mp4
+promo/**/*.mov
+promo/**/*.webm
+promo/**/*.png
+promo/**/*.jpg
+promo/**/*.events.json

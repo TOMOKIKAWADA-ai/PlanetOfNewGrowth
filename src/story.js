@@ -1,6 +1,7 @@
 import './story.css';
 import { getCharacterPortrait } from './character-portraits.js';
 import { STORY_CHARACTERS } from './story-data.js';
+import { StoryAvatar, avatarHandles, avatarPortraitsEnabled } from './story-avatars.js';
 
 export class StoryPlayer {
   constructor() {
@@ -20,7 +21,7 @@ export class StoryPlayer {
           <button type="button" data-action="skip">SKIP <span>»</span></button>
         </nav>
       </header>
-      <div class="story-cast" aria-hidden="true">${Object.keys(STORY_CHARACTERS).filter(id => STORY_CHARACTERS[id].portrait).map(id => `<img class="story-actor" data-actor="${id}" alt="" />`).join('')}</div>
+      <div class="story-cast" aria-hidden="true">${Object.keys(STORY_CHARACTERS).filter(id => STORY_CHARACTERS[id].portrait).map(id => `<div class="story-actor" data-actor="${id}"><div class="story-actor-figure"><img class="story-actor-image" alt="" /></div></div>`).join('')}</div>
       <div class="story-civilian-gallery hidden" aria-label="市民の姿"></div>
       <div class="story-lower-shade" aria-hidden="true"></div>
       <div class="story-caption">
@@ -35,6 +36,12 @@ export class StoryPlayer {
       <section class="story-log hidden" aria-label="会話ログ"><div class="story-log-heading"><h3>これまでの会話</h3><button type="button" data-action="log-close">閉じる</button></div><div class="story-log-entries"></div></section>`;
     document.getElementById('app').appendChild(this.root);
     this.query = selector => this.root.querySelector(selector);
+    this.avatars = {};
+    if (avatarPortraitsEnabled()) {
+      for (const actor of this.root.querySelectorAll('.story-actor')) {
+        this.avatars[actor.dataset.actor] = new StoryAvatar(actor.dataset.actor, actor.querySelector('.story-actor-figure'));
+      }
+    }
     this.root.addEventListener('click', event => {
       const action = event.target.closest('[data-action]')?.dataset.action;
       if (action === 'skip') this.finish();
@@ -125,12 +132,23 @@ export class StoryPlayer {
     const speakerSide = otherPortrait && firstAppearance(otherPortrait) < firstAppearance(speakerId) ? 'right' : 'left';
     for (const actor of this.root.querySelectorAll('.story-actor')) {
       const id = actor.dataset.actor;
-      const src = getCharacterPortrait(STORY_CHARACTERS[id].portraitId ?? id, id === line.speaker ? line.expression : 'normal');
-      if (actor.getAttribute('src') !== src) actor.src = src;
+      const expression = id === line.speaker ? line.expression : 'normal';
+      const image = actor.querySelector('.story-actor-image');
+      const src = getCharacterPortrait(id, expression);
+      if (image.getAttribute('src') !== src) image.src = src;
+      const visible = id === speakerId || id === otherPortrait;
       actor.dataset.side = id === speakerId ? speakerSide : speakerSide === 'left' ? 'right' : 'left';
-      actor.classList.toggle('is-visible', id === speakerId || id === otherPortrait);
+      actor.classList.toggle('is-visible', visible);
       actor.classList.toggle('is-speaking', id === speakerId);
+      const avatar = this.avatars[id];
+      if (avatar) {
+        const useAvatar = avatarHandles(expression);
+        actor.querySelector('.story-actor-figure').classList.toggle('uses-avatar', useAvatar);
+        avatar.set(visible && useAvatar && !line.blackout, expression);
+        avatar.mouth(null);
+      }
     }
+    this.speakingAvatar = this.avatars[speakerId] ?? null;
     this.query('.story-location').textContent = line.label ?? character?.role ?? '';
     this.query('.story-speaker').textContent = character?.name ?? '';
     this.query('.story-accessible').textContent = `${character ? character.name + '。' : ''}${line.text}`;
@@ -145,6 +163,7 @@ export class StoryPlayer {
     this.query('.story-text').textContent = this.characters.slice(0, this.revealed).join('');
     const complete = this.revealed >= this.characters.length;
     this.root.classList.toggle('is-complete', complete);
+    this.speakingAvatar?.mouth(complete ? null : this.characters[this.revealed]);
     if (!complete) {
       const char = this.characters[this.revealed++];
       this.timer = setTimeout(() => this.tick(), /[、。！？…]/.test(char) ? 150 : 34);
@@ -208,6 +227,7 @@ export class StoryPlayer {
     if (!this.active) return;
     clearTimeout(this.timer);
     this.active = false;
+    for (const avatar of Object.values(this.avatars)) avatar.set(false, 'normal');
     this.root.classList.add('hidden');
     for (const { element, inert } of this.backgroundElements) element.inert = inert;
     if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });

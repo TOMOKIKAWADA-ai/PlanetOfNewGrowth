@@ -23,7 +23,13 @@
 .story-player button:disabled { opacity: .35; cursor: default; }
 html[data-input-mode="gamepad"] .story-keyboard-help { display: none; }
 .story-cast { --portrait-lower: 0px; z-index: 1; top: calc(clamp(74px, 10vh, 120px) + var(--portrait-lower)); right: 5%; bottom: auto; left: 5%; height: min(77vh, 820px); overflow: clip; transition: opacity .45s, transform .45s; }
-.story-actor { --portrait-flip: 1; position: absolute; bottom: 0; width: 54%; height: 100%; object-fit: contain; object-position: center bottom; opacity: 0; filter: brightness(.75) saturate(.8); transform: scaleX(var(--portrait-flip)) scale(.93); transform-origin: center bottom; transition: filter .35s, transform .45s, opacity .35s; }
+.story-actor { --portrait-flip: 1; position: absolute; bottom: 0; width: 54%; height: 100%; container-type: size; pointer-events: none; opacity: 0; filter: brightness(.75) saturate(.8); transform: scaleX(var(--portrait-flip)) scale(.93); transform-origin: center bottom; transition: filter .35s, transform .45s, opacity .35s; }
+/* 立ち絵（2:3）を枠に収めて下揃え。動くアバターは立ち絵の上 1100/1536 に重ね、その部分の静止画は隠す。 */
+.story-actor-figure { position: absolute; left: 50%; bottom: 0; height: min(100cqh, 150cqw); aspect-ratio: 2 / 3; transform: translateX(-50%); }
+.story-actor-image { display: block; width: 100%; height: 100%; }
+.story-actor-avatar { display: none; position: absolute; left: 0; top: 0; width: 100%; height: 71.62%; aspect-ratio: auto; }
+.has-avatar.uses-avatar .story-actor-avatar { display: block; }
+.has-avatar.uses-avatar .story-actor-image { clip-path: inset(71.5% 0 0 0); }
 .story-actor[data-side="left"] { left: -4%; }
 .story-actor[data-side="right"] { right: -4%; --portrait-flip: -1; }
 .story-actor:not(.is-visible) { visibility: hidden; }

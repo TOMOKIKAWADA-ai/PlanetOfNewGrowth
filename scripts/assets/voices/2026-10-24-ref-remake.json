@@ -1,0 +1,54 @@
+{
+  "speakers": {
+    "tsukimi": {
+      "caption": "",
+      "seed": 1401,
+      "refs": [
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_04_doubt-s1301.wav",
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_06_call-s1301.wav"
+      ]
+    },
+    "akame": {
+      "caption": "",
+      "seed": 2401,
+      "refs": [
+        "assets_src/voice/refs/akame/akame-ref_02_report-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_04_refuse-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_05_care-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_06_call-s2202.wav"
+      ]
+    },
+    "kiichigo": {
+      "caption": "",
+      "seed": 3401,
+      "refs": [
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_01_calm-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_04_cheer-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_06_call-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_07_tired-s3303.wav"
+      ]
+    }
+  },
+  "lines": [
+    { "id": "hit_01", "speaker": "tsukimi", "text": "うっ！", "style": "攻撃を受けて、思わず小さく痛みの声が漏れる。", "seeds": [1401, 1402, 1403] },
+    { "id": "hit_02", "speaker": "tsukimi", "text": "ああっ！", "style": "攻撃を受けて、思わず小さく痛みの声が漏れる。", "seeds": [1401, 1402, 1403] },
+    { "id": "dying", "speaker": "tsukimi", "text": "もう……だめ……！", "style": "致命傷を受けて、か細く苦しそうに悲鳴まじりに。", "seeds": [1401, 1402, 1403] },
+    { "id": "burst_01", "speaker": "tsukimi", "text": "行けっ！", "style": "必殺技を放つ瞬間、精一杯の力を込めて叫ぶ。", "seeds": [1401, 1402, 1403] },
+    { "id": "battle_start_01", "speaker": "tsukimi", "text": "倒してみせます。", "style": "戦いの直前、不安を押し込めて、自分に言い聞かせるように小さく決意を言う。", "seeds": [1401, 1402, 1403] },
+    { "id": "death_01", "speaker": "tsukimi", "text": "……どうして……", "style": "深い傷を負って倒れる。悔しさと悲しさのにじむ、消え入りそうなかすれた声で途切れ途切れに。", "seeds": [1401, 1402, 1403] },
+
+    { "id": "hit_01", "speaker": "akame", "text": "くっ！", "style": "攻撃を受けて、短く痛みの声を上げる。", "seeds": [2401, 2402, 2403] },
+    { "id": "hit_02", "speaker": "akame", "text": "いたっ！", "style": "攻撃を受けて、短く痛みの声を上げる。", "seeds": [2401, 2402, 2403] },
+    { "id": "dying", "speaker": "akame", "text": "ああああっ！", "style": "致命傷を受けて、苦しそうに悲鳴を上げる。", "seeds": [2401, 2402, 2403] },
+    { "id": "burst_01", "speaker": "akame", "text": "行けっ！", "style": "必殺技を放つ瞬間、力強く短く叫ぶ。", "seeds": [2401, 2402, 2403] },
+    { "id": "battle_start_01", "speaker": "akame", "text": "前は、私が引き受ける。", "style": "戦いの直前、静かに気合いを入れて短く言い切る。", "seeds": [2401, 2402, 2403] },
+    { "id": "death_01", "speaker": "akame", "text": "……まだ、終わって……ない……", "style": "深い傷を負って倒れる。苦しそうに息を切らし、かすれた声で途切れ途切れに。", "seeds": [2401, 2402, 2403] },
+
+    { "id": "hit_01", "speaker": "kiichigo", "text": "いたっ！", "style": "攻撃を受けて、短く痛みの声を上げる。", "seeds": [3401, 3402, 3403] },
+    { "id": "hit_02", "speaker": "kiichigo", "text": "んっ！", "style": "攻撃を受けて、短く痛みの声を上げる。", "seeds": [3401, 3402, 3403] },
+    { "id": "dying", "speaker": "kiichigo", "text": "うそっ、だめっ！", "style": "致命傷を受けて、苦しそうに悲鳴まじりに。", "seeds": [3401, 3402, 3403] },
+    { "id": "burst_01", "speaker": "kiichigo", "text": "これで終わり！", "style": "必殺技を放つ瞬間、力強く楽しそうに叫ぶ。", "seeds": [3401, 3402, 3403] },
+    { "id": "battle_start_01", "speaker": "kiichigo", "text": "さーて、ひと暴れしよっか！", "style": "戦いの直前、楽しそうに張りのある声で。", "seeds": [3401, 3402, 3403] },
+    { "id": "death_01", "speaker": "kiichigo", "text": "うそ……ここまで、かぁ……", "style": "深い傷を負って倒れる。苦しそうに息を切らし、力なく笑うように途切れ途切れに。", "seeds": [3401, 3402, 3403] }
+  ]
+}

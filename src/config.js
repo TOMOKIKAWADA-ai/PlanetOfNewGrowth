@@ -87,7 +87,19 @@ export const Config = {
   audio: {
     bgmVolume: 0.42,
     sfxVolume: 0.58,
-    voiceVolume: 0.72
+    voiceVolume: 0.72,
+    // Battle-start line when the stage begins and a last line after the dying scream (false = previous voice set).
+    battleVoices: true,
+    // Pause between the end of the dying scream and the last line.
+    deathVoiceGap: 1.2,
+    // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
+    newSfx: true
+  },
+  story: {
+    // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
+    avatarPortraits: true,
+    // 'normal': 通常の表情の台詞だけアバター、ほかの表情は描き分けた静止画。'all': すべてアバターで、表情は変形で付ける。
+    avatarExpressions: 'all'
   },
   map: {
     radius: 72,
@@ -129,6 +141,8 @@ export const Config = {
     buildingCollapseSeconds: 0.72
   },
   player: {
+    // 全キャラ共通の被ダメージ倍率。1 で調整前（2026-10-21 以前）と同じ。
+    damageTakenScale: 0.9,
     maxHp: 120,
     maxMp: 100,
     humanSpeed: 6.72,
@@ -229,6 +243,30 @@ export const Config = {
     fish: { height: 1.1, distance: 5.2, fov: 43, pitch: 0.22 },
     transitionSeconds: 0.6
   },
+  // On clearing a chapter, carry one upgrade taken that chapter and one of three chapter rewards into the
+  // following chapters (src/campaign.js keeps the choices). enabled: false hides the picker and ignores saved choices.
+  carryOver: {
+    enabled: true
+  },
+  // Morning hatch forecast (src/forecast.js): after the pre-sortie dialogue, one card with the chapter's new species
+  // and boss before the battle starts. enabled: false goes straight from the dialogue to the battle.
+  // Off since 2026-10-27 (user: not needed for now). true brings the card back.
+  forecast: {
+    enabled: false
+  },
+  // Per-boss tuning (src/bosses.js). Chapter 5's thirst mother tethers nearby eggs and heals by the eggs still alive
+  // when the drain ends; breaking them first (bird dive on land, fish bite in water) denies the heal. Set the stage's boss to 'motherEgg' to remove it.
+  boss: {
+    thirstMother: {
+      firstDelay: 7,
+      interval: 12,
+      retryDelay: 2.5,
+      drainSeconds: 3.4,
+      range: 22,
+      count: 4,
+      healRatioPerEgg: 0.035
+    }
+  },
   egg: {
     hp: 38,
     motherHp: 300,
@@ -238,6 +276,8 @@ export const Config = {
     motherShockwaveDuration: 0.95,
     motherShockwaveRange: 24,
     motherShockwaveDamage: 68,
+    // Warning cues for dodging by bird form: an outline at the exact range and a ring closing in until impact.
+    motherShockwaveTimingRing: true,
     matureSeconds: 8,
     hatchMin: 9.5,
     hatchMax: 14,
@@ -246,7 +286,20 @@ export const Config = {
     childMaxDistance: 10,
     spacing: 3.1,
     xp: 8,
-    healOnBreakRatio: 0.05
+    healOnBreakRatio: 0.05,
+    // Mimic eggs (chapter 5+, a late-game type): look like normal eggs but pulse faster. Eating one in bird form bursts it and
+    // roots the player briefly; shooting it in human form is safe. enabled: false removes them.
+    mimic: {
+      enabled: true,
+      fromChapter: 5,
+      chance: 0.14,
+      stunSeconds: 1.5,
+      stunMarker: true, // 硬直中、頭上に紫の結晶を回す（false で足元の輪だけ）
+      normalPulseHz: 0.8,
+      mimicPulseHz: 2.1,
+      normalPulseScale: 0.03,
+      mimicPulseScale: 0.06
+    }
   },
   enemy: {
     // GLB に idle / walk / attack / hit / die を持つ敵の共通設定。種類ごとの値があればそちらを優先する
@@ -324,6 +377,12 @@ export const Config = {
     orbSpeed: 9
   },
   pickups: {
+    // Generated meshes for dropped items (Hunyuan3D, 2026-10-26; see docs/dev-cycle/asset-ledger.md and PICKUP_MODELS in
+    // src/main.js). Types without a model keep the primitive shape (magnet read as a blob from the game camera, speed has none yet). enabled: false brings back all primitives.
+    models: {
+      enabled: true,
+      size: 0.72
+    },
     spawnOffsetRadius: 1.35,
     pickupRange: 0.95,
     baseMagnetRange: 5.2,
@@ -507,3 +566,37 @@ export const UpgradePool = [
     }
   }
 ];
+
+const UPGRADE_BY_ID = Object.fromEntries(UpgradePool.map(upgrade => [upgrade.id, upgrade]));
+export const getUpgrade = id => UPGRADE_BY_ID[id] ?? null;
+
+// Three carry-over rewards per chapter (chapters 1-5; the final chapter ends the campaign).
+export const ChapterRewards = {
+  1: [
+    { id: 'pumpGuard', title: 'ポンプの守り', body: '防護膜2枚を張った状態で出撃する。', apply(game) { game.player.shieldCharges += 2; } },
+    { id: 'waterLine', title: '給水の列', body: '最大HP＋40。', apply(game) { game.player.maxHp += 40; game.player.hp += 40; } },
+    { id: 'patrolSteps', title: '見回りの足', body: '人間形態の移動速度＋10％。', apply(game) { game.player.humanSpeed *= 1.1; } }
+  ],
+  2: [
+    { id: 'shirayuriRecord', title: 'シラユリの記録', body: 'バーストゲージが半分たまった状態で出撃する。', apply(game) { game.player.addBurst(Config.player.burstMax * 0.5); } },
+    { id: 'leftProcedure', title: '残された手順', body: 'バーストの再使用時間－25％。', apply(game) { game.player.burstCooldownScale *= 0.75; } },
+    { id: 'sharpSeeds', title: '研いだ種', body: '自動攻撃の威力＋15％。', apply(game) { game.player.autoDamage *= 1.15; } }
+  ],
+  3: [
+    { id: 'deepBreath', title: '水底の息', body: '鳥形態・魚形態のMP消費－20％。', apply(game) { game.player.formMpCostScale *= 0.8; } },
+    { id: 'longBreath', title: '深い呼吸', body: '最大MP＋30。', apply(game) { game.player.maxMp += 30; game.player.mp += 30; } },
+    { id: 'breakSurface', title: '水面を割る', body: '急降下のダメージ＋30％。', apply(game) { game.player.diveDamageScale *= 1.3; } }
+  ],
+  4: [
+    { id: 'rootOath', title: '根の誓い', body: '鳥形態で卵を食べたときの回復が2倍になる。', apply(game) { game.player.eggHealScale *= 2; } },
+    { id: 'nightPulse', title: '夜の鼓動', body: '範囲パルスLv1を持って出撃する。', apply(game) { getUpgrade('pulse').apply(game); } },
+    { id: 'buddingSeed', title: '芽吹く種', body: '周りに浮く種が1つ増え、同時に撃つ弾が増える。', apply(game) { getUpgrade('seeds').apply(game); } }
+  ],
+  5: [
+    { id: 'carriedWater', title: '運ばれた水', body: '母卵へのダメージ＋20％。', apply(game) { game.player.motherDamageScale *= 1.2; } },
+    { id: 'firmSteps', title: '踏みしめる足', body: '母卵の衝撃波のダメージ－30％。', apply(game) { game.player.shockwaveDamageScale *= 0.7; } },
+    { id: 'seeingEye', title: '見分ける目', body: '擬態卵を食べたときに動けない時間が半分になる。', apply(game) { game.player.mimicStunScale *= 0.5; } }
+  ]
+};
+
+export const getChapterReward = (chapter, id) => ChapterRewards[chapter]?.find(reward => reward.id === id) ?? null;

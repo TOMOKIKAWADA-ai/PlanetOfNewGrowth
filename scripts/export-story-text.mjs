@@ -1,6 +1,6 @@
 // Print the currently implemented story text; redirect it only when an export is needed.
-import { STORY_CHARACTERS, PROLOGUE, createBriefing, createAftermath } from '../src/story-data.js';
-import { CAMPAIGN_STAGES } from '../src/campaign.js';
+import { STORY_CHARACTERS, STORY_CHAPTER_COUNT, PROLOGUE, createBriefing, createAftermath } from '../src/story-data.js';
+import { getStage } from '../src/campaign.js';
 
 const characterIds = ['tsukimi', 'akame', 'kiichigo'];
 const characterName = id => STORY_CHARACTERS[id]?.name ?? id;
@@ -27,14 +27,17 @@ function section(title, scenes) {
   return out.join('\n');
 }
 
-process.stdout.write([
+console.log([
   '実装版ストーリー台本',
   '出典: src/story-data.js',
   '※ 地の文とセリフを表示順に記載。表情・背景画像などの演出指定は省略。',
-  '※ 一般市民と深淵の花々の（ ）は、揮発性物質による会話を端末が言葉に変えた表記。',
-  section('プロローグ「防除線のこちら側」', [PROLOGUE]),
-  ...CAMPAIGN_STAGES.flatMap(stage => [
-    section(`第${stage.id}章「${stage.title}」・戦闘前`, characterIds.map(id => createBriefing(id, stage.id))),
-    section(stage.id === 5 ? 'エンディング（巨大母卵撃破時）' : `第${stage.id}章「${createAftermath('tsukimi', stage.id).subtitle}」・戦闘後（母卵撃破時）`, characterIds.map(id => createAftermath(id, stage.id)))
-  ])
-].join('\n').trimEnd() + '\n');
+  '※ 戦闘後の会話は勝利時のみ再生。最終章の戦闘後がエンディング。',
+  section(`プロローグ「${PROLOGUE.subtitle}」`, [PROLOGUE]),
+  ...Array.from({ length: STORY_CHAPTER_COUNT }, (_, i) => i + 1).flatMap(chapter => {
+    const { label } = getStage(chapter);
+    return [
+      section(`${label}「${createBriefing('tsukimi', chapter).subtitle}」・戦闘前`, characterIds.map(id => createBriefing(id, chapter))),
+      section(`${label}「${createAftermath('tsukimi', chapter).subtitle}」・戦闘後`, characterIds.map(id => createAftermath(id, chapter)))
+    ];
+  })
+].join('\n'));

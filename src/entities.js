@@ -13,6 +13,7 @@ import {
   smooth01
 } from './math.js';
 import { Config } from './config.js';
+import { getBossType } from './bosses.js';
 
 const CONTACT_SHADOW_TEXTURE_SIZE = 96;
 let contactShadowTexture = null;
@@ -189,6 +190,7 @@ const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: SNIPER_COLOR
 const SNIPER_BEAM_UP = new THREE.Vector3(0, 1, 0);
 const EGG_LOD_GEOMETRY = new THREE.DodecahedronGeometry(0.7, 0);
 const EGG_LOD_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x180c0d });
+// Primitive shapes; Config.pickups.models swaps some of them for generated meshes at load (installPickupModel).
 const PICKUP_GEOMETRIES = {
   xp: new THREE.OctahedronGeometry(0.23, 0),
   hp: new THREE.IcosahedronGeometry(0.28, 0),
@@ -213,6 +215,18 @@ const PICKUP_MATERIALS = Object.fromEntries(
     new THREE.MeshBasicMaterial({ color: spec.color, toneMapped: false })
   ])
 );
+
+// A generated pickup mesh has real shape, so it gets a lit material (an unlit one would flatten it to a silhouette).
+// The geometry arrives normalized to a longest side of 1 (scripts/assets/blender/prep-pickups.py).
+export function installPickupModel(type, geometry, size) {
+  const spec = PICKUP_SPECS[type];
+  if (!spec) return;
+  geometry.scale(size, size, size);
+  PICKUP_GEOMETRIES[type] = geometry;
+  PICKUP_MATERIALS[type] = new THREE.MeshStandardMaterial({
+    color: spec.color, emissive: spec.color, emissiveIntensity: 0.16, roughness: 0.4, metalness: 0.05
+  });
+}
 
 function createLodObject(name, highDetail, lowDetail, lowDistance, hideDistance = 0) {
   const lod = new THREE.LOD();
@@ -290,6 +304,15 @@ export class Player {
     this.pickupMagnetSpeed = Config.pickups.baseMagnetSpeed;
     this.pickupMagnetTimer = 0;
     this.speedBoostTimer = 0;
+    this.stunTimer = 0;
+    // Multipliers set by carry-over chapter rewards (Config.carryOver).
+    this.burstCooldownScale = 1;
+    this.formMpCostScale = 1;
+    this.diveDamageScale = 1;
+    this.eggHealScale = 1;
+    this.motherDamageScale = 1;
+    this.shockwaveDamageScale = 1;
+    this.mimicStunScale = 1;
     this.shieldCharges = 0;
     this.level = 1;
     this.xp = 0;
@@ -1174,7 +1197,7 @@ export class Player {
   }
 
   update(dt, input) {
-    if (input.actionPressed('transform')) this.toggleForm();
+    if (input.actionPressed('transform') && !(this.stunTimer > 0)) this.toggleForm();
     this.autoTimer = Math.max(0, this.autoTimer - dt);
     this.specialTimer = Math.max(0, this.specialTimer - dt);
     this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
@@ -1186,8 +1209,9 @@ export class Player {
     this.updateBurstSequence(dt);
     this.pickupMagnetTimer = Math.max(0, this.pickupMagnetTimer - dt);
     this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
+    this.stunTimer = Math.max(0, this.stunTimer - dt);
 
-    this.updateMovement(dt, input);
+    if (this.stunTimer <= 0) this.updateMovement(dt, input);
     this.updateFormResources(dt);
     this.updateDive(dt);
     this.updateCombat(dt, input);
@@ -1257,7 +1281,7 @@ export class Player {
     if (this.form === 'human') {
       this.mp = clamp(this.mp + this.humanRegenMp * dt, 0, this.maxMp);
     } else {
-      const formCost = this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost;
+      const formCost = (this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost) * this.formMpCostScale;
       this.mp = clamp(this.mp - formCost * dt, 0, this.maxMp);
       if (this.mp <= 0) this.returnToHuman(true);
     }
@@ -1344,7 +1368,7 @@ export class Player {
     }
     this.game.playSfx('burstPre', { volume: 0.8 });
     this.burst = 0;
-    this.burstCooldownTimer = Config.player.burstCooldown;
+    this.burstCooldownTimer = Config.player.burstCooldown * this.burstCooldownScale;
     this.invincibleTimer = Math.max(this.invincibleTimer, Config.player.burstInvincible);
     if (this.game.characterId === 'tsukimi') this.performTsukimiBurst();
     else if (this.game.characterId === 'kiichigo') this.startKiichigoBurst();
@@ -1493,7 +1517,7 @@ export class Player {
   updateDive(dt) {
     if (this.form !== 'bird') return;
     if (this.diveState === 'ready') {
-      if (this.diveCooldown > 0) return;
+      if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
       const motherTarget = this.game.motherEgg && !this.game.motherEgg.dead
         ? this.findMotherForDive()
@@ -1559,13 +1583,21 @@ export class Player {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
+    } else if (this.diveTarget.isMimic) {
+      this.diveTarget.takeDamage(this.diveTarget.hp + 10, 'mimicBurst');
+      this.stun(Config.egg.mimic.stunSeconds * this.mimicStunScale);
     } else {
       this.diveTarget.takeDamage(Math.max(this.birdDiveDamage, this.diveTarget.hp + 10), 'birdDive');
-      this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio, 0, this.maxHp);
+      this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio * this.eggHealScale, 0, this.maxHp);
       this.mp = clamp(this.mp + this.maxMp * Config.player.feedMpRatio, 0, this.maxMp);
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
+  }
+
+  stun(seconds) {
+    this.stunTimer = Math.max(this.stunTimer, seconds);
+    this.game.onPlayerStunned(this.position, seconds);
   }
 
   findMotherForDive() {
@@ -1618,7 +1650,7 @@ export class Player {
       this.game.showMessage(this.shieldCharges > 0 ? `防護膜 ${this.shieldCharges}` : '防護膜');
       return;
     }
-    amount *= this.damageTakenMultiplier;
+    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1);
     this.hp = Math.max(0, this.hp - amount);
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
     this.damageFlashTimer = 0.16;
@@ -1636,7 +1668,7 @@ export class Player {
   startDeath() {
     if (this.dead) return;
     this.dead = true;
-    this.game.playVoice('dying', { volume: 0.92, cooldown: 10 });
+    this.game.playDeathVoices();
     this.form = 'human';
     this.diveState = 'ready';
     if (this.diveTarget) this.diveTarget.claimed = false;
@@ -1779,11 +1811,11 @@ export class Player {
   }
 
   get birdDiveDamage() {
-    return Config.player.birdDiveDamage + this.birdDiveBonus + (this.level - 1) * 0.7;
+    return (Config.player.birdDiveDamage + this.birdDiveBonus + (this.level - 1) * 0.7) * this.diveDamageScale;
   }
 
   get birdMotherDiveDamage() {
-    return Config.player.birdMotherDiveDamage + this.birdMotherDiveBonus + (this.level - 1) * 0.35;
+    return (Config.player.birdMotherDiveDamage + this.birdMotherDiveBonus + (this.level - 1) * 0.35) * this.diveDamageScale;
   }
 }
 
@@ -1806,8 +1838,11 @@ export class Egg {
     this.hatchTimer = randRange(Config.egg.hatchMin, Config.egg.hatchMax);
     this.reproduceTimer = Config.egg.reproduceSeconds;
     this.hitPulse = 0;
+    this.isMimic = false;
+    this.pulsePhase = Math.random() * TAU;
     this.shockwaveState = 'idle';
     this.shockwaveTimer = isMother ? Config.egg.motherShockwaveFirstDelay : 0;
+    this.bossType = isMother ? getBossType(game.stage?.boss) : null;
     const gameplayMotherEgg = isMother ? game.cloneGameplayModel('motherEgg') : null;
     const sourceModel = !isMother
       ? game.cloneGameplayModel('darkseedEgg') ?? this.createFallback()
@@ -1888,9 +1923,10 @@ export class Egg {
     if (this.isMother) {
       this.hitPulse = Math.max(0, this.hitPulse - dt * 1.7);
       this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
-      this.updateMotherShockwave(dt);
+      this.bossType.update(this, dt);
     }
     if (this.isMother) return;
+    this.updatePulse(dt);
     this.mature = this.age >= Config.egg.matureSeconds;
     if (!this.mature) return;
     const hatchScale = this.game.getHatchRateScale();
@@ -1903,6 +1939,19 @@ export class Egg {
     if (this.reproduceTimer <= 0) {
       this.game.spawnChildEgg(this.position);
       this.reproduceTimer = Config.egg.reproduceSeconds;
+    }
+  }
+
+  // From the mimic chapters on, every egg breathes; a mimic breathes faster. That rhythm is the only tell.
+  updatePulse(dt) {
+    if (!this.game.mimicEggsActive) return;
+    const mimic = Config.egg.mimic;
+    this.pulsePhase += dt * TAU * (this.isMimic ? mimic.mimicPulseHz : mimic.normalPulseHz);
+    const amount = this.isMimic ? mimic.mimicPulseScale : mimic.normalPulseScale;
+    this.object.scale.setScalar(1 + Math.sin(this.pulsePhase) * amount);
+    if (this.isMimic && !this.game.mimicHintShown && this.mature
+      && horizontalDistanceSq(this.position, this.game.player.position) <= Config.performance.eggDetailDistance ** 2) {
+      this.game.showMimicHint();
     }
   }
 
@@ -1924,7 +1973,7 @@ export class Egg {
     }
     this.shockwaveState = 'warning';
     this.shockwaveTimer = Config.egg.motherShockwaveWarning;
-    this.game.hud.showBossWarning(Config.egg.motherShockwaveWarning);
+    this.game.hud.showBossWarning(Config.egg.motherShockwaveWarning, this.game.player?.form);
     this.game.spawnMotherShockwaveWarning(
       this.position,
       Config.egg.motherShockwaveRange,
@@ -1938,6 +1987,7 @@ export class Egg {
       return;
     }
     if (this.dead) return;
+    if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
     this.hp -= amount;
     if (this.isMother) {
       this.hitPulse = Math.max(this.hitPulse, clamp(amount / this.maxHp * 0.32, 0.004, 0.025));
@@ -2903,7 +2953,8 @@ export class ExperienceOrb {
 
   collect(player) {
     const spec = PICKUP_SPECS[this.type] ?? PICKUP_SPECS.xp;
-    this.game.playSfx('xpPickup', { volume: this.type === 'xp' ? 0.45 : 0.62, cooldown: this.type === 'xp' ? 0.025 : 0.075 });
+    if (this.type !== 'xp' && Config.audio.newSfx) this.game.playSfx('itemPickup', { volume: 0.7, cooldown: 0.075 });
+    else this.game.playSfx('xpPickup', { volume: this.type === 'xp' ? 0.45 : 0.62, cooldown: this.type === 'xp' ? 0.025 : 0.075 });
     if (this.type !== 'xp') {
       this.game.spawnRingEffect(this.position, this.type === 'magnet' ? 2.4 : 1.55, spec.color, 0.34, 0.32);
       if (spec.label) this.game.showMessage(spec.label, 0.8);

@@ -212,7 +212,18 @@ ${SHORE_GLSL}`
 
 export const MAX_WATER_CONTACTS = 16;
 
-export function createWaterSurfaceMaterial({ patches, bedMap, normalMap, tileSize, sunDirection }) {
+// Hemisphere sky colour the default reflection colours were tuned under.
+const DAYLIGHT_SKY = new THREE.Color(0xcfe0ff);
+
+export function createWaterSurfaceMaterial({
+  patches,
+  bedMap,
+  normalMap,
+  tileSize,
+  sunDirection,
+  sunColor = 0xfff1d6,
+  skyColor = DAYLIGHT_SKY
+}) {
   const material = new THREE.ShaderMaterial({
     name: 'WaterStageSurface',
     transparent: true,
@@ -227,7 +238,7 @@ export function createWaterSurfaceMaterial({ patches, bedMap, normalMap, tileSiz
         uBedMap: { value: null },
         uTileSize: { value: tileSize },
         uSunDirection: { value: sunDirection.clone().normalize() },
-        uSunColor: { value: new THREE.Color(0xfff1d6) },
+        uSunColor: { value: new THREE.Color(sunColor) },
         uShallowColor: { value: new THREE.Color(0x3d8a7c) },
         uDeepColor: { value: new THREE.Color(0x0b2e38) },
         uSkyColor: { value: new THREE.Color(0x56737c) },
@@ -357,6 +368,15 @@ void main() {
   });
   // UniformsUtils.merge clones its inputs, so textures are attached afterwards.
   material.uniforms.uNormalMap.value = normalMap;
+  // Shift the sky reflection by how far the chapter's sky is from daylight.
+  const sky = new THREE.Color(skyColor);
+  const skyShift = new THREE.Color(
+    Math.min(1.6, sky.r / DAYLIGHT_SKY.r),
+    Math.min(1.6, sky.g / DAYLIGHT_SKY.g),
+    Math.min(1.6, sky.b / DAYLIGHT_SKY.b)
+  );
+  material.uniforms.uSkyColor.value.multiply(skyShift);
+  material.uniforms.uHorizonColor.value.multiply(skyShift);
   material.uniforms.uBedMap.value = bedMap;
   return material;
 }
