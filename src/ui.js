@@ -1,5 +1,6 @@
 import { Config, UpgradePool } from './config.js';
 import { clamp } from './math.js';
+import { FINAL_STAGE_ID, getNextCampaignStage } from './campaign.js';
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -108,6 +109,7 @@ export class Hud {
     this.mpText = document.getElementById('mpText');
     this.burstText = document.getElementById('burstText');
     this.clock = document.getElementById('clock');
+    this.chapterObjective = document.getElementById('chapterObjective');
     this.statsLine = document.getElementById('statsLine');
     this.hintLine = document.getElementById('hintLine');
     this.centerMessage = document.getElementById('centerMessage');
@@ -118,16 +120,23 @@ export class Hud {
     this.resultBody = document.getElementById('resultBody');
     this.restartButton = document.getElementById('restartButton');
     this.replayStoryButton = document.getElementById('replayStoryButton');
+    this.nextStageButton = document.getElementById('nextStageButton');
+    this.retryStageButton = document.getElementById('retryStageButton');
     this.deathBlackout = document.getElementById('deathBlackout');
     this.pause = document.getElementById('pause');
     this.pauseResumeButton = document.getElementById('pauseResumeButton');
     this.motherPanel = document.getElementById('motherPanel');
+    this.motherTitle = this.motherPanel.querySelector('.mother-title');
     this.motherBar = document.getElementById('motherBar');
     this.motherAlert = document.getElementById('motherAlert');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
+    this.chapterObjective.textContent = `第${game.stageId}章 ${game.stage.title} · ${game.stage.objective}`;
+    this.motherTitle.textContent = game.stageId === FINAL_STAGE_ID ? '巨大母卵' : '母卵';
     this.restartButton.addEventListener('click', () => window.location.reload());
     this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
+    this.nextStageButton.addEventListener('click', () => this.game.goToNextStage());
+    this.retryStageButton.addEventListener('click', () => this.game.retryStage());
     this.pauseResumeButton.addEventListener('click', () => {
       if (this.game.state !== 'paused') return;
       this.game.state = 'playing';
@@ -267,14 +276,19 @@ export class Hud {
   }
 
   showResult(victory, body) {
-    const chapterComplete = victory && this.game.stageId === 1;
+    const nextStage = victory ? getNextCampaignStage(this.game.stageId) : null;
     this.result.classList.toggle('victory', victory);
     this.result.classList.toggle('defeat', !victory);
-    this.resultTitle.textContent = chapterComplete ? '第1章 完' : victory ? 'AREA RESTORED' : 'Defeat';
-    this.replayStoryButton.classList.toggle('hidden', !chapterComplete);
+    this.resultTitle.textContent = victory
+      ? this.game.stageId === FINAL_STAGE_ID ? 'THE END' : `第${this.game.stageId}章 完`
+      : 'Defeat';
+    this.replayStoryButton.classList.toggle('hidden', !victory);
+    this.nextStageButton.classList.toggle('hidden', !nextStage);
+    this.nextStageButton.textContent = nextStage ? `第${nextStage.id}章へ進む` : '';
+    this.retryStageButton.classList.toggle('hidden', victory);
     this.resultBody.textContent = body;
     this.result.classList.remove('hidden');
-    this.restartButton?.focus();
+    (nextStage ? this.nextStageButton : victory ? this.replayStoryButton : this.retryStageButton)?.focus();
   }
 
   showDeathBlackout(show) {

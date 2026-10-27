@@ -44,6 +44,7 @@ body,
   background: #0f1516;
   color: #f3f7f1;
   font-family: "Kelson Sans", "Zen Kaku Gothic New", system-ui, sans-serif;
+  touch-action: pan-x pan-y;
 }
 
 #game {
@@ -834,6 +835,22 @@ html[data-input-mode="gamepad"] .screen .controller-lock-note {
 .debug-stage-select {
   z-index: 9;
   background: rgba(2, 6, 8, 0.88);
+  overflow-y: auto;
+  align-items: safe center;
+}
+
+.chapter-objective {
+  position: absolute;
+  top: max(70px, calc(env(safe-area-inset-top) + 70px));
+  left: 22px;
+  max-width: min(500px, calc(100vw - 44px));
+  padding: 6px 10px;
+  border-left: 2px solid #ffe778;
+  background: #07100dc9;
+  color: #f7f5d9;
+  font-size: clamp(11px, 1.2vw, 14px);
+  line-height: 1.4;
+  pointer-events: none;
 }
 
 .debug-stage-panel {
@@ -845,6 +862,19 @@ html[data-input-mode="gamepad"] .screen .controller-lock-note {
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
   text-align: center;
 }
+
+.debug-skip-button {
+  display: block;
+  width: 100%;
+  min-height: 54px;
+  margin-top: 18px;
+  border: 1px solid #ffe778;
+  background: #463b18;
+  color: #fff6cb;
+  font-weight: 700;
+}
+
+.debug-skip-button.hidden { display: none; }
 
 .screen .debug-stage-kicker {
   margin: 0 0 10px;

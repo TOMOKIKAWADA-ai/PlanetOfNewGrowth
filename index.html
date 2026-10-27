@@ -2,7 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Search Survive Three</title>
     <script>
       if (window.location.protocol === 'file:') {
@@ -78,17 +78,30 @@
       <div id="debugStageSelect" class="screen debug-stage-select hidden" aria-hidden="true">
         <section class="debug-stage-panel" role="dialog" aria-modal="true" aria-labelledby="debugStageTitle">
           <p class="debug-stage-kicker">F3 DEBUG MENU</p>
-          <h1 id="debugStageTitle">Stage Select</h1>
+          <h1 id="debugStageTitle">章・戦闘スキップ</h1>
           <div class="debug-stage-grid" role="radiogroup" aria-label="Debug stage">
             <button class="debug-stage-button" type="button" role="radio" data-stage-id="1">
-              <span>Stage 1</span>
-              <strong>Grassland</strong>
+              <span>CHAPTER 01 · 草原</span>
+              <strong>守る順番</strong>
             </button>
             <button class="debug-stage-button" type="button" role="radio" data-stage-id="2">
-              <span>Stage 2 / 開発用</span>
-              <strong>Water</strong>
+              <span>CHAPTER 02 · 水没</span>
+              <strong>花の隣で</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="3">
+              <span>CHAPTER 03 · 草原</span>
+              <strong>赤い判定</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="4">
+              <span>CHAPTER 04 · 水没</span>
+              <strong>焼却線</strong>
+            </button>
+            <button class="debug-stage-button" type="button" role="radio" data-stage-id="5">
+              <span>CHAPTER 05 · 草原</span>
+              <strong>防除線の向こう側</strong>
             </button>
           </div>
+          <button id="debugSkipBattle" class="debug-skip-button hidden" type="button">この戦闘をスキップして戦闘後の物語へ</button>
           <p class="debug-stage-help">F3 / Esc: Close</p>
         </section>
       </div>
@@ -112,6 +125,7 @@
         </section>
       </div>
       <div id="hud" class="hidden">
+        <div id="chapterObjective" class="chapter-objective"></div>
         <div class="top-row">
           <div class="meter hp"><span>HP</span><div><i id="hpBar"></i></div><b id="hpText"></b></div>
           <div class="meter mp"><span>MP</span><div><i id="mpBar"></i></div><b id="mpText"></b></div>
@@ -151,6 +165,8 @@
         <h1 id="resultTitle"></h1>
         <p id="resultBody"></p>
         <button id="replayStoryButton" class="hidden">帰還後の会話を読み返す</button>
+        <button id="nextStageButton" class="hidden">次の章へ</button>
+        <button id="retryStageButton" class="hidden">この章をやり直す</button>
         <button id="restartButton">タイトルへ</button>
       </div>
       <div id="pause" class="screen hidden">

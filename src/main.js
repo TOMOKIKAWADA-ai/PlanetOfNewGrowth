@@ -6,6 +6,7 @@ import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
+import { CAMPAIGN_STAGES, getCampaignStage, getNextCampaignStage } from './campaign.js';
 import { Config } from './config.js';
 import { Egg, Enemy, ExperienceOrb, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
@@ -202,6 +203,28 @@ const appInput = new InputState(window);
 let activeGame = null;
 let selectedStageId = 1;
 let menuCursorButton = null;
+let setDebugStageSelectOpen = () => {};
+const CAMPAIGN_RESUME_KEY = 'mebuki-campaign-resume';
+
+function queueCampaignStage(stageId, characterId) {
+  const stage = getCampaignStage(stageId);
+  sessionStorage.setItem(CAMPAIGN_RESUME_KEY, JSON.stringify({ stageId: stage.id, characterId }));
+  window.location.reload();
+}
+
+function consumeCampaignResume() {
+  const raw = sessionStorage.getItem(CAMPAIGN_RESUME_KEY);
+  sessionStorage.removeItem(CAMPAIGN_RESUME_KEY);
+  if (!raw) return null;
+  try {
+    const resume = JSON.parse(raw);
+    if (!CAMPAIGN_STAGES.some(stage => stage.id === resume.stageId)) return null;
+    if (!CHARACTER_OPTIONS[resume.characterId]) return null;
+    return resume;
+  } catch {
+    return null;
+  }
+}
 
 function setMenuCursor(button) {
   if (menuCursorButton === button) return;
@@ -284,7 +307,8 @@ class Game {
   constructor(characterId = 'tsukimi', stageId = 1) {
     this.characterId = characterId;
     this.stageId = stageId;
-    this.isWaterStage = stageId === 2;
+    this.stage = getCampaignStage(stageId);
+    this.isWaterStage = this.stage.terrain === 'water';
     this.canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
@@ -301,7 +325,7 @@ class Game {
     this.renderer.toneMapping = Config.visuals.useToneMapping ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     this.renderer.toneMappingExposure = Config.visuals.renderExposure;
     this.scene = new THREE.Scene();
-    const worldColor = this.isWaterStage ? 0x173a43 : 0x15201d;
+    const worldColor = this.stage.worldColor;
     this.scene.background = new THREE.Color(worldColor);
     this.scene.fog = new THREE.FogExp2(worldColor, this.isWaterStage ? 0.017 : 0.012);
     this.camera = new THREE.PerspectiveCamera(46, 1, 0.1, 600);
@@ -424,7 +448,7 @@ class Game {
     this.touchControls.setEnabled(true);
     this.clock.start();
     this.cameraRig.update(0, 0);
-    this.hud.showMessage(this.stageId === 1 ? '第1章 守る順番\n増殖を抑え、母卵を破壊せよ' : 'Start', 3);
+    this.hud.showMessage(`第${this.stageId}章 ${this.stage.title}\n${this.stage.objective}`, 3);
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
   }
@@ -488,6 +512,9 @@ class Game {
     );
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
+    if (!this.isWaterStage && this.stage.groundTint !== 0xffffff) {
+      ground.material.color?.setHex(this.stage.groundTint);
+    }
     this.scene.add(ground);
     if (this.isWaterStage) {
       this.createWaterStageEnvironment(ground);
@@ -1084,7 +1111,7 @@ class Game {
   }
 
   spawnInitialEggs() {
-    for (let i = 0; i < Config.map.initialEggs; i++) {
+    for (let i = 0; i < Config.map.initialEggs + this.stage.extraEnemies; i++) {
       const point = i < 2
         ? this.findEggSpawnPosition(this.player.position, 12, 19)
         : randomPointInCircle(Config.map.radius * 0.52, 14);
@@ -1094,7 +1121,7 @@ class Game {
   }
 
   spawnInitialEnemies() {
-    for (let i = 0; i < Config.map.initialEnemies; i++) {
+    for (let i = 0; i < Config.map.initialEnemies + this.stage.extraEnemies; i++) {
       const point = this.findEnemySpawnPosition(14, 19);
       if (point) this.spawnEnemy('chaser', point);
     }
@@ -1111,6 +1138,10 @@ class Game {
       for (const type of beat.enemies) {
         const point = this.findEnemySpawnPosition(14, 24);
         if (point) this.spawnEnemy(type, point);
+      }
+      for (let i = 0; i < this.stage.extraEnemies; i++) {
+        const point = this.findEnemySpawnPosition(14, 24);
+        if (point) this.spawnEnemy(this.stageId === 5 ? 'guardian' : 'chaser', point);
       }
     }
   }
@@ -1248,6 +1279,10 @@ class Game {
       handleStoryGamepad(this.input);
       return;
     }
+    if (this.state === 'debug') {
+      handleGamepadMenu(this.input, document.getElementById('debugStageSelect'), () => setDebugStageSelectOpen(false));
+      return;
+    }
     if (this.state === 'levelup') {
       handleGamepadMenu(this.input, this.hud.levelUp, null, true);
       return;
@@ -1261,7 +1296,7 @@ class Game {
       return;
     }
     if (this.state === 'paused') handleGamepadMenu(this.input, this.hud.pause);
-    if (this.input.pressed('F3')) this.devVisible = !this.devVisible;
+    if (this.input.pressed('F4')) this.devVisible = !this.devVisible;
     if (this.state === 'tutorial') {
       handleGamepadMenu(this.input, this.hud.tutorial.overlay, () => this.hud.skipTutorial());
       if (this.input.pressed('Escape')) this.hud.skipTutorial();
@@ -1331,6 +1366,15 @@ class Game {
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
     this.spawnEgg(position, true);
+    if (this.motherEgg) {
+      this.motherEgg.maxHp = Math.round(this.motherEgg.maxHp * this.stage.bossScale);
+      this.motherEgg.hp = this.motherEgg.maxHp;
+      if (this.stageId === 5) {
+        this.motherEgg.baseModelScale.multiplyScalar(1.25);
+        this.motherEgg.model.scale.copy(this.motherEgg.baseModelScale);
+        this.motherEgg.ring.scale.setScalar(1.25);
+      }
+    }
     this.spawnBurstEffect(position, 7, 0xff8b52);
     this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
@@ -2137,17 +2181,30 @@ class Game {
     if (this.outcome || (victory && this.player?.dead)) return;
     this.outcome = {
       victory,
-      body: victory && this.stageId === 1
-        ? 'ポンプは動いている。六人全員が避難所へ。\n東の温室は失われたが、ハスノ区の水は守られた。'
-        : body
+      body: victory ? this.stage.result : body
     };
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
     if (!this.deathWorldActive) this.hud.showDeathBlackout(false);
     this.settleCamera();
-    if (victory && this.stageId === 1) this.replayAftermath();
+    if (victory) this.replayAftermath();
     else this.hud.showResult(victory, this.outcome.body);
+  }
+
+  debugCompleteBattle() {
+    if (this.outcome || this.player?.dead || !['playing', 'paused', 'levelup', 'debug'].includes(this.state)) return;
+    this.finish(true, this.stage.result);
+  }
+
+  goToNextStage() {
+    if (!this.outcome?.victory) return;
+    const next = getNextCampaignStage(this.stageId);
+    if (next) queueCampaignStage(next.id, this.characterId);
+  }
+
+  retryStage() {
+    queueCampaignStage(this.stageId, this.characterId);
   }
 
   replayAftermath() {
@@ -2343,6 +2400,7 @@ function setupCharacterSelect() {
   const characterSelect = document.getElementById('characterSelect');
   const debugStageSelect = document.getElementById('debugStageSelect');
   const stageButtons = [...document.querySelectorAll('[data-stage-id]')];
+  const skipBattleButton = document.getElementById('debugSkipBattle');
   const buttons = [...document.querySelectorAll('[data-character]')];
   const confirmButton = document.getElementById('characterConfirm');
   const selectionSummary = document.getElementById('characterSelectionSummary');
@@ -2378,22 +2436,34 @@ function setupCharacterSelect() {
       button.setAttribute('aria-checked', String(selected));
     });
   };
-  const setDebugStageSelectOpen = (open) => {
+  setDebugStageSelectOpen = (open) => {
     if (!debugStageSelect) return;
+    if (open && activeGame) {
+      activeGame.debugPreviousState = activeGame.state;
+      activeGame.state = 'debug';
+      activeGame.touchControls.setEnabled(false);
+    } else if (!open && activeGame?.state === 'debug') {
+      activeGame.state = activeGame.debugPreviousState ?? 'playing';
+    }
     debugStageSelect.classList.toggle('hidden', !open);
     debugStageSelect.setAttribute('aria-hidden', String(!open));
+    skipBattleButton?.classList.toggle('hidden', !activeGame || Boolean(activeGame.outcome) || activeGame.player?.dead);
     if (open) {
       updateDebugStageSelection();
-      stageButtons.find((button) => Number(button.dataset.stageId) === selectedStageId)?.focus();
-    } else {
+      stageButtons.find((button) => Number(button.dataset.stageId) === (activeGame?.stageId ?? selectedStageId))?.focus();
+    } else if (!activeGame) {
       characterSelect.querySelector(`[data-character="${selectedCharacterId}"]`)?.focus();
+    } else if (activeGame.state === 'result') {
+      const next = activeGame.hud.nextStageButton;
+      (next?.classList.contains('hidden') ? activeGame.hud.replayStoryButton : next)?.focus();
     }
   };
 
   window.addEventListener('keydown', (event) => {
     const characterSelectActive = !characterSelect.classList.contains('hidden');
     const tutorialActive = !document.getElementById('tutorial')?.classList.contains('hidden');
-    if (!characterSelectActive || tutorialActive) return;
+    if (tutorialActive || storyPlayer.active || !characterSelectActive && !activeGame) return;
+    if (activeGame && !['playing', 'paused', 'levelup', 'result', 'debug'].includes(activeGame.state)) return;
     if (event.code === 'F3') {
       event.preventDefault();
       setDebugStageSelectOpen(debugStageSelect?.classList.contains('hidden'));
@@ -2405,12 +2475,22 @@ function setupCharacterSelect() {
 
   stageButtons.forEach((button) => {
     button.addEventListener('click', () => {
-      selectedStageId = Number(button.dataset.stageId) || 1;
+      const stageId = Number(button.dataset.stageId) || 1;
+      if (activeGame) {
+        queueCampaignStage(stageId, activeGame.characterId);
+        return;
+      }
+      selectedStageId = stageId;
       const confirm = new Audio(SFX_URLS.buttonConfirm);
       confirm.volume = Config.audio.sfxVolume * 0.75;
       confirm.play()?.catch?.(() => {});
       setDebugStageSelectOpen(false);
     });
+  });
+  skipBattleButton?.addEventListener('click', () => {
+    if (!activeGame) return;
+    setDebugStageSelectOpen(false);
+    activeGame.debugCompleteBattle();
   });
 
   buttons.forEach((button) => {
@@ -2444,6 +2524,15 @@ function setupTitleScreen() {
   const characterSelect = document.getElementById('characterSelect');
   const startButton = document.getElementById('titleStartButton');
   if (!titleScreen || !characterSelect || !startButton) return;
+  const resume = consumeCampaignResume();
+  if (resume) {
+    selectedStageId = resume.stageId;
+    titleScreen.classList.add('hidden');
+    storyPlayer.show(createBriefing(resume.characterId, resume.stageId), () => {
+      startGameWithCharacter(resume.characterId);
+    });
+    return;
+  }
   startButton.addEventListener('click', () => {
     selectedStageId = 1;
     const confirm = new Audio(SFX_URLS.buttonConfirm);

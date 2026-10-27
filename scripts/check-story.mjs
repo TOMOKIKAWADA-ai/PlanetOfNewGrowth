@@ -54,7 +54,7 @@ async function startBattle(page, id, stage = 1) {
   await page.locator(`[data-character="${id}"]`).click();
   assert.equal(await page.locator('#characterConfirm').isVisible(), true);
   await page.locator('#characterConfirm').click();
-  assert.match(await page.locator('.story-header h2').textContent(), stage === 1 ? /守る順番/ : /水底に残るもの/);
+  assert.match(await page.locator('.story-header h2').textContent(), stage === 1 ? /守る順番/ : /花の隣で/);
   await page.locator('[data-action="skip"]').click();
   await page.waitForFunction(() => window.__storyTest.game?.state === 'playing', null, { timeout: 45000 });
   assert.equal(await page.locator('#game').evaluate(el => el.inert), false);
@@ -131,7 +131,7 @@ try {
   assert.equal(await page.evaluate(() => document.activeElement.id), 'characterConfirm');
   assert.equal(await page.locator('.story-player').isVisible(), false);
   await pad(page, 0); // Second Cross starts the briefing.
-  assert.equal(await page.locator('.story-actor').count(), 3);
+  assert.equal(await page.locator('.story-actor').count(), 5);
   await page.evaluate(() => { const story = window.__storyTest.story; story.index = 1; story.render(); });
   const facing = await page.evaluate(() => {
     const actors = [...document.querySelectorAll('.story-actor.is-visible')];
@@ -144,14 +144,15 @@ try {
   assert.ok(facing.find(actor => actor.side === 'right').xScale < 0);
 
   // Check every briefing/aftermath page at desktop, near-square, phone, and landscape sizes.
-  for (const size of [{ width: 1280, height: 800 }, { width: 1270, height: 1136 }, { width: 390, height: 844 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
+  for (const size of [{ width: 1280, height: 800 }, { width: 1270, height: 1136 }, { width: 768, height: 1024 }, { width: 390, height: 844 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(size);
     const problems = await page.evaluate(async () => {
       const { story } = window.__storyTest;
-      const { createAftermath } = await import('/src/story-data.js');
+      const { STORY_CHARACTERS, createBriefing, createAftermath } = await import('/src/story-data.js');
       const original = story.scene;
       const failures = [];
-      for (const scene of [original, createAftermath('tsukimi')]) {
+      const scenes = [original, ...[1, 2, 3, 4, 5].flatMap(stage => [createBriefing('tsukimi', stage), createAftermath('tsukimi', stage)])];
+      for (const scene of scenes) {
         story.scene = scene;
         for (let i = 0; i < scene.lines.length; i++) {
           story.index = i;
@@ -162,6 +163,13 @@ try {
           const text = story.query('.story-text').getBoundingClientRect();
           const nav = story.query('.story-header nav').getBoundingClientRect();
           if (caption.top < header.bottom || caption.bottom > footer.top || text.right > innerWidth || text.left < 0 || nav.right > innerWidth || story.query('.story-caption').scrollHeight > story.query('.story-caption').clientHeight + 1) failures.push(`${scene.title} page ${i + 1}`);
+          const visibleActors = [...story.root.querySelectorAll('.story-actor')].filter(actor => getComputedStyle(actor).visibility === 'visible');
+          if (visibleActors.some(actor => !actor.classList.contains('is-visible'))) failures.push(`Outgoing cast flicker ${scene.title} page ${i + 1}`);
+          const expectedSpeaker = STORY_CHARACTERS[scene.lines[i].speaker]?.portrait ? scene.lines[i].speaker : null;
+          if (!expectedSpeaker && visibleActors.length) failures.push(`Hidden cast flicker ${scene.title} page ${i + 1}`);
+          if (innerHeight > innerWidth) {
+            if (visibleActors.length !== Number(Boolean(expectedSpeaker)) || visibleActors[0]?.dataset.actor !== expectedSpeaker && expectedSpeaker) failures.push(`Portrait overlap ${scene.title} page ${i + 1}`);
+          }
         }
       }
       story.scene = original;
@@ -170,19 +178,26 @@ try {
       return failures;
     });
     assert.deepEqual(problems, [], `Text overlap at ${size.width}x${size.height}`);
+    if (size.height > size.width) {
+      const portraitStyle = await page.locator('.story-actor.is-speaking').evaluate(actor => ({ mask: getComputedStyle(actor).maskImage, top: actor.parentElement.getBoundingClientRect().top }));
+      assert.match(portraitStyle.mask, /10px/, `Portrait feather missing at ${size.width}x${size.height}`);
+      if (size.width <= 600) assert.ok(portraitStyle.top >= 120, `Portrait not lowered at ${size.width}x${size.height}`);
+    }
     await page.waitForFunction(() => [...document.querySelectorAll('.story-actor')].every(img => img.complete && img.naturalWidth));
     await page.screenshot({ path: `tmp/story-check/briefing-${size.width}.png` });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.evaluate(() => { const s = window.__storyTest.story; s.index = 7; s.render(); });
+  await page.evaluate(() => { const s = window.__storyTest.story; s.index = s.scene.lines.findIndex(line => line.speaker === 'minari'); s.render(); });
   assert.equal(await page.locator('.story-speaker').textContent(), 'ミナリ');
   assert.equal(await page.locator('.story-player').evaluate(el => el.classList.contains('is-npc')), true);
   await page.screenshot({ path: 'tmp/story-check/minari.png' });
   await page.locator('[data-action="skip"]').click();
   await page.waitForFunction(() => window.__storyTest.game?.state === 'playing', null, { timeout: 45000 });
-  assert.match(await page.locator('#clock').textContent(), /^(?:05:00|4:5\d)$/);
-  assert.equal(await page.evaluate(() => window.__storyTest.Config.map.playSeconds), 300);
-  assert.equal(await page.evaluate(() => window.__storyTest.Config.map.motherSpawnSeconds), 240);
+  const timing = await page.evaluate(() => ({ elapsed: window.__storyTest.game.elapsed,
+    duration: window.__storyTest.Config.map.playSeconds,
+    bossAt: window.__storyTest.Config.map.motherSpawnSeconds }));
+  assert.ok(timing.elapsed < 5 && timing.bossAt < timing.duration, 'Battle timing should be active and leave time for the boss');
+  assert.match(await page.locator('#clock').textContent(), /^\d+:\d{2}$/);
   assert.equal(await page.evaluate(() => typeof window.__storyTest.game.player.tryMelee), 'undefined');
   await page.evaluate(() => { window.__padConnected = true; });
   await page.waitForFunction(() => document.documentElement.dataset.inputMode === 'gamepad');
@@ -195,7 +210,7 @@ try {
   await page.keyboard.up('KeyW');
   await page.evaluate(() => { window.__padConnected = false; });
   await page.waitForFunction(() => document.documentElement.dataset.inputMode === 'keyboard');
-  await page.evaluate(() => { window.__storyTest.game.elapsed = 240; });
+  await page.evaluate(() => { window.__storyTest.game.elapsed = window.__storyTest.Config.map.motherSpawnSeconds; });
   await page.waitForFunction(() => window.__storyTest.game.motherEgg !== null);
   assert.equal(await page.evaluate(() => window.__storyTest.game.motherEgg !== null), true);
   await page.keyboard.down('Escape');
@@ -287,7 +302,7 @@ try {
   assert.equal(await page.evaluate(() => window.__storyTest.story.index), 0);
   await page.locator('[data-action="skip"]').click();
   assert.equal(await page.evaluate(() => window.__storyTest.game.state), 'result');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'restartButton');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'nextStageButton');
   await page.locator('#restartButton').click();
   await page.locator('#titleStartButton').waitFor({ state: 'visible' });
   await page.close();
@@ -309,16 +324,17 @@ try {
         game.deathTimer = 0.01;
       } else game.elapsed = Config.map.playSeconds;
     }, scenario.outcome);
-    if (scenario.stage === 1 && scenario.outcome === 'victory') {
+    if (scenario.outcome === 'victory') {
       await other.waitForFunction(() => window.__storyTest.game.state === 'story');
       await other.keyboard.press('Enter');
-      assert.equal(await other.locator('.story-speaker').textContent(), 'アカメ');
+      assert.equal(await other.locator('.story-speaker').textContent(), scenario.stage === 1 ? 'アカメ' : 'ツキミ');
       await other.locator('[data-action="skip"]').click();
+      assert.equal(await other.locator('#resultTitle').textContent(), `第${scenario.stage}章 完`);
     } else {
       await other.locator('#result').waitFor({ state: 'visible' });
       assert.equal(await other.locator('.story-player').isVisible(), false);
       assert.equal(await other.locator('#replayStoryButton').isVisible(), false);
-      assert.equal(await other.locator('#resultTitle').textContent(), scenario.outcome === 'victory' ? 'AREA RESTORED' : 'Defeat');
+      assert.equal(await other.locator('#resultTitle').textContent(), 'Defeat');
     }
     await other.close();
     console.log(`PASS: ${scenario.id} / stage ${scenario.stage} / ${scenario.outcome}`);
