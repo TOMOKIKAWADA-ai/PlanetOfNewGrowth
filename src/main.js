@@ -619,7 +619,9 @@ class Game {
         bedMap,
         normalMap: createWaveNormalTexture(),
         tileSize,
-        sunDirection: this.sunDirection
+        sunDirection: this.sunDirection,
+        sunColor: this.stage.light.sun,
+        skyColor: this.stage.light.sky
       })
     );
     water.name = 'WaterStageSurface';
