@@ -265,6 +265,23 @@ export const Config = {
       range: 22,
       count: 4,
       healRatioPerEgg: 0.035
+    },
+    // Chapter 2's pursuer walks after the player and stops every layInterval seconds to lay an egg behind it.
+    // Only while laying is its shell open (openDamageScale); otherwise hits do closedDamageScale. Touching it hurts
+    // unless the player is in bird form. Set chapter 2's boss to 'motherEgg' to remove it.
+    pursuer: {
+      speed: 2.5,
+      stopDistance: 1.6,
+      bodyRadius: 2.2,
+      mapMargin: 6,
+      firstLayDelay: 5,
+      layInterval: 6.5,
+      layDuration: 2.8,
+      openDamageScale: 1.8,
+      closedDamageScale: 0.3,
+      contactRadius: 3.1,
+      contactDamage: 20,
+      contactCooldown: 1.1
     }
   },
   egg: {

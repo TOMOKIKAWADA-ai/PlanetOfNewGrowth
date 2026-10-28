@@ -1924,6 +1924,7 @@ export class Egg {
       this.hitPulse = Math.max(0, this.hitPulse - dt * 1.7);
       this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
       this.bossType.update(this, dt);
+      if (this.pursuit) this.updatePursuerShell(dt);
     }
     if (this.isMother) return;
     this.updatePulse(dt);
@@ -1953,6 +1954,17 @@ export class Egg {
       && horizontalDistanceSq(this.position, this.game.player.position) <= Config.performance.eggDetailDistance ** 2) {
       this.game.showMimicHint();
     }
+  }
+
+  // Pursuer (src/bosses.js): waddle while walking; while laying, the ground ring glows gold to show the open shell.
+  updatePursuerShell(dt) {
+    const open = this.pursuit.state === 'laying';
+    this.shellGlow = clamp((this.shellGlow ?? 0) + (open ? dt * 5 : -dt * 3), 0, 1);
+    const glow = this.shellGlow * (0.75 + Math.sin(this.age * 9) * 0.25);
+    this.ring.material.color.setHex(this.shellGlow > 0.05 ? 0xffe066 : 0xff9d4a);
+    this.ring.material.opacity = 0.34 + glow * 0.56;
+    this.ring.scale.setScalar(1 + glow * 0.28);
+    this.model.rotation.z = open ? 0 : Math.sin(this.pursuit.walk * 7) * 0.07;
   }
 
   updateMotherShockwave(dt) {
@@ -1988,6 +2000,8 @@ export class Egg {
     }
     if (this.dead) return;
     if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
+    const bossScale = this.isMother ? this.bossType.damageScale?.(this) ?? 1 : 1;
+    amount *= bossScale;
     this.hp -= amount;
     if (this.isMother) {
       this.hitPulse = Math.max(this.hitPulse, clamp(amount / this.maxHp * 0.32, 0.004, 0.025));
@@ -1995,7 +2009,7 @@ export class Egg {
       const squash = clamp(amount / this.maxHp, 0.03, 0.18);
       this.model.scale.multiplyScalar(1 + squash);
     }
-    this.game.spawnHitSpark(this.position, this.isMother ? 0xffbf61 : 0xd8ff7a);
+    this.game.spawnHitSpark(this.position, bossScale < 1 ? 0x9aa3a8 : this.isMother ? 0xffbf61 : 0xd8ff7a);
     if (this.hp <= 0) {
       this.dead = true;
       this.claimed = false;

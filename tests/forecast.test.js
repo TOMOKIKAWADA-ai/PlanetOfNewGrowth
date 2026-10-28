@@ -10,7 +10,8 @@ test('the forecast names the chapter boss and its hint, falling back to the moth
   assert.match(first.boss.hint, /鳥形態/);
   assert.equal(buildForecast(STAGES[5]).boss.name, '渇きの母');
   assert.match(buildForecast(STAGES[5]).boss.hint, /卵を吸って/);
-  assert.equal(buildForecast(STAGES[2]).boss.hint, first.boss.hint);
+  assert.equal(buildForecast(STAGES[3]).boss.hint, first.boss.hint);
+  assert.equal(buildForecast(STAGES[2]).boss.name, '追い手');
   assert.equal(buildForecast(STAGES[6]).boss.name, '白蓮の核');
 });
 

@@ -203,3 +203,15 @@
 使い方: アイテム（xp 以外）を拾うと `itemPickup`、渇きの母が吸い始めると `thirstDrain`。`Config.audio.newSfx: false` で元の `xp_pickup` / `mother_charge` の流用に戻る。
 ライセンス: Stable Audio 3（Stability AI Community License）。商用で公開する前の登録は上の「ライセンス」の節のとおり。
 **耳での確認はまだ**（自動のサイクルでは音を聞けないので、波形・周波数・ラウドネスで選んだ）。
+
+## 2026-10-28 画風の基準づくりの試し描き（B0-3 / B4-1）
+
+すべて**不採用（比較用）**。手本との違いと次の手は `asset-pipeline.md` の「画風の基準」。設定とプロンプトの全文は `assets_src/illust/2026-10-28/jobs.json` と各 PNG と同名の JSON。
+
+| ファイル | ツール・モデル | 内容 | シード | 判定 |
+|---|---|---|---|---|
+| `assets_src/illust/2026-10-28/world-a.png` | Forge / juggernautXL_ragnarokBy（DPM++ 2M 28 steps CFG 5） | 世界の系統。白い廃墟・花弁状の塔・逆光・霧 | 2801 | 不採用: 逆光と霧は近いが黄色すぎ、塔がゴシックの尖塔 |
+| `assets_src/illust/2026-10-28/world-b.png` | 同上 | 同上 | 2802 | 不採用: 同上 |
+| `assets_src/illust/2026-10-28/enemy-a.png` | 同上 | 敵の系統。棘の蔓に覆われた赤い卵・石畳・曇天 | 2811 | 不採用: 写真調でつるっとした卵、光る筋がない |
+| `assets_src/illust/2026-10-28/enemy-b.png` | 同上 | 同上 | 2812 | 不採用: 同上 |
+| `assets_src/illust/2026-10-28/chara-a.png` | Forge / softsketchIllustrious_v125（Euler a 28 steps CFG 5.5） | 人物の系統。青い髪のポニーテール・紺の装甲服・あおり | 2821 | 不採用: 線画寄りの淡い塗りで、手本のセル塗りと違う |

@@ -49,7 +49,27 @@
 - ComfyUI を使う場合は、モデルを `extra_model_paths.yaml` で Forge のフォルダから参照し、コピーしない。ワークフローは `scripts/assets/comfy/*.json` に保存する。
 - 3Dにする元絵の条件: 対象1つ、正面か斜め45度、白か無地の背景、影なし、全体が画面に収まる。
 - 立ち絵に近い絵が必要なときは、既存の `assets/ui/characters` を参照画像にして ControlNet（AnyTest）か img2img を使う。
-- 画風の共通プロンプトは B0-3 / B4-1 で決めてここに書く。
+- 画風の共通プロンプトは下の「画風の基準」。
+
+### 画風の基準（B0-3、2026-10-28）
+
+手本は `assets/promo` の3枚。ゲームの絵は次の3つの系統に分かれ、どれも「厚塗りの細密なデジタル画」で、線画や写真には寄せない。
+
+| 系統 | 手本 | 色 | 光 | 形 |
+|---|---|---|---|---|
+| 世界（芽吹き・遺跡） | `world-awakening.png` | 白・クリーム・くすんだ青緑。暖色は空の一部だけ | 低い逆光、厚い霧、遠景ほど白く霞む | 白い花弁状の塔、卵形のガラスの殻、蔦と小さな白い花、浅い水たまり。手前は暗い草のシルエット |
+| 敵（侵食・卵） | `invasive-source.png` | 灰色と黒。彩度は赤だけ | 曇天、雲の切れ目から弱い光 | 棘のある蔓に覆われた卵、**殻の筋が赤く光る**、石畳に蔓が網のように広がる |
+| 人物（三人） | `three-soldiers.png` | 3人の服の色（紺・赤・白緑）以外は白っぽく明るい | 白い逆光、柔らかい | アニメ塗り（艶のあるセル調）、細い線、花の意匠つきの体にぴったりした装甲服、あおり |
+
+共通プロンプト（`juggernautXL_ragnarokBy`、DPM++ 2M、28 steps、CFG 5、1344×768）:
+- 世界: `concept art, overgrown white ruins of a futuristic city, giant white petal-shaped towers, ivy and small white flowers, shallow flooded ground reflecting light, warm golden backlight, low sun behind the towers, volumetric haze, atmospheric perspective, dark overgrown foreground silhouettes, muted cream and teal palette, cinematic composition, painterly digital illustration, highly detailed`
+  - 否定: `text, watermark, signature, people, saturated blue sky, flat lighting, cartoon, photo, blurry, oversaturated`
+  - 2026-10-28 の結果: 逆光と霧は手本に近づいた（10-21 の青空より良い）。ただし**黄色すぎ**、塔が**ゴシックの尖塔**になり花弁の形が出ない。次は `golden` を外して `pale cream light, cool teal shadows` にし、`gothic, spires` を否定に入れる。花弁の塔は `curved white petal-like structures, organic architecture` のように形を言い換える。
+- 敵: `dark fantasy concept art, giant crimson egg covered in thorny vines with glowing red seams, ...`（全文は `assets_src/illust/2026-10-28/jobs.json`）
+  - 2026-10-28 の結果: **採用しない**。卵がつるっとした写真のような赤い卵になり、光る筋も細かい棘も出ない。juggernaut は写真寄りになりやすい。次は `intricate, organic, bramble texture, emissive red cracks, highly detailed digital painting, artstation` を足し、否定に `photo, smooth, plain, minimalist` を入れる。
+- 人物: `softsketchIllustrious_v125`（Euler a、CFG 5.5）では**線画寄りの淡い塗り**になり、手本の艶のあるセル塗りと違う（採用しない）。キャラは手本の立ち絵（`assets/ui/characters`）を参照にした img2img か ControlNet で寄せる方が早い（B4-5）。
+
+判断の基準: 生成した絵は手本と並べて見比べ、(1) 光の向き（逆光か）、(2) 彩度の置き方（世界は低彩度、敵は赤だけ）、(3) 塗り（厚塗り・細密）の3点が合わなければ使わない。
 
 ## 3Dモデル（Hunyuan3D 2.0 mini turbo）
 

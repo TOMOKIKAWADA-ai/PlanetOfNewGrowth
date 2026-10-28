@@ -412,6 +412,8 @@ class Game {
     this.mimicStuns = 0;
     this.thirstHintShown = false;
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
+    this.pursuerHintShown = false;
+    this.pursuerStats = { lays: 0, eggs: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1485,8 +1487,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return false;
   }
 
-  spawnEgg(position, isMother = false) {
-    if (!isMother && !this.canSpawnEgg()) return null;
+  // ignoreCap: eggs a boss lays itself (the pursuer) appear even when the field is full.
+  spawnEgg(position, isMother = false, { ignoreCap = false } = {}) {
+    if (!isMother && !ignoreCap && !this.canSpawnEgg()) return null;
     const egg = new Egg(this, position, isMother);
     if (!isMother && this.mimicEggsActive && !egg.aquatic && Math.random() < Config.egg.mimic.chance) egg.isMimic = true;
     this.scene.add(egg.object);
@@ -2206,6 +2209,29 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     } else {
       this.showMessage('全部壊した！ 回復させなかった', 1.6);
     }
+  }
+
+  // Pursuer (src/bosses.js): stops, opens its shell and lays an egg behind itself (away from the player).
+  onPursuerLayStart(mother, seconds) {
+    this.pursuerStats.lays += 1;
+    if (!this.pursuerHintShown) {
+      this.pursuerHintShown = true;
+      this.showMessage(`${getBossName(this.stage)}が立ち止まって卵を産んでいる
+殻が開いているあいだだけ攻撃が効く`, 3.2);
+    }
+    this.spawnRingEffect(mother.position, 3.6, 0xffe066, 0.85, Math.min(0.6, seconds));
+    this.playSfx('motherCharge', { volume: 0.5, cooldown: 0.4 });
+    const away = new THREE.Vector3(mother.position.x - this.player.position.x, 0, mother.position.z - this.player.position.z);
+    if (away.lengthSq() < 0.01) away.set(0, 0, 1);
+    away.normalize().multiplyScalar(3.6).add(mother.position);
+    if (!this.isBlockedByBuilding(away, 1.5) && this.spawnEgg(away, false, { ignoreCap: true })) {
+      this.pursuerStats.eggs += 1;
+      this.spawnDust(away, 0xffe066);
+    }
+  }
+
+  onPursuerLayEnd(mother) {
+    this.spawnRingEffect(mother.position, 3.2, 0x9aa3a8, 0.5, 0.35);
   }
 
   // An egg swallowed by the boss vanishes without dropping XP or items.

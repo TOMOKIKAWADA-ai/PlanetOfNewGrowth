@@ -10,16 +10,16 @@ test('every chapter names a boss and chapter one fights the mother egg', () => {
 });
 
 test('bosses that are not built yet fall back to the mother egg', () => {
-  assert.equal(getBossType('pursuer'), BOSS_TYPES[DEFAULT_BOSS]);
+  assert.equal(getBossType('floodgateMother'), BOSS_TYPES[DEFAULT_BOSS]);
   assert.equal(getBossType(undefined).id, 'motherEgg');
-  assert.equal(isBossImplemented('pursuer'), false);
+  assert.equal(isBossImplemented('floodgateMother'), false);
   for (const type of Object.values(BOSS_TYPES)) assert.equal(typeof type.update, 'function');
 });
 
 test('the displayed boss name falls back to the chapter name until the boss has its own', () => {
   assert.equal(getBossName(STAGES[1]), '母卵');
   assert.equal(getBossName(STAGES[6]), '白蓮の核');
-  assert.equal(getBossName({ boss: 'pursuer', motherName: '母卵' }), '母卵');
+  assert.equal(getBossName({ boss: 'floodgateMother', motherName: '母卵' }), '母卵');
 });
 
 test('the thirst mother drains the nearest eggs and heals only by those left alive', async () => {
@@ -54,4 +54,53 @@ test('the thirst mother drains the nearest eggs and heals only by those left ali
 test('chapter five fights the thirst mother under its own name', () => {
   assert.ok(isBossImplemented('thirstMother'));
   assert.equal(getBossName(STAGES[5]), '渇きの母');
+});
+
+test('chapter two fights the pursuer: it walks toward the player, slides along walls and opens only while laying', async () => {
+  const { pursuerStep, pursuerDamageScale, updatePursuer } = await import('../src/bosses.js');
+  const { Config } = await import('../src/config.js');
+  assert.equal(getBossName(STAGES[2]), '追い手');
+  const never = () => false;
+  assert.deepEqual(pursuerStep({ x: 0, z: 0 }, { x: 10, z: 0 }, 2, 1.6, never), { x: 2, z: 0 });
+  assert.equal(pursuerStep({ x: 0, z: 0 }, { x: 1, z: 0 }, 2, 1.6, never), null); // close enough: stays put
+  const wallAhead = (p) => p.x > 0.5 && Math.abs(p.z) < 0.1;
+  const slid = pursuerStep({ x: 0, z: 0 }, { x: 10, z: 10 }, 2, 1.6, (p) => p.x > 0.5);
+  assert.equal(slid.x, 0);
+  assert.ok(slid.z > 0);
+  assert.ok(pursuerStep({ x: 0, z: 0 }, { x: 10, z: 0 }, 2, 1.6, wallAhead) === null);
+
+  const cfg = Config.boss.pursuer;
+  assert.equal(pursuerDamageScale('laying', cfg), cfg.openDamageScale);
+  assert.equal(pursuerDamageScale('chasing', cfg), cfg.closedDamageScale);
+  assert.ok(cfg.openDamageScale > 1 && cfg.closedDamageScale < 1);
+
+  const calls = [];
+  const player = { position: { x: 40, z: 0 }, dead: false, form: 'human', takeDamage(n) { calls.push(`hit:${n}`); } };
+  const game = {
+    state: 'playing', player,
+    isBlockedByBuilding: () => false,
+    onPursuerLayStart() { calls.push('lay'); },
+    onPursuerLayEnd() { calls.push('close'); }
+  };
+  const mother = { game, position: { x: 0, z: 0 } };
+  updatePursuer(mother, 1);
+  assert.equal(mother.pursuit.state, 'chasing');
+  assert.ok(Math.abs(mother.position.x - cfg.speed) < 1e-9);
+  updatePursuer(mother, cfg.firstLayDelay);
+  assert.equal(mother.pursuit.state, 'laying');
+  const stoppedAt = mother.position.x;
+  updatePursuer(mother, 0.5);
+  assert.equal(mother.position.x, stoppedAt); // stands still while laying
+  updatePursuer(mother, cfg.layDuration);
+  assert.equal(mother.pursuit.state, 'chasing');
+  assert.deepEqual(calls, ['lay', 'close']);
+
+  player.position = { x: mother.position.x + 1, z: 0 };
+  updatePursuer(mother, 0.01);
+  assert.equal(calls.at(-1), `hit:${cfg.contactDamage}`);
+  player.form = 'bird';
+  mother.pursuit.contactTimer = 0;
+  updatePursuer(mother, 0.01);
+  assert.equal(calls.at(-1), `hit:${cfg.contactDamage}`);
+  assert.equal(calls.filter(c => c.startsWith('hit')).length, 1); // bird form floats over it
 });

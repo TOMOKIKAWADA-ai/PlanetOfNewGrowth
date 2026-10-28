@@ -23,6 +23,19 @@ export const BOSS_TYPES = Object.freeze({
       egg.updateMotherShockwave(dt);
       updateThirstDrain(egg, dt);
     }
+  }),
+  // 第2章のボス。衝撃波は出さず、プレイヤーをゆっくり追う。数秒ごとに立ち止まって卵を産み、そのあいだだけ殻が開く。
+  // 殻が閉じているあいだは攻撃がほとんど効かない。触れるとダメージ（鳥形態で浮いていれば当たらない）。
+  pursuer: Object.freeze({
+    id: 'pursuer',
+    name: '追い手',
+    forecast: 'ゆっくり追ってくる。立ち止まって卵を産むあいだだけ殻が開く。止まった瞬間に撃とう',
+    update(egg, dt) {
+      updatePursuer(egg, dt);
+    },
+    damageScale(egg) {
+      return pursuerDamageScale(egg.pursuit?.state, Config.boss.pursuer);
+    }
   })
 });
 
@@ -91,4 +104,64 @@ export function updateThirstDrain(mother, dt) {
   thirst.timer = cfg.drainSeconds;
   thirst.targets = targets;
   game.onThirstDrainStart(mother, targets, cfg.drainSeconds);
+}
+
+export function pursuerDamageScale(state, cfg) {
+  return state === 'laying' ? cfg.openDamageScale : cfg.closedDamageScale;
+}
+
+// 追い手の一歩: プレイヤーへ向かって step だけ進む。建物に当たるなら x・z の片方だけで滑る。どちらも塞がれていれば止まる。
+export function pursuerStep(from, target, step, stopDistance, isBlocked) {
+  const dx = target.x - from.x;
+  const dz = target.z - from.z;
+  const distance = Math.hypot(dx, dz);
+  if (distance <= stopDistance || distance === 0) return null;
+  const move = Math.min(step, distance - stopDistance);
+  const mx = dx / distance * move;
+  const mz = dz / distance * move;
+  for (const [x, z] of [[mx, mz], [mx, 0], [0, mz]]) {
+    if (x === 0 && z === 0) continue;
+    const next = { x: from.x + x, z: from.z + z };
+    if (!isBlocked(next)) return next;
+  }
+  return null;
+}
+
+// chasing → (間隔が来たら立ち止まって後ろに卵を産む) → laying（殻が開く） → chasing
+export function updatePursuer(mother, dt) {
+  const game = mother.game;
+  if (game.state !== 'playing') return;
+  const cfg = Config.boss.pursuer;
+  const pursuit = mother.pursuit ??= { state: 'chasing', timer: cfg.firstLayDelay, contactTimer: 0, walk: 0 };
+  const player = game.player;
+  pursuit.timer -= dt;
+  pursuit.contactTimer = Math.max(0, pursuit.contactTimer - dt);
+  if (pursuit.state === 'laying') {
+    if (pursuit.timer <= 0) {
+      pursuit.state = 'chasing';
+      pursuit.timer = cfg.layInterval;
+      game.onPursuerLayEnd?.(mother);
+    }
+  } else if (pursuit.timer <= 0) {
+    pursuit.state = 'laying';
+    pursuit.timer = cfg.layDuration;
+    game.onPursuerLayStart?.(mother, cfg.layDuration);
+  } else if (player && !player.dead) {
+    const limit = Config.map.radius - cfg.mapMargin;
+    const next = pursuerStep(mother.position, player.position, cfg.speed * dt, cfg.stopDistance,
+      (point) => Math.hypot(point.x, point.z) > limit || game.isBlockedByBuilding(point, cfg.bodyRadius));
+    if (next) {
+      mother.position.x = next.x;
+      mother.position.z = next.z;
+      pursuit.walk += dt;
+    }
+  }
+  if (player && !player.dead && player.form !== 'bird' && pursuit.contactTimer <= 0) {
+    const dx = player.position.x - mother.position.x;
+    const dz = player.position.z - mother.position.z;
+    if (dx * dx + dz * dz <= cfg.contactRadius * cfg.contactRadius) {
+      pursuit.contactTimer = cfg.contactCooldown;
+      player.takeDamage(cfg.contactDamage);
+    }
+  }
 }
