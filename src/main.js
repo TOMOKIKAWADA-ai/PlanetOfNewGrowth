@@ -20,6 +20,7 @@ import { getBossName } from './bosses.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
+import { VineBindVisual, createVineEruption, updateVineEruption } from './vines.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
 import {
   createWaterStageTerrainMaterial,
@@ -410,6 +411,11 @@ class Game {
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
     this.mimicStuns = 0;
+    this.vinesActive = Config.enemy.vine.enabled && this.stageId >= Config.enemy.vine.fromChapter;
+    this.vineIntroduced = false;
+    this.vineHintShown = false;
+    this.vineBindVisual = null;
+    this.vineStats = { spawned: 0, windups: 0, binds: 0, mashEscapes: 0, cuts: 0, timeouts: 0, mashes: 0 };
     this.thirstHintShown = false;
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
     this.pursuerHintShown = false;
@@ -1289,6 +1295,12 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
         if (point) this.spawnEnemy(type, point);
       }
     }
+    // 縛り蔓の章では、最初の1体を見える距離に出して紹介する。
+    if (this.vinesActive && !this.vineIntroduced && this.elapsed >= Config.enemy.vine.introAt) {
+      this.vineIntroduced = true;
+      const point = this.findEnemySpawnPosition(11, 15);
+      if (point) this.spawnEnemy('vine', point);
+    }
   }
 
   findEnemySpawnPosition(minDistance, maxDistance) {
@@ -1330,6 +1342,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
+      this.updateVineBind(dt);
       for (const egg of this.eggs) egg.update(dt);
       if (this.motherEgg) this.motherEgg.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
@@ -1532,7 +1545,15 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     } else if (this.elapsed >= 35 && roll < 0.22) {
       type = 'shooter';
     }
+    if (type === 'chaser' && this.canSpawnVine() && Math.random() < Config.enemy.vine.spawnChance) type = 'vine';
     return this.spawnEnemy(type, egg.position, egg);
+  }
+
+  canSpawnVine() {
+    if (!this.vinesActive || this.elapsed < Config.enemy.vine.introAt) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'vine') alive++;
+    return alive < Config.enemy.vine.maxAlive;
   }
 
   spawnEnemy(type, position, homeEgg = null) {
@@ -1547,6 +1568,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     }
     const offset = randomPointInCircle(2.1, 0.7).add(position);
     const enemy = new Enemy(this, type, offset, homeEgg);
+    if (type === 'vine') this.vineStats.spawned += 1;
     this.scene.add(enemy.object);
     this.enemies.push(enemy);
     this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
@@ -2307,6 +2329,72 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (Config.egg.mimic.stunMarker) this.spawnStunMarker(seconds);
   }
 
+  onVineWindup() {
+    this.vineStats.windups += 1;
+    if (this.vineHintShown || this.player.form !== 'human') return;
+    this.vineHintShown = true;
+    this.showMessage('縛り蔓！ 緑の輪から出よう\n鳥形態なら地面のツタは届かない', 2.8);
+  }
+
+  spawnVineEruption(position, caught) {
+    const group = createVineEruption(position);
+    this.scene.add(group);
+    const duration = caught ? 0.3 : 0.7;
+    this.effects.push({
+      object: group,
+      life: duration + 0.1,
+      duration,
+      dispose: false,
+      update(effect, dt) {
+        effect.life -= dt;
+        updateVineEruption(group, effect.duration + 0.1 - effect.life, effect.duration);
+      }
+    });
+    this.spawnParticleBurst(position, 16, 0x8a6a3a, 1.4, 0.35);
+    this.playSfx('eggBreak', { volume: caught ? 0.8 : 0.5, cooldown: 0.1 });
+  }
+
+  onPlayerBound(source) {
+    this.vineStats.binds += 1;
+    this.vineHintShown = true;
+    this.vineBindVisual?.dispose();
+    this.vineBindVisual = new VineBindVisual(this.scene, this.player.position, source.position);
+    this.spawnParticleBurst(this.player.position, 22, 0x6fae45, 1.6, 0.4);
+    this.shake = Math.max(this.shake, 0.4);
+  }
+
+  onBindMash(count) {
+    this.vineStats.mashes += count;
+    this.vineBindVisual?.struggle();
+    this.hud.pulseBindMeter();
+    this.playSfx('projectileHit', { volume: 0.35, cooldown: 0.06 });
+    if (Math.random() < 0.5) this.spawnParticleBurst(this.player.position, 4, 0x6fae45, 0.9, 0.25);
+  }
+
+  updateVineBind(dt) {
+    if (!this.vineBindVisual) return;
+    const player = this.player;
+    const loosen = player.bindDuration > 0 ? clamp(1 - player.bindTimer / player.bindDuration, 0, 1) : 1;
+    this.vineBindVisual.update(dt, loosen);
+  }
+
+  // reason: 'mash' / 'timeout' / 'cut' / 'death' / 'end'
+  onPlayerBindReleased(reason) {
+    if (reason === 'mash') this.vineStats.mashEscapes += 1;
+    else if (reason === 'cut') this.vineStats.cuts += 1;
+    else if (reason === 'timeout') this.vineStats.timeouts += 1;
+    this.vineBindVisual?.dispose();
+    this.vineBindVisual = null;
+    if (reason === 'death' || reason === 'end') return;
+    const position = this.player.position;
+    this.spawnParticleBurst(position, 30, 0x9c7743, 2.2, 0.45);
+    this.spawnParticleBurst(position, 14, 0x6fae45, 2.6, 0.5);
+    this.spawnRingEffect(position, 2.4, 0xc8e98a, 0.6, 0.3);
+    this.playSfx('eggBreak', { volume: 0.7, cooldown: 0.1 });
+    if (reason === 'mash') this.showMessage('振りほどいた！', 0.9);
+    else if (reason === 'cut') this.showMessage('ツタがほどけた', 0.9);
+  }
+
   // 鳥形態のカメラは遠いので、足元の輪より目立つ印を頭上に回す。硬直が解けるまでプレイヤーに付いていく。
   spawnStunMarker(seconds) {
     const player = this.player;
@@ -2550,6 +2638,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   finish(victory, body) {
     if (this.outcome || (victory && this.player?.dead)) return;
+    this.player?.releaseBind('end');
     this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
     this.state = 'result';
     this.hud.hideLevelUp();

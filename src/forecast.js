@@ -13,6 +13,14 @@ const NEW_SPECIES = Object.freeze([
     form: '人間形態で撃つ（鳥形態で食べると、少しのあいだ動けない）',
     chapter: () => Config.egg.mimic.fromChapter,
     enabled: () => Config.egg.mimic.enabled
+  }),
+  Object.freeze({
+    id: 'vine',
+    name: '縛り蔓',
+    trait: '足元に緑の輪を出し、地面から細いツタを伸ばして数秒しばる',
+    form: '輪から出るか、鳥形態で浮く。捕まったら連打で振りほどく',
+    chapter: () => Config.enemy.vine.fromChapter,
+    enabled: () => Config.enemy.vine.enabled
   })
 ]);
 

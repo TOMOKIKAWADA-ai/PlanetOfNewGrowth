@@ -91,6 +91,11 @@ function installBot({ speed, seed, dodge, realtime }) {
   };
 
   function steer() {
+    // Caught by a vine: wiggle the stick left/right about 7 times a second, a human mashing pace.
+    if (player.bindTimer > 0) {
+      input.setTouchMovement(Math.floor(game.elapsed * 7) % 2 ? 1 : -1, 0);
+      return;
+    }
     const p = player.position;
     let mx = 0;
     let mz = 0;
@@ -242,6 +247,7 @@ function summarize(game, stats) {
     mimicStuns: game.mimicStuns ?? 0,
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed) } : null,
     pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
+    vine: game.vineStats?.windups ? { ...game.vineStats } : null,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,
     birdSeconds: Math.round(stats.birdSeconds),
@@ -289,7 +295,7 @@ try {
     result.seed = seedBase + run;
     result.errors = errors;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.vine ? `vine windups/binds ${result.vine.windups}/${result.vine.binds} mash/cut/timeout ${result.vine.mashEscapes}/${result.vine.cuts}/${result.vine.timeouts}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     const video = page.video();
     await context.close();

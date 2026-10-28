@@ -378,6 +378,33 @@ export const Config = {
       eggCheckRange: 11,
       destinationSeconds: 4.8
     },
+    // 縛り蔓（第4章から）: 近づくと人間形態の足元に緑の輪を出し、輪が閉じると地面から細いツタが伸びて数秒しばる。
+    // 鳥形態と水の上は地面から届かないので捕まらない。しばっている間は本体が地面に潜って撃てないので、
+    // 移動キー・スティック・ボタンの連打で振りほどく（予兆の間に倒せば出てこない）。enabled: false で出なくなる。
+    vine: {
+      enabled: true,
+      fromChapter: 4,
+      hp: 56,
+      speed: 2.6,
+      damage: 6,
+      xp: 9,
+      range: 10,
+      cooldown: 4.5,
+      windupSeconds: 1.0,
+      trackSeconds: 0.5, // 予兆の最初のこの時間だけ、輪がプレイヤーを少し遅れて追う。残りは止まる
+      trackLag: 0.3,
+      // 輪は動いている先を読んで置く（ツタが出る時刻の予想位置）。まっすぐ走り続けると捕まり、曲がるか止まればよけられる。
+      leadMax: 4,
+      grabRadius: 1.5,
+      bindSeconds: 3.5, // 何もしなければこの時間しばられる
+      mashSeconds: 0.2, // 連打1回で縮む時間（3.5秒なら約15回で抜ける）
+      bindDamage: 6,
+      regrabImmunity: 2.5, // ほどけた直後、この時間は捕まらない
+      burrowDepth: 1.5, // しばっている間、本体が地面に沈む深さ（ツタの先だけ地上に残る）
+      spawnChance: 0.22, // 卵から追跡型が孵るとき、代わりに縛り蔓になる割合
+      maxAlive: 4,
+      introAt: 35 // この時刻に1体を近くへ出して見せる
+    },
     dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
     tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },
     dragonfly: { hp: 46, speed: 7.27, damage: 15, birdDamageMultiplier: 2.2, xp: 10 },

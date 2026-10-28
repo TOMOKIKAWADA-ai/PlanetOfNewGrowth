@@ -127,6 +127,8 @@ export class Hud {
     this.motherPanel = document.getElementById('motherPanel');
     this.motherBar = document.getElementById('motherBar');
     this.motherAlert = document.getElementById('motherAlert');
+    this.bindMeter = document.getElementById('bindMeter');
+    this.bindBar = document.getElementById('bindBar');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
     this.nextChapterButton = document.getElementById('nextChapterButton');
@@ -186,7 +188,23 @@ export class Hud {
     const visibleStatusText = this.game.spawnPauseTimer > 0 ? '' : statusText;
     this.hintLine.textContent = this.game.hint || pickupStatusText || visibleStatusText;
     this.updateMother();
+    this.updateBindMeter();
     this.pause.classList.toggle('hidden', this.game.state !== 'paused');
+  }
+
+  // 縛り蔓に捕まっている間だけ出す。バーは振りほどくまでの進み具合（時間と連打で伸びる）。
+  updateBindMeter() {
+    const player = this.game.player;
+    const bound = player.bindTimer > 0 && player.bindDuration > 0;
+    this.bindMeter?.classList.toggle('hidden', !bound);
+    if (bound) this.setBar(this.bindBar, 1 - player.bindTimer / player.bindDuration);
+  }
+
+  pulseBindMeter() {
+    if (!this.bindMeter) return;
+    this.bindMeter.classList.remove('jolt');
+    void this.bindMeter.offsetWidth;
+    this.bindMeter.classList.add('jolt');
   }
 
   setBar(element, ratio) {

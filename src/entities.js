@@ -14,6 +14,7 @@ import {
 } from './math.js';
 import { Config } from './config.js';
 import { getBossType } from './bosses.js';
+import { VineWarning, createVineEnemyModel } from './vines.js';
 
 const CONTACT_SHADOW_TEXTURE_SIZE = 96;
 let contactShadowTexture = null;
@@ -165,7 +166,8 @@ const ENEMY_LOD_SPECS = {
   dragonflyLarva: { color: 0x376d61, radius: 0.34, height: 0.55, segments: 7 },
   tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
   dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
-  frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 }
+  frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
+  vine: { color: 0x6b4d2a, radius: 0.5, height: 1.5, segments: 6 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -305,6 +307,12 @@ export class Player {
     this.pickupMagnetTimer = 0;
     this.speedBoostTimer = 0;
     this.stunTimer = 0;
+    // 縛り蔓に捕まっている残り時間（Config.enemy.vine）。連打で縮む。
+    this.bindTimer = 0;
+    this.bindDuration = 0;
+    this.bindSource = null;
+    this.bindMashes = 0;
+    this.bindImmuneTimer = 0;
     // Multipliers set by carry-over chapter rewards (Config.carryOver).
     this.burstCooldownScale = 1;
     this.formMpCostScale = 1;
@@ -1197,7 +1205,7 @@ export class Player {
   }
 
   update(dt, input) {
-    if (input.actionPressed('transform') && !(this.stunTimer > 0)) this.toggleForm();
+    if (input.actionPressed('transform') && !(this.stunTimer > 0) && !(this.bindTimer > 0)) this.toggleForm();
     this.autoTimer = Math.max(0, this.autoTimer - dt);
     this.specialTimer = Math.max(0, this.specialTimer - dt);
     this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
@@ -1210,8 +1218,10 @@ export class Player {
     this.pickupMagnetTimer = Math.max(0, this.pickupMagnetTimer - dt);
     this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
     this.stunTimer = Math.max(0, this.stunTimer - dt);
+    this.bindImmuneTimer = Math.max(0, this.bindImmuneTimer - dt);
+    this.updateBind(dt, input);
 
-    if (this.stunTimer <= 0) this.updateMovement(dt, input);
+    if (this.stunTimer <= 0 && !(this.bindTimer > 0)) this.updateMovement(dt, input);
     this.updateFormResources(dt);
     this.updateDive(dt);
     this.updateCombat(dt, input);
@@ -1289,7 +1299,7 @@ export class Player {
 
   updateCombat(dt, input) {
     if (this.form === 'human') {
-      if (input.actionPressed('burst')) this.tryBurst();
+      if (input.actionPressed('burst') && !(this.bindTimer > 0)) this.tryBurst();
       this.tryAutoShoot();
       this.trySpecialEggShot();
       this.updatePulse(dt);
@@ -1600,6 +1610,44 @@ export class Player {
     this.game.onPlayerStunned(this.position, seconds);
   }
 
+  // ツタは地面から伸びるので、飛んでいる鳥と水の上には届かない。
+  canBeBound() {
+    return !this.dead && this.form !== 'bird' && this.diveState === 'ready' && !(this.bindTimer > 0)
+      && this.bindImmuneTimer <= 0 && this.phaseTimer <= 0 && !this.game.isWaterPosition(this.position);
+  }
+
+  bind(source, seconds) {
+    if (!this.canBeBound()) return false;
+    this.bindTimer = seconds;
+    this.bindDuration = seconds;
+    this.bindSource = source;
+    this.bindMashes = 0;
+    this.game.onPlayerBound(source, seconds);
+    return true;
+  }
+
+  updateBind(dt, input) {
+    if (!(this.bindTimer > 0)) return;
+    const mashes = input.mashCount();
+    if (mashes > 0) {
+      this.bindMashes += mashes;
+      this.bindTimer -= mashes * Config.enemy.vine.mashSeconds;
+      this.game.onBindMash(mashes);
+    }
+    this.bindTimer -= dt;
+    if (this.bindSource?.dead) this.releaseBind('cut');
+    else if (this.bindTimer <= 0) this.releaseBind(this.bindMashes > 0 ? 'mash' : 'timeout');
+  }
+
+  // reason: 'mash'（振りほどいた）, 'timeout', 'cut'（本体を倒した）, 'death'
+  releaseBind(reason) {
+    if (!this.bindSource && !(this.bindTimer > 0)) return;
+    this.bindTimer = 0;
+    this.bindSource = null;
+    this.bindImmuneTimer = Config.enemy.vine.regrabImmunity;
+    this.game.onPlayerBindReleased(reason);
+  }
+
   findMotherForDive() {
     if (!this.game.motherEgg || this.game.motherEgg.dead) return null;
     const distanceSq = horizontalDistanceSq(this.position, this.game.motherEgg.position);
@@ -1611,6 +1659,7 @@ export class Player {
     let best = null;
     let bestDistance = Infinity;
     for (const enemy of candidates) {
+      if (enemy.burrowed) continue;
       const distance = horizontalDistanceSq(this.position, enemy.position);
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -1668,6 +1717,7 @@ export class Player {
   startDeath() {
     if (this.dead) return;
     this.dead = true;
+    this.releaseBind('death');
     this.game.playDeathVoices();
     this.form = 'human';
     this.diveState = 'ready';
@@ -2051,6 +2101,18 @@ export class Enemy {
     this.matureTimer = (type === 'dragonflyLarva' || type === 'tadpole') ? this.stats.matureSeconds : Infinity;
     this.jumpTimer = type === 'frog' ? randRange(1.2, Config.enemy.frog.jumpInterval) : 0;
     this.jumpPhase = 0;
+    // 縛り蔓: 'idle' → 'windup'（足元に輪）→ 当たれば 'binding'（ほどけるまでその場に根を張る）
+    this.vineState = 'idle';
+    this.vineTimer = 0;
+    this.vineTarget = new THREE.Vector3();
+    this.vineAnchor = new THREE.Vector3();
+    this.vineAim = new THREE.Vector3();
+    this.vineLastPlayer = new THREE.Vector3();
+    this.vinePlayerVelocity = new THREE.Vector3();
+    this.vineWarning = null;
+    this.vineParts = null;
+    this.vinePhase = Math.random() * TAU;
+    if (type === 'vine') this.fireTimer = randRange(1.5, 3);
     this.updateAccumulator = 0;
     this.distanceSqToPlayer = Infinity;
     this.collisionRadius = (ENEMY_LOD_SPECS[type]?.radius ?? 0.48) + 0.16;
@@ -2082,6 +2144,7 @@ export class Enemy {
 
   createModel(type) {
     if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
+    if (type === 'vine') return this.createLodModel(createVineEnemyModel(), type);
     const gameplayModelKeys = {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
@@ -2350,6 +2413,7 @@ export class Enemy {
     else if (this.type === 'sniper') this.updateSniper(dt);
     else if (this.type === 'shooter') this.updateShooter(dt);
     else if (this.type === 'guardian') this.updateGuardian(dt);
+    else if (this.type === 'vine') this.updateVine(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
@@ -2364,9 +2428,12 @@ export class Enemy {
       this.game.damageBuilding(blockedBuilding, Math.max(3, this.stats.damage * 0.25), this.position);
     }
     clampToCircle(this.position, Config.map.radius - 1.2);
+    // しばっている間は根を張っている（押されてもツタの付け根が離れない）。
+    if (this.vineState === 'binding') this.position.copy(this.vineAnchor);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' ? Math.PI : 0);
     if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
+    else if (this.type === 'vine') this.animateVineModel(dt);
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();
     this.updateHpBar();
@@ -2569,6 +2636,105 @@ export class Enemy {
     this.playModelOneShot('attack');
   }
 
+  // 縛り蔓: 近づいて、人間形態の足元に輪を出し、輪が閉じたら地面からツタを伸ばしてしばる（Config.enemy.vine）。
+  updateVine(dt) {
+    const stats = Config.enemy.vine;
+    const player = this.game.player;
+    // プレイヤーの速さ（なめらかにしたもの）。輪を先読みで置くのに使う。
+    tempVec.subVectors(player.position, this.vineLastPlayer).divideScalar(Math.max(dt, 1e-3)).setY(0);
+    if (tempVec.lengthSq() > 400) tempVec.set(0, 0, 0);
+    this.vinePlayerVelocity.lerp(tempVec, 1 - Math.exp(-dt / 0.15));
+    this.vineLastPlayer.copy(player.position);
+    if (this.vineState === 'binding') {
+      if (player.bindSource === this) return;
+      this.vineState = 'idle';
+      this.fireTimer = stats.cooldown;
+    }
+    if (this.vineState === 'windup') {
+      this.vineTimer -= dt;
+      if (stats.windupSeconds - this.vineTimer < stats.trackSeconds) {
+        tempVec.copy(this.vinePlayerVelocity).multiplyScalar(Math.max(0, this.vineTimer));
+        if (tempVec.lengthSq() > stats.leadMax ** 2) tempVec.setLength(stats.leadMax);
+        this.vineAim.copy(player.position).add(tempVec).setY(0);
+        this.vineTarget.lerp(this.vineAim, 1 - Math.exp(-dt / stats.trackLag));
+        this.vineTarget.y = 0;
+      }
+      this.vineWarning?.update(this.vineTarget, clamp(1 - this.vineTimer / stats.windupSeconds, 0, 1), this.game.elapsed);
+      if (this.vineTimer <= 0) this.strikeVine();
+      return;
+    }
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, player.position));
+    if (distance > stats.range * 0.7) this.moveToward(player.position, dt, this.speed);
+    if (this.fireTimer <= 0 && distance <= stats.range && player.canBeBound()) this.beginVineWindup();
+  }
+
+  beginVineWindup() {
+    const stats = Config.enemy.vine;
+    this.vineState = 'windup';
+    this.vineTimer = stats.windupSeconds;
+    this.vineTarget.copy(this.game.player.position).setY(0);
+    this.vineWarning = new VineWarning(this.game.scene, stats.grabRadius);
+    this.vineWarning.update(this.vineTarget, 0, this.game.elapsed);
+    this.game.onVineWindup(this);
+  }
+
+  strikeVine() {
+    const stats = Config.enemy.vine;
+    const player = this.game.player;
+    this.removeVineWarning();
+    this.vineState = 'idle';
+    this.fireTimer = stats.cooldown;
+    const caught = horizontalDistanceSq(player.position, this.vineTarget) <= stats.grabRadius ** 2 && player.bind(this, stats.bindSeconds);
+    this.game.spawnVineEruption(this.vineTarget, caught);
+    if (!caught) return;
+    this.vineState = 'binding';
+    this.vineAnchor.copy(this.position);
+    player.takeDamage(stats.bindDamage);
+  }
+
+  // しばっている縛り蔓は本体を地面に潜らせている。撃っても当たらず、狙いからも外れる（抜けるには連打）。
+  get burrowed() {
+    return this.vineState === 'binding';
+  }
+
+  removeVineWarning() {
+    this.vineWarning?.dispose();
+    this.vineWarning = null;
+  }
+
+  // ふだんはツタがゆらゆら揺れ、予兆では後ろへ反ってつぼみが光り、しばっている間は前へ引っぱる。
+  animateVineModel(dt) {
+    const root = this.getModelAnimationRoot();
+    if (!root?.visible) return;
+    if (!this.vineParts) {
+      const head = root.getObjectByName('VineHead');
+      const bud = head?.getObjectByName('VineBud');
+      // 光り方は敵ごとに違うので、つぼみの素材だけ複製する（die で破棄）。
+      if (bud) bud.material = bud.material.clone();
+      this.vineParts = { stalks: [0, 1, 2].map((i) => root.getObjectByName(`VineStalk${i}`)).filter(Boolean), head, bud };
+    }
+    const time = this.game.elapsed + this.vinePhase;
+    const windup = this.vineState === 'windup' ? clamp(1 - this.vineTimer / Config.enemy.vine.windupSeconds, 0, 1) : 0;
+    const binding = this.vineState === 'binding';
+    const tremble = binding ? Math.sin(time * 38) * 0.05 : windup * Math.sin(time * 30) * 0.06;
+    this.vineParts.stalks.forEach((stalk, i) => {
+      const sway = Math.sin(time * 1.6 + i * 2.1) * 0.12;
+      const lean = binding ? 0.42 : -0.38 * windup;
+      stalk.rotation.x = lean + sway * (1 - windup) + tremble;
+      stalk.rotation.z = Math.sin(time * 1.2 + i) * 0.08;
+    });
+    if (this.vineParts.head) {
+      const head = this.vineParts.head;
+      head.position.y = 1.12 + windup * 0.25 + Math.sin(time * 2) * 0.03;
+      head.position.z = binding ? 0.35 : 0.12 - windup * 0.2;
+      head.rotation.x = binding ? 0.5 : -windup * 0.5;
+    }
+    root.scale.y = 1 + windup * 0.12 + (binding ? Math.sin(time * 12) * 0.03 : 0);
+    const sinkTarget = binding ? -Config.enemy.vine.burrowDepth : 0;
+    this.model.position.y += (sinkTarget - this.model.position.y) * Math.min(1, dt * 8);
+    if (this.vineParts.bud) this.vineParts.bud.material.emissiveIntensity = windup * 1.8;
+  }
+
   moveToward(target, dt, speed) {
     normalizeXZ(tempVec, target.x - this.position.x, target.z - this.position.z);
     this.position.x += tempVec.x * speed * dt;
@@ -2602,7 +2768,7 @@ export class Enemy {
 
   updateContactDamage() {
     const player = this.game.player;
-    if (player.phaseTimer > 0) return;
+    if (player.phaseTimer > 0 || this.burrowed) return;
     if (player.form === 'bird' && this.type !== 'dragonfly') return;
     if (this.distanceSqToPlayer > 1.55) return;
     if (this.attackTimer > 0) return;
@@ -2613,7 +2779,7 @@ export class Enemy {
   }
 
   updateHpBar() {
-    this.hpBar.visible = this.hp < this.maxHp && this.distanceSqToPlayer <= Config.performance.enemyHpBarDistance ** 2;
+    this.hpBar.visible = this.hp < this.maxHp && !this.burrowed && this.distanceSqToPlayer <= Config.performance.enemyHpBarDistance ** 2;
     if (!this.hpBar.visible) return;
     const fg = this.hpBar.getObjectByName('fg');
     if (fg) fg.scale.x = clamp(this.hp / this.maxHp, 0, 1);
@@ -2621,7 +2787,7 @@ export class Enemy {
   }
 
   takeDamage(amount, origin = null, strongKnock = false, burstReward = true) {
-    if (this.dead) return;
+    if (this.dead || this.burrowed) return;
     this.hp -= amount;
     this.game.spawnHitSpark(this.position, this.type === 'spawner' ? 0xffe36c : 0xffffff);
     if (origin) {
@@ -2637,6 +2803,8 @@ export class Enemy {
     if (this.dead) return;
     this.dead = true;
     this.object.visible = false;
+    this.removeVineWarning();
+    this.vineParts?.bud?.material.dispose();
     if (reward) this.spawnDeathCorpse();
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
@@ -2850,7 +3018,7 @@ export class Projectile {
   checkEnemyHit() {
     const enemies = this.game.enemyGrid.query(this.position, this.radius + 0.85, this.game.scratchEnemies);
     for (const enemy of enemies) {
-      if (this.hitSet.has(enemy)) continue;
+      if (this.hitSet.has(enemy) || enemy.burrowed) continue;
       this.game.playSfx('projectileHit', { volume: 0.42, cooldown: 0.035 });
       enemy.takeDamage(this.damage, this.position);
       this.hitSet.add(enemy);
