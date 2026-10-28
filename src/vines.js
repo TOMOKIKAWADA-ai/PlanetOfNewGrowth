@@ -251,6 +251,8 @@ export class VineBindVisual {
     this.parts = [];
     this.age = 0;
     this.jolt = 0;
+    this.loosen = 0;
+    this.holding = false; // 捕まったまま倒れた（外さずに残す）
 
     // 体に巻き付く2本のらせん
     for (let k = 0; k < 2; k++) {
@@ -312,6 +314,7 @@ export class VineBindVisual {
   // grow: 伸びきるまでの時間。loosen: 0〜1（振りほどきの進み具合でらせんが緩む）。
   update(dt, loosen, grow = 0.28) {
     this.age += dt;
+    this.loosen = loosen;
     this.jolt = Math.max(0, this.jolt - dt * 5);
     for (const part of this.parts) {
       const t = clamp((this.age - part.delay) / grow, 0, 1);

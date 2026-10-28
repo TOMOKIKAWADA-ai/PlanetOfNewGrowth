@@ -1410,6 +1410,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.hintTimer <= 0) this.hint = '';
     this.shake = Math.max(0, this.shake - dt * 1.7);
     this.updateSpawnPause(dt);
+    this.updateVineBind(dt);
     if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
     this.enemyGrid.rebuild(this.enemies);
     for (const egg of this.eggs) egg.update(dt);
@@ -2372,10 +2373,14 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   updateVineBind(dt) {
-    if (!this.vineBindVisual) return;
+    const visual = this.vineBindVisual;
+    if (!visual) return;
     const player = this.player;
-    const loosen = player.bindDuration > 0 ? clamp(1 - player.bindTimer / player.bindDuration, 0, 1) : 1;
-    this.vineBindVisual.update(dt, loosen);
+    // 捕まったまま倒れたあとは、緩んでいたツタが締まり直す。
+    const loosen = visual.holding
+      ? visual.loosen * Math.exp(-dt * 4)
+      : player.bindDuration > 0 ? clamp(1 - player.bindTimer / player.bindDuration, 0, 1) : 1;
+    visual.update(dt, loosen);
   }
 
   // reason: 'mash' / 'timeout' / 'cut' / 'death' / 'end'
@@ -2383,9 +2388,14 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (reason === 'mash') this.vineStats.mashEscapes += 1;
     else if (reason === 'cut') this.vineStats.cuts += 1;
     else if (reason === 'timeout') this.vineStats.timeouts += 1;
+    // 捕まったまま倒れたら、ツタは体に巻き付いたまま残す（Player.startLimpInVines）。
+    if (reason === 'death' && this.vineBindVisual) {
+      this.vineBindVisual.holding = true;
+      return;
+    }
     this.vineBindVisual?.dispose();
     this.vineBindVisual = null;
-    if (reason === 'death' || reason === 'end') return;
+    if (reason === 'end') return;
     const position = this.player.position;
     this.spawnParticleBurst(position, 30, 0x9c7743, 2.2, 0.45);
     this.spawnParticleBurst(position, 14, 0x6fae45, 2.6, 0.5);

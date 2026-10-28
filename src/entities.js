@@ -155,6 +155,14 @@ const tempVec = new THREE.Vector3();
 const tempVec2 = new THREE.Vector3();
 const poseEuler = new THREE.Euler();
 const poseQuat = new THREE.Quaternion();
+// 縛り蔓に捕まったときのもがき（Player.applyStrugglePose）。体の向きを基準にした軸: 左が +X、上が +Y、前が +Z。
+const BODY_LEFT = new THREE.Vector3(1, 0, 0);
+const BODY_UP = new THREE.Vector3(0, 1, 0);
+const BODY_FORWARD = new THREE.Vector3(0, 0, 1);
+const struggleAxis = new THREE.Vector3();
+const struggleQuat = new THREE.Quaternion();
+const struggleParentQuat = new THREE.Quaternion();
+const struggleBodyQuat = new THREE.Quaternion();
 const SNIPER_VISUAL_SCALE = 1.12;
 const SNIPER_COLOR = 0xff1515;
 const ENEMY_LOD_SPECS = {
@@ -313,6 +321,15 @@ export class Player {
     this.bindSource = null;
     this.bindMashes = 0;
     this.bindImmuneTimer = 0;
+    this.struggleWeight = 0; // もがきの重み（捕まると 1 へ、ほどけると 0 へ）
+    this.struggleBoost = 0; // 連打した直後に強くなる分
+    this.struggleTime = 0;
+    this.limpInVines = false; // 捕まったまま倒れた（ツタに支えられてぐったりする）
+    this.limpTime = 0;
+    // もがき・ぐったりで回した骨と、回す前の向き。次のフレームのアニメーション更新の前に戻す
+    // （待機アニメーションには首・太もも・足の動きがないので、戻さないと回転が積み重なる）。
+    this.overlaySavedPose = new Map();
+    this.overlayTouchedBones = new Set();
     // Multipliers set by carry-over chapter rewards (Config.carryOver).
     this.burstCooldownScale = 1;
     this.formMpCostScale = 1;
@@ -1632,6 +1649,7 @@ export class Player {
     if (mashes > 0) {
       this.bindMashes += mashes;
       this.bindTimer -= mashes * Config.enemy.vine.mashSeconds;
+      this.struggleBoost = 1;
       this.game.onBindMash(mashes);
     }
     this.bindTimer -= dt;
@@ -1717,6 +1735,7 @@ export class Player {
   startDeath() {
     if (this.dead) return;
     this.dead = true;
+    const heldByVine = this.bindTimer > 0;
     this.releaseBind('death');
     this.game.playDeathVoices();
     this.form = 'human';
@@ -1729,8 +1748,25 @@ export class Player {
     this.group.position.y = this.visualHeight;
     this.startDroneFall();
     this.game.cameraRig?.startTransition('human');
-    const duration = this.playOneShotAnimation('dying');
+    const duration = heldByVine && this.usesExternalAnimation ? this.startLimpInVines() : this.playOneShotAnimation('dying');
     this.game.startPlayerDeath(duration + Config.visuals.playerDeathResultDelay);
+  }
+
+  // 倒れるアニメーションの代わりに、待機の姿勢で止めて力を抜く（applyLimpPose）。ツタは体に残る。
+  // 止めた待機を毎フレーム骨へ書き戻させる（終わった被弾の一回再生のままだと、重ねた回転が積み重なる）。
+  startLimpInVines() {
+    const hold = this.modelActions.idle;
+    if (!hold) return this.playOneShotAnimation('dying');
+    this.limpInVines = true;
+    this.limpTime = 0;
+    for (const [key, action] of Object.entries(this.modelActions)) {
+      action.enabled = key === 'idle';
+      action.setEffectiveWeight(key === 'idle' ? 1 : 0);
+    }
+    hold.play();
+    hold.paused = true;
+    this.activeModelAction = 'idle';
+    return Config.enemy.vine.limpSeconds;
   }
 
   updateDeath(dt) {
@@ -1821,11 +1857,13 @@ export class Player {
   }
 
   updateVisualPose(dt) {
-    const moving = this.game.input.movementActive();
+    // 捕まっている・硬直している間はキーを押しても走るアニメーションにしない（連打は移動キーでもする）。
+    const moving = this.game.input.movementActive() && !(this.bindTimer > 0) && !(this.stunTimer > 0);
     const bird = this.form === 'bird';
     const fish = this.form === 'fish';
     this.oneShotAnimationTimer = Math.max(0, this.oneShotAnimationTimer - dt);
     this.updatePlayerAnimationState(moving);
+    this.restoreOverlayPose();
     if (this.modelMixer) this.modelMixer.update(dt);
     this.group.visible = true;
     this.group.rotation.y = this.faceAngle;
@@ -1857,7 +1895,94 @@ export class Player {
           this.resetProceduralPlayerPose();
         }
       }
+      this.applyStrugglePose(dt);
+      this.applyLimpPose(dt);
     }
+  }
+
+  restoreOverlayPose() {
+    for (const bone of this.overlayTouchedBones) bone.quaternion.copy(this.overlaySavedPose.get(bone));
+    this.overlayTouchedBones.clear();
+  }
+
+  // 捕まったまま倒れたとき: ツタに支えられて立ったまま、首が落ち、背中が丸まり、腕が垂れ、膝が折れる。
+  // 一度少し深く沈んでから落ち着く。
+  applyLimpPose(dt) {
+    if (!this.limpInVines || !this.usesExternalAnimation) return;
+    this.limpTime += dt;
+    const t = clamp(this.limpTime / 0.9, 0, 1);
+    const w = smooth01(t) + Math.sin(t * Math.PI) * 0.15;
+    this.group.updateMatrixWorld(true);
+    for (const name of ['mixamorigSpine', 'mixamorigSpine1', 'mixamorigSpine2']) {
+      this.rotateBoneInBodyFrame(name, BODY_LEFT, 0.22 * w);
+      this.rotateBoneInBodyFrame(name, BODY_FORWARD, 0.05 * w);
+    }
+    this.rotateBoneInBodyFrame('mixamorigNeck', BODY_LEFT, 0.3 * w);
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_LEFT, 0.55 * w);
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_FORWARD, 0.25 * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftShoulder', BODY_FORWARD, -0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigRightShoulder', BODY_FORWARD, 0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftArm', BODY_LEFT, -0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigRightArm', BODY_LEFT, -0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftForeArm', BODY_LEFT, -0.15 * w);
+    this.rotateBoneInBodyFrame('mixamorigRightForeArm', BODY_LEFT, -0.15 * w);
+    for (const side of ['Left', 'Right']) {
+      this.rotateBoneInBodyFrame(`mixamorig${side}UpLeg`, BODY_LEFT, -0.3 * w);
+      this.rotateBoneInBodyFrame(`mixamorig${side}Leg`, BODY_LEFT, 0.55 * w);
+      this.rotateBoneInBodyFrame(`mixamorig${side}Foot`, BODY_LEFT, -0.25 * w);
+    }
+    this.model.position.y -= 0.12 * w;
+  }
+
+  // 縛り蔓に捕まっている間のもがき。再生中のアニメーションの上に重ねる。体を左右にひねり、
+  // 腕で交互にツタを引きはがそうとし、首を振る。連打した瞬間に大きく、速くなる。
+  // 骨の向きは3人のモデルで違うので、体の向きを基準にした軸で回す（Mixamo の骨名で探す）。
+  applyStrugglePose(dt) {
+    const bound = this.bindTimer > 0 && !this.dead;
+    this.struggleWeight = clamp(this.struggleWeight + dt * (bound ? 7 : -4), 0, 1);
+    this.struggleBoost = Math.max(0, this.struggleBoost - dt * 3.5);
+    if (this.struggleWeight <= 0 || !this.usesExternalAnimation) return;
+    const boost = this.struggleBoost;
+    this.struggleTime += dt * (1 + boost * 1.4);
+    const t = this.struggleTime;
+    const w = this.struggleWeight * (0.6 + 0.4 * boost);
+    const sway = Math.sin(t * 4.4);
+    const pullLeft = Math.max(0, sway);
+    const pullRight = Math.max(0, -sway);
+    this.group.updateMatrixWorld(true);
+    for (const name of ['mixamorigSpine', 'mixamorigSpine1', 'mixamorigSpine2']) {
+      this.rotateBoneInBodyFrame(name, BODY_UP, sway * 0.13 * w);
+      this.rotateBoneInBodyFrame(name, BODY_FORWARD, Math.sin(t * 4.4 + 1.2) * 0.05 * w);
+      this.rotateBoneInBodyFrame(name, BODY_LEFT, 0.05 * this.struggleWeight);
+    }
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_UP, Math.sin(t * 7.3) * 0.32 * w);
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_LEFT, -(0.12 + boost * 0.25) * this.struggleWeight);
+    this.rotateBoneInBodyFrame('mixamorigLeftShoulder', BODY_FORWARD, (0.12 + pullLeft * 0.18) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightShoulder', BODY_FORWARD, -(0.12 + pullRight * 0.18) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftArm', BODY_FORWARD, (0.45 + pullLeft * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightArm', BODY_FORWARD, -(0.45 + pullRight * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftArm', BODY_LEFT, -(0.35 + pullRight * 0.3) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightArm', BODY_LEFT, -(0.35 + pullLeft * 0.3) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftForeArm', BODY_LEFT, -(0.8 + pullRight * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightForeArm', BODY_LEFT, -(0.8 + pullLeft * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftLeg', BODY_LEFT, (0.08 + pullLeft * 0.16) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightLeg', BODY_LEFT, (0.08 + pullRight * 0.16) * w);
+  }
+
+  rotateBoneInBodyFrame(boneName, axis, angle) {
+    const bone = this.bones[this.boneAliases.get(boneName)];
+    if (!bone?.parent || angle === 0) return;
+    if (!this.overlayTouchedBones.has(bone)) {
+      if (!this.overlaySavedPose.has(bone)) this.overlaySavedPose.set(bone, new THREE.Quaternion());
+      this.overlaySavedPose.get(bone).copy(bone.quaternion);
+      this.overlayTouchedBones.add(bone);
+    }
+    bone.parent.updateWorldMatrix(true, false);
+    bone.parent.getWorldQuaternion(struggleParentQuat).invert();
+    this.group.getWorldQuaternion(struggleBodyQuat);
+    struggleAxis.copy(axis).applyQuaternion(struggleBodyQuat).applyQuaternion(struggleParentQuat).normalize();
+    struggleQuat.setFromAxisAngle(struggleAxis, angle);
+    bone.quaternion.premultiply(struggleQuat);
   }
 
   get birdDiveDamage() {

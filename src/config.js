@@ -401,6 +401,7 @@ export const Config = {
       bindDamage: 6,
       regrabImmunity: 2.5, // ほどけた直後、この時間は捕まらない
       burrowDepth: 1.5, // しばっている間、本体が地面に沈む深さ（ツタの先だけ地上に残る）
+      limpSeconds: 1.6, // 捕まったまま倒れたとき、ぐったりしてから結果へ進むまでの時間（倒れるアニメーションの代わり）
       spawnChance: 0.22, // 卵から追跡型が孵るとき、代わりに縛り蔓になる割合
       maxAlive: 4,
       introAt: 35 // この時刻に1体を近くへ出して見せる
