@@ -5,19 +5,20 @@
 
 ## ブランチと作業場所
 
-- 作業ブランチ: `daily-dev`（長期ブランチ）。`main` には直接コミットしない。
-- 作業フォルダ: `D:\0001_App_Dev\search_survive_daily`（`daily-dev` 専用の git worktree）。
-- 毎日の成果は `daily-dev` にコミットして push し、`daily-dev → main` の PR（1本を継続）を更新する。
-- `main` へのマージはユーザーが PR を見て行う。ユーザーが `main` を更新していたら、作業開始時に `main` を `daily-dev` へ取り込む。
+- 2026-10-28 から **`main` で直接作業する**（ユーザーの指示。PR は作らない）。
+- 作業フォルダ: `D:\0001_App_Dev\search_survive`（ユーザーも普段使うフォルダ）。
+- ユーザーのコミットされていない変更や未登録のファイルには触らない。コミットには自分が変えたファイルだけを個別に指定して入れる（`git add -A` は使わない）。
+- テストとビルドが通ってから、`git pull --rebase=false` で他の変更を取り込み、`main` に push する。
+- 以前の `daily-dev` ブランチと worktree（`D:\0001_App_Dev\search_survive_daily`）は使わない（消さずに残してある）。
 
 ## 1日の流れ（目安 2〜3時間分の作業）
 
-1. **再開**: `docs/devlog/` の最新の記録と `docs/dev-cycle/backlog.md` を読む。ユーザーのフィードバック（PRコメント、`docs/dev-cycle/feedback.md`）があれば最優先で反映する。
+1. **再開**: `docs/devlog/` の最新の記録と `docs/dev-cycle/backlog.md` を読む。ユーザーのフィードバック（`docs/dev-cycle/feedback.md`）があれば最優先で反映する。
 2. **トラックA：面白さの基盤（毎日1件）**: backlog の A から、最上位の未着手項目を1つだけ実装する。
 3. **トラックB：素材づくり（毎日1件、小さく）**: backlog の B から1つ。3D・効果音・イラスト・音声・動くアバター・動画/SNS素材を曜日で交代して進める（下記のローテーション）。生成に失敗したら、失敗の記録だけ残して翌日に回してよい。
 4. **確認**: `npm test`、`npm run build`。開発サーバーを立ち上げ、ブラウザで実際に遊び、変更箇所のスクリーンショットを `docs/devlog/img/YYYY-MM-DD-*.png` に保存する。自動プレイボットで数値も取る（開発サーバーを起動したまま `PLAYWRIGHT_MODULE=D:/AI/Live2D_AI/mesh-avatar-studio/node_modules/playwright node scripts/bot-play.mjs --runs 5 --speed 6 --character tsukimi --stage 1`。結果は `tmp/bot/*.json`）。
 5. **記録**: `docs/devlog/YYYY-MM-DD.md` を書く（テンプレートは下記）。backlog の状態を更新し、新しく見つけた課題を追加する。
-6. **コミットと push**: `daily-dev` にコミットして push し、PR を作るか更新する。
+6. **コミットと push**: 自分が変えたファイルだけを `main` にコミットして push する。
 
 ## トラックBのローテーション
 
