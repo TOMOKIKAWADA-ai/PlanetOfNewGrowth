@@ -18,7 +18,7 @@ export const Config = {
     playerGlowOutline: false,
     playerUseUnlitMaterial: false,
     playerUnlitColor: 0xb8b4ad,
-    birdModelHeight: 3.44,
+    birdModelHeight: 2.05,
     birdModelYaw: 0,
     birdModelPitch: Math.PI * 0.5,
     droneModelHeight: 0.28,

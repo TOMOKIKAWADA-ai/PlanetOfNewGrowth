@@ -60,7 +60,9 @@ const KIICHIGO_RUN_FBX_URL = new URL('../assets/player/kiichigo_run.fbx', import
 const KIICHIGO_REACT_FBX_URL = new URL('../assets/player/kiichigo_react.fbx', import.meta.url).href;
 const KIICHIGO_DYING_FBX_URL = new URL('../assets/player/kiichigo_dying.fbx', import.meta.url).href;
 const KIICHIGO_BURST_VRMA_URL = new URL('../assets/player/kiichigo_spinning_kick.vrma', import.meta.url).href;
-const TSUKIMI_BIRD_GLB_URL = new URL('../assets/player/tsukimi_bird.glb', import.meta.url).href;
+const TSUKIMI_BIRD_GLB_URL = new URL('../assets/player/birds/tsukimi_bird.glb', import.meta.url).href;
+const AKAME_BIRD_GLB_URL = new URL('../assets/player/birds/akame_bird.glb', import.meta.url).href;
+const KIICHIGO_BIRD_GLB_URL = new URL('../assets/player/birds/kiichigo_bird.glb', import.meta.url).href;
 const DEFAULT_FBX_ANIMATIONS = {
   idle: PLAYER_IDLE_FBX_URL,
   run: PLAYER_RUN_FBX_URL,
@@ -127,14 +129,21 @@ const VRMA_TO_MIXAMO_BONES = {
 };
 const VRMA_STABLE_HEAD_BONES = new Set(['J_neck', 'J_head']);
 const PLAYER_VISUALS = {
-  tsukimiFbx: { type: 'fbx', url: TSUKIMI_FBX_URL, name: 'TsukimiPlayerFbx' },
-  tsukimiGlb: { type: 'gltf', url: TSUKIMI_GLB_URL, name: 'TsukimiPlayer', axisFix: 'zUpToYUp' },
-  akameFbx: { type: 'fbx', url: AKAME_FBX_URL, name: 'AkamePlayerFbx', fbxAnimations: AKAME_FBX_ANIMATIONS },
+  tsukimiFbx: { type: 'fbx', url: TSUKIMI_FBX_URL, name: 'TsukimiPlayerFbx', birdUrl: TSUKIMI_BIRD_GLB_URL },
+  tsukimiGlb: { type: 'gltf', url: TSUKIMI_GLB_URL, name: 'TsukimiPlayer', axisFix: 'zUpToYUp', birdUrl: TSUKIMI_BIRD_GLB_URL },
+  akameFbx: {
+    type: 'fbx',
+    url: AKAME_FBX_URL,
+    name: 'AkamePlayerFbx',
+    fbxAnimations: AKAME_FBX_ANIMATIONS,
+    birdUrl: AKAME_BIRD_GLB_URL
+  },
   akameGlb: {
     type: 'gltf',
     url: AKAME_GLB_URL,
     name: 'AkamePlayerGlb',
     axisFix: 'zUpToYUp',
+    birdUrl: AKAME_BIRD_GLB_URL,
     fbxAnimations: AKAME_FBX_ANIMATIONS,
     useFbxAnimations: true,
     useEmbeddedAnimation: false
@@ -144,6 +153,7 @@ const PLAYER_VISUALS = {
     url: KIICHIGO_GLB_URL,
     name: 'KiichigoPlayerGlb',
     axisFix: 'zUpToYUp',
+    birdUrl: KIICHIGO_BIRD_GLB_URL,
     fbxAnimations: KIICHIGO_FBX_ANIMATIONS,
     burstVrmaUrl: KIICHIGO_BURST_VRMA_URL,
     useFbxAnimations: true,
@@ -433,9 +443,10 @@ export class Player {
     try {
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const loader = new GLTFLoader();
-      const gltf = await loader.loadAsync(TSUKIMI_BIRD_GLB_URL);
+      const playerVisual = PLAYER_VISUALS[Config.visuals.playerModel];
+      const gltf = await loader.loadAsync(playerVisual?.birdUrl ?? TSUKIMI_BIRD_GLB_URL);
       const model = gltf.scene;
-      model.name = 'TsukimiBird';
+      model.name = `${playerVisual?.name ?? 'Player'}Bird`;
       model.traverse((child) => {
         if (child.isMesh || child.isSkinnedMesh) {
           child.castShadow = true;
