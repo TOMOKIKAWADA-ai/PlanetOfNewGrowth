@@ -59,6 +59,8 @@ export class InputState {
     this.touchPressedActions = new Set();
     this.touchSector = -1;
     this.touchMashEvents = 0;
+    // 連打のキーは押した回数を数える（フレームの間に押して離した速い連打も取りこぼさない）。
+    this.keyMashEvents = 0;
     this.gamepadId = '';
     this.controllerConnected = false;
     this.gamepadDeadzone = 0.18;
@@ -76,6 +78,7 @@ export class InputState {
         event.preventDefault();
       }
       this.keys.add(event.code);
+      if (!event.repeat && MASH_KEYS.includes(event.code)) this.keyMashEvents++;
     }, true);
     target.addEventListener('keyup', (event) => {
       this.keys.delete(event.code);
@@ -108,6 +111,7 @@ export class InputState {
     this.previousGamepadDirections = new Set(this.gamepadDirections);
     this.touchPressedActions.clear();
     this.touchMashEvents = 0;
+    this.keyMashEvents = 0;
   }
 
   setTouchMovement(x, z) {
@@ -238,10 +242,7 @@ export class InputState {
   mashCount() {
     let count = this.touchMashEvents;
     for (const action of this.touchPressedActions) if (action !== 'pause') count++;
-    if (!this.hasGamepad) {
-      for (const code of MASH_KEYS) if (this.pressed(code)) count++;
-      return count;
-    }
+    if (!this.hasGamepad) return count + this.keyMashEvents;
     for (const index of this.gamepadButtons) {
       if (!MASH_IGNORED_BUTTONS.includes(index) && this.gamepadPressed(index)) count++;
     }

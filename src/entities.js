@@ -1727,7 +1727,8 @@ export class Player {
       this.startDeath();
       return;
     }
-    this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
+    // 捕まっている間は縛り蔓の声（Game.onPlayerBound / onBindMash）を出すので、被弾の声は重ねない。
+    if (!(this.bindTimer > 0 && Config.audio.vineVoices)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
     this.playOneShotAnimation('react');
     if (this.hp <= 0) this.game.finish(false, 'HPが尽きました');
   }

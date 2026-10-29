@@ -92,6 +92,8 @@ export const Config = {
     battleVoices: true,
     // Pause between the end of the dying scream and the last line.
     deathVoiceGap: 1.2,
+    // 縛り蔓の声（捕まった瞬間・連打中の力み・振りほどいたとき）。false で出さない（捕まったときは被弾の声になる）。
+    vineVoices: true,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
     newSfx: true
   },

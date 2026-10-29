@@ -134,7 +134,16 @@ const VOICE_URLS = {
     dying: [new URL('../assets/audio/voice/tsukimi/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href]
+    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href],
+    bound: [
+      new URL('../assets/audio/voice/tsukimi/bound_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/tsukimi/bound_02.mp3', import.meta.url).href
+    ],
+    struggle: [
+      new URL('../assets/audio/voice/tsukimi/struggle_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/tsukimi/struggle_02.mp3', import.meta.url).href
+    ],
+    escape: [new URL('../assets/audio/voice/tsukimi/escape_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -144,7 +153,16 @@ const VOICE_URLS = {
     dying: [new URL('../assets/audio/voice/akame/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href]
+    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href],
+    bound: [
+      new URL('../assets/audio/voice/akame/bound_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/akame/bound_02.mp3', import.meta.url).href
+    ],
+    struggle: [
+      new URL('../assets/audio/voice/akame/struggle_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/akame/struggle_02.mp3', import.meta.url).href
+    ],
+    escape: [new URL('../assets/audio/voice/akame/escape_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -154,7 +172,16 @@ const VOICE_URLS = {
     dying: [new URL('../assets/audio/voice/kiichigo/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href]
+    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href],
+    bound: [
+      new URL('../assets/audio/voice/kiichigo/bound_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/kiichigo/bound_02.mp3', import.meta.url).href
+    ],
+    struggle: [
+      new URL('../assets/audio/voice/kiichigo/struggle_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/kiichigo/struggle_02.mp3', import.meta.url).href
+    ],
+    escape: [new URL('../assets/audio/voice/kiichigo/escape_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -415,6 +442,7 @@ class Game {
     this.vineIntroduced = false;
     this.vineHintShown = false;
     this.vineBindVisual = null;
+    this.vineVoice = null; // 再生中の縛り蔓の声（重ならないように、終わってから次を出す）
     this.vineStats = { spawned: 0, windups: 0, binds: 0, mashEscapes: 0, cuts: 0, timeouts: 0, mashes: 0 };
     this.thirstHintShown = false;
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
@@ -2360,16 +2388,24 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.vineHintShown = true;
     this.vineBindVisual?.dispose();
     this.vineBindVisual = new VineBindVisual(this.scene, this.player.position, source.position);
+    this.playVineVoice('bound');
     this.spawnParticleBurst(this.player.position, 22, 0x6fae45, 1.6, 0.4);
     this.shake = Math.max(this.shake, 0.4);
   }
 
   onBindMash(count) {
     this.vineStats.mashes += count;
+    // 力む声は、前の声が終わってから少し間を空けて出す。
+    if (!this.vineVoice || this.vineVoice.paused) this.playVineVoice('struggle', { cooldown: 2.2 });
     this.vineBindVisual?.struggle();
     this.hud.pulseBindMeter();
     this.playSfx('projectileHit', { volume: 0.35, cooldown: 0.06 });
     if (Math.random() < 0.5) this.spawnParticleBurst(this.player.position, 4, 0x6fae45, 0.9, 0.25);
+  }
+
+  playVineVoice(eventName, options = {}) {
+    if (!Config.audio.vineVoices) return;
+    this.vineVoice = this.playVoice(eventName, { volume: 0.9, ...options }) ?? this.vineVoice;
   }
 
   updateVineBind(dt) {
@@ -2388,6 +2424,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (reason === 'mash') this.vineStats.mashEscapes += 1;
     else if (reason === 'cut') this.vineStats.cuts += 1;
     else if (reason === 'timeout') this.vineStats.timeouts += 1;
+    // 叫び声（死亡）や、ほどけた声と重ならないように止める。
+    this.vineVoice?.pause();
+    this.vineVoice = null;
+    if (reason !== 'death' && reason !== 'end') this.playVineVoice('escape');
     // 捕まったまま倒れたら、ツタは体に巻き付いたまま残す（Player.startLimpInVines）。
     if (reason === 'death' && this.vineBindVisual) {
       this.vineBindVisual.holding = true;

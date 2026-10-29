@@ -28,6 +28,21 @@ test('mashing counts new stick directions and button presses, but not pause or a
   assert.equal(input.mashCount(), 0);
 });
 
+test('a key tapped down and up between two frames still counts as a mash', () => {
+  const target = new EventTarget();
+  const input = new InputState(target);
+  const key = (type, code, repeat = false) => target.dispatchEvent(Object.assign(new Event(type), { code, repeat }));
+  key('keydown', 'KeyA');
+  key('keyup', 'KeyA');
+  key('keydown', 'KeyD');
+  key('keydown', 'KeyD', true);
+  key('keyup', 'KeyD');
+  key('keydown', 'KeyR');
+  assert.equal(input.mashCount(), 2);
+  input.endFrame();
+  assert.equal(input.mashCount(), 0);
+});
+
 test('escaping by mashing is noticeably faster than waiting', () => {
   const { bindSeconds, mashSeconds } = Config.enemy.vine;
   const mashesPerSecond = 7;
