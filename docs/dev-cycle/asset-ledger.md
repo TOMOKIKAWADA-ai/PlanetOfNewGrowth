@@ -241,3 +241,17 @@
 - 手元に残っているもの（git 対象外）: `assets_src/3d/2026-10-26-pickups/`・`2026-10-29-pickups/` の Hunyuan3D の GLB。ゲームには使わない。元絵（Forge 製）は Tripo の入力に使える。
 - 2026-10-27 に試した敵（03 黒い棘の鎧）の Hunyuan3D 版は、もともとゲームに入れていない。
 - 作り直しは backlog B1-1（Tripo、ユーザーがクレジットの量を決めてから）。
+
+## 2026-10-29 鳥形態の3Dモデル（キャラごと3体）
+ツール: Tripo Studio の Smart Mesh、AI Model P2.0、Multiview（前・左・右・後ろ）、Topology Quad 3000 面、テクスチャ 2k、GLB で書き出し。1体 100＋テクスチャ 20 クレジット、3体で 360（残り 1920 → 1560）。
+元絵: ユーザーがくれた三面図3枚（後ろ・右横・前）を切り分けたもの（`enemy_draft/tripo_views/<名前>/`、左は右の左右反転）。キャラとの対応は人型モデルの色から判断した（ユーザー未確認）。
+生の書き出し: `assets_src/tripo/2026-10-29-birds/`（git 対象外。リポジトリのものと同じファイル）。
+形: 3体とも立った姿で前が glTF の +Z、足元が y=0。幅 1 : 高さ 0.75 : 厚み 0.21（旧 `tsukimi_bird.glb` は幅 1.49 : 高さ 1.90 で、翼の比率がずっと小さい）。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/player/birds/kiichigo_bird.glb`（1.26MB） | 赤（キイチゴ） | 6,496 | 候補: ゲームへの差し替えはユーザー確認待ち |
+| `assets/player/birds/tsukimi_bird.glb`（1.24MB） | 紺に桜（ツキミ） | 6,564 | 候補: 同上。差し替えると旧 `assets/player/tsukimi_bird.glb`（197,320 三角形）は置換済み |
+| `assets/player/birds/akame_bird.glb`（1.32MB） | 白と緑（アカメ） | 6,562 | 候補: 同上 |
+
+ライセンス: Tripo の利用規約（上の表。公開前に商用の条件を再確認）。
