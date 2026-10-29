@@ -381,7 +381,34 @@ export const Config = {
     dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
     tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },
     dragonfly: { hp: 46, speed: 7.27, damage: 15, birdDamageMultiplier: 2.2, xp: 10 },
-    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13 }
+    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13 },
+    // 足跡（E8、第2章の新種）。プレイヤーの通った道を delaySeconds 遅れでなぞる（src/footprints.js）。
+    // 鳥形態で飛んだ区間は道が途切れ、そこに来た足跡は見失って lostSpeed でゆっくり寄ってくる。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    footprint: {
+      enabled: true,
+      fromChapter: 2,
+      fromElapsed: 30,
+      chance: 0.16,
+      maxAlive: 6,
+      hp: 30,
+      speed: 7.6,
+      lostSpeed: 1.6,
+      damage: 10,
+      xp: 7,
+      walkAnimationSpeed: 2.6,
+      delaySeconds: 2.6,
+      catchUpRate: 1.3,
+      joinRadius: 6,
+      reachDistance: 1.5,
+      rejoinInterval: 0.5,
+      trailSeconds: 14,
+      trailSampleInterval: 0.1,
+      // プレイヤーの足元に、足跡がなぞる道を薄い印で残す（足跡が場にいるときだけ）
+      showTrail: true,
+      trailMarkInterval: 0.32,
+      trailMarkSeconds: 3.4
+    }
   },
   xp: {
     firstLevel: 18,
@@ -395,7 +422,7 @@ export const Config = {
   },
   pickups: {
     // Generated meshes for dropped items (Hunyuan3D, 2026-10-26; see docs/dev-cycle/asset-ledger.md and PICKUP_MODELS in
-    // src/main.js). Types without a model keep the primitive shape (magnet read as a blob from the game camera, speed has none yet). enabled: false brings back all primitives.
+    // src/main.js). Magnet (horseshoe) and speed (arrowhead seed) were redone on 2026-10-29. enabled: false brings back all primitives.
     models: {
       enabled: true,
       size: 0.72

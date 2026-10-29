@@ -14,6 +14,7 @@ import {
 } from './math.js';
 import { Config } from './config.js';
 import { getBossType } from './bosses.js';
+import { advanceFootprint } from './footprints.js';
 
 const CONTACT_SHADOW_TEXTURE_SIZE = 96;
 let contactShadowTexture = null;
@@ -156,6 +157,7 @@ const poseEuler = new THREE.Euler();
 const poseQuat = new THREE.Quaternion();
 const SNIPER_VISUAL_SCALE = 1.12;
 const SNIPER_COLOR = 0xff1515;
+const FOOTPRINT_COLOR = 0xbcd8f2;
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
@@ -165,7 +167,8 @@ const ENEMY_LOD_SPECS = {
   dragonflyLarva: { color: 0x376d61, radius: 0.34, height: 0.55, segments: 7 },
   tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
   dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
-  frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 }
+  frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
+  footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -216,6 +219,8 @@ const PICKUP_MATERIALS = Object.fromEntries(
   ])
 );
 
+const INSTALLED_PICKUP_MODELS = new Set();
+
 // A generated pickup mesh has real shape, so it gets a lit material (an unlit one would flatten it to a silhouette).
 // The geometry arrives normalized to a longest side of 1 (scripts/assets/blender/prep-pickups.py).
 export function installPickupModel(type, geometry, size) {
@@ -223,6 +228,7 @@ export function installPickupModel(type, geometry, size) {
   if (!spec) return;
   geometry.scale(size, size, size);
   PICKUP_GEOMETRIES[type] = geometry;
+  INSTALLED_PICKUP_MODELS.add(type);
   PICKUP_MATERIALS[type] = new THREE.MeshStandardMaterial({
     color: spec.color, emissive: spec.color, emissiveIntensity: 0.16, roughness: 0.4, metalness: 0.05
   });
@@ -2070,6 +2076,7 @@ export class Enemy {
     this.hpBar = this.createHpBar();
     this.object.add(this.hpBar);
     if (type === 'sniper') this.createSniperBeam();
+    if (type === 'footprint') this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true };
   }
 
   get stats() {
@@ -2086,6 +2093,7 @@ export class Enemy {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
       sniper: 'shooterEnemy',
+      footprint: 'chaserEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2093,6 +2101,7 @@ export class Enemy {
     if (gameplayModel) {
       gameplayModel.userData.baseY = gameplayModel.position.y;
       if (type === 'sniper') this.styleSniperModel(gameplayModel);
+      if (type === 'footprint') this.styleFootprintModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2105,6 +2114,7 @@ export class Enemy {
     if (model) {
       model.scale.setScalar(type === 'guardian' ? 1.15 : type === 'spawner' ? 0.82 : type === 'chaser' ? 1.0 : 0.9);
       if (type === 'sniper') this.styleSniperModel(model);
+      if (type === 'footprint') this.styleFootprintModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2129,6 +2139,31 @@ export class Enemy {
         if ('emissiveMap' in material) material.emissiveMap = null;
         if ('emissiveIntensity' in material) material.emissiveIntensity = Math.max(material.emissiveIntensity ?? 0, 0.35);
         material.needsUpdate = true;
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 足跡は追い手の写しのような、青白く透けた体にする。見失うと更に薄くなる（updateFootprint）。
+  styleFootprintModel(model) {
+    this.footprintMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(FOOTPRINT_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(0x4f86c4);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.9;
+        material.transparent = true;
+        material.opacity = 0.82;
+        material.needsUpdate = true;
+        this.footprintMaterials.push(material);
         return material;
       };
       child.material = Array.isArray(child.material)
@@ -2350,6 +2385,7 @@ export class Enemy {
     else if (this.type === 'sniper') this.updateSniper(dt);
     else if (this.type === 'shooter') this.updateShooter(dt);
     else if (this.type === 'guardian') this.updateGuardian(dt);
+    else if (this.type === 'footprint') this.updateFootprint(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
@@ -2405,6 +2441,27 @@ export class Enemy {
     const angle = this.game.elapsed * 0.9 + this.position.x * 0.3 + this.position.z * 0.2;
     this.position.x += Math.sin(angle) * dt * 0.16;
     this.position.z += Math.cos(angle) * dt * 0.16;
+  }
+
+  // 道の上の、数秒前にプレイヤーがいた地点へ向かう。道が途切れていれば見失い、ゆっくり寄りながら道を探す。
+  updateFootprint(dt) {
+    const cfg = Config.enemy.footprint;
+    const trail = this.game.playerTrail;
+    const target = trail ? advanceFootprint(this.footprint, trail, this.game.elapsed, dt, cfg, this.position) : null;
+    const tracking = !!target;
+    if (tracking) {
+      const dx = target.x - this.position.x;
+      const dz = target.z - this.position.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > 1e-4) this.moveToward(target, dt, Math.min(this.speed, distance / Math.max(dt, 1e-4)));
+    } else {
+      this.moveToward(this.game.player.position, dt, cfg.lostSpeed);
+    }
+    if (tracking !== this.footprint.tracking) {
+      this.footprint.tracking = tracking;
+      if (!tracking && this.game.footprintStats) this.game.footprintStats.lost += 1;
+      for (const material of this.footprintMaterials ?? []) material.opacity = tracking ? 0.82 : 0.4;
+    }
   }
 
   updateAquaticLarva(dt) {
@@ -2609,6 +2666,7 @@ export class Enemy {
     this.attackTimer = 0.75;
     const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
     player.takeDamage(this.stats.damage * multiplier);
+    if (this.type === 'footprint' && this.game.footprintStats) this.game.footprintStats.hits += 1;
     if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
   }
 
@@ -2951,6 +3009,8 @@ export class ExperienceOrb {
     this.object.rotation.y += dt * (this.type === 'speed' ? 7 : 4);
     this.model.rotation.x = Math.sin(this.game.elapsed * 5 + this.position.x) * 0.08;
     if (this.type === 'magnet') this.model.rotation.x += Math.PI * 0.5;
+    // The generated speed seed points up; laid on its side it reads as a spinning dart from the game camera.
+    if (this.type === 'speed' && INSTALLED_PICKUP_MODELS.has('speed')) this.model.rotation.z = Math.PI * 0.5;
     this.glow.visible = showGlow;
     if (showGlow) this.glow.material.opacity = 0.13 + Math.sin(this.game.elapsed * 7 + this.position.x) * 0.035;
     this.object.position.y = 0.45 + Math.sin(this.game.elapsed * 6 + this.position.x) * 0.08;

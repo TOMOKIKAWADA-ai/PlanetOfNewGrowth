@@ -13,6 +13,14 @@ const NEW_SPECIES = Object.freeze([
     form: '人間形態で撃つ（鳥形態で食べると、少しのあいだ動けない）',
     chapter: () => Config.egg.mimic.fromChapter,
     enabled: () => Config.egg.mimic.enabled
+  }),
+  Object.freeze({
+    id: 'footprint',
+    name: '足跡',
+    trait: '通った道を、数秒遅れでなぞって歩く',
+    form: 'どちらでも（同じ所を回らない。鳥で飛ぶと道が途切れる）',
+    chapter: () => Config.enemy.footprint.fromChapter,
+    enabled: () => Config.enemy.footprint.enabled
   })
 ]);
 

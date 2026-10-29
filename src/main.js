@@ -17,6 +17,7 @@ import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } fro
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
 import { getBossName } from './bosses.js';
+import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -163,7 +164,9 @@ const PICKUP_MODELS = {
   hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href,
   mp: new URL('../assets/pickups/pickup_mp.glb', import.meta.url).href,
   burst: new URL('../assets/pickups/pickup_burst.glb', import.meta.url).href,
-  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href
+  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href,
+  magnet: new URL('../assets/pickups/pickup_magnet.glb', import.meta.url).href,
+  speed: new URL('../assets/pickups/pickup_speed.glb', import.meta.url).href
 };
 const GAMEPLAY_MODELS = {
   darkseedEgg: {
@@ -414,6 +417,12 @@ class Game {
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
     this.pursuerHintShown = false;
     this.pursuerStats = { lays: 0, eggs: 0 };
+    const footprintCfg = Config.enemy.footprint;
+    this.footprintsActive = footprintCfg.enabled && this.stageId >= footprintCfg.fromChapter;
+    this.playerTrail = this.footprintsActive ? new PlayerTrail(footprintCfg.trailSeconds, footprintCfg.trailSampleInterval) : null;
+    this.footprintHintShown = false;
+    this.footprintStats = { spawned: 0, lost: 0, hits: 0 };
+    this.trailMarkTimer = 0;
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1330,6 +1339,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
+      if (this.playerTrail) this.updatePlayerTrail(dt);
       for (const egg of this.eggs) egg.update(dt);
       if (this.motherEgg) this.motherEgg.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
@@ -1532,6 +1542,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     } else if (this.elapsed >= 35 && roll < 0.22) {
       type = 'shooter';
     }
+    if (this.shouldHatchFootprint()) type = 'footprint';
     return this.spawnEnemy(type, egg.position, egg);
   }
 
@@ -1550,7 +1561,63 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.scene.add(enemy.object);
     this.enemies.push(enemy);
     this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
+    if (type === 'footprint') this.onFootprintSpawned();
     return enemy;
+  }
+
+  shouldHatchFootprint() {
+    const cfg = Config.enemy.footprint;
+    if (!this.footprintsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'footprint') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onFootprintSpawned() {
+    this.footprintStats.spawned += 1;
+    if (this.footprintHintShown) return;
+    this.footprintHintShown = true;
+    this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6);
+  }
+
+  // 足跡がなぞる道を記録する。足跡が場にいるあいだは、その道をプレイヤーの足元に薄い印で残す。
+  updatePlayerTrail(dt) {
+    const cfg = Config.enemy.footprint;
+    const player = this.player;
+    const grounded = player.form !== 'bird' && !player.dead;
+    this.playerTrail.record(this.elapsed, player.position.x, player.position.z, grounded);
+    if (!cfg.showTrail || !grounded) return;
+    this.trailMarkTimer -= dt;
+    if (this.trailMarkTimer > 0) return;
+    let anyFootprint = false;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'footprint') { anyFootprint = true; break; }
+    if (!anyFootprint) return;
+    this.trailMarkTimer = cfg.trailMarkInterval;
+    this.spawnTrailMark(player.position, cfg.trailMarkSeconds);
+  }
+
+  spawnTrailMark(position, seconds) {
+    this.trailMarkGeometry ??= new THREE.CircleGeometry(0.26, 10);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xa9c2dc, transparent: true, opacity: 0.42, depthWrite: false, toneMapped: false
+    });
+    const mark = new THREE.Mesh(this.trailMarkGeometry, material);
+    mark.rotation.x = -Math.PI / 2;
+    mark.scale.set(0.75, 1.15, 1);
+    mark.position.set(position.x, 0.04, position.z);
+    mark.renderOrder = 2;
+    this.scene.add(mark);
+    this.effects.push({
+      object: mark,
+      life: seconds,
+      duration: seconds,
+      dispose: false,
+      update(effect, dt) {
+        effect.life -= dt;
+        material.opacity = 0.42 * Math.max(0, effect.life / effect.duration);
+        if (effect.life <= 0) material.dispose();
+      }
+    });
   }
 
   ensureEggsExist() {

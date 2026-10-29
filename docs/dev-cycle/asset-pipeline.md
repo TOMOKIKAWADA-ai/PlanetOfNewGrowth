@@ -32,7 +32,7 @@
 
 ## 画像生成（イラスト、3Dモデルの元絵）
 
-- 本命は Forge。`webui\webui-user.bat` は書き換えず、`scripts/assets/start-forge-api.bat`（`--api --nowebui --port 7865`）をバックグラウンドで起動する。PowerShell からは `cmd /c "D:\0001_App_Dev\search_survive_daily\scripts\assets\start-forge-api.bat"`。
+- 本命は Forge。`webui\webui-user.bat` は書き換えず、`scripts/assets/start-forge-api.bat`（`--api --nowebui --port 7865`）をバックグラウンドで起動する。PowerShell からは `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive\scripts\assets\start-forge-api.bat > D:\0001_App_Dev\search_survive\tmp\forge-api.log 2>&1"'`（2026-10-29 から main のフォルダ。準備完了まで約3分だった）。
   - API が応答するまで約2分。`curl http://127.0.0.1:7865/sdapi/v1/sd-models` が返れば準備完了。
   - 起動中に `stable-diffusion-webui-dataset-tag-editor` の `ModuleNotFoundError` が出るが、API には影響しない。
   - 起動用の .bat は CRLF・絶対パスで書く（LF のままや `cd /d` 頼りだと `environment.bat` が見つからず失敗した）。
@@ -85,7 +85,7 @@
 - テクスチャ生成は未検証（README 参照）。まずは形状だけを作り、色は Blender で頂点カラーかゲーム側のマテリアルで付ける。テクスチャ生成を試す日は、所要時間とVRAM使用量を記録する。
 - 終了は起動したプロセスを止める（`Stop-Hunyuan3D.bat` はインストール時の処理用）。
 - **2026-10-26 に動作確認（形状のみ）**:
-  - 起動: PowerShell から `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive_daily\scripts\assets\start-hunyuan-api.bat"'`。ログは `tmp/hunyuan-api.log`。約1分で `curl http://127.0.0.1:8081/status/x` が 200 を返す（low VRAM の指定なしで 8GB に収まった）。
+  - 起動: PowerShell から `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive\scripts\assets\start-hunyuan-api.bat"'`。ログは `tmp/hunyuan-api.log`（2026-10-29 に .bat のログの場所を main のフォルダに直した）。約1〜2分で `curl http://127.0.0.1:8081/status/x` が 200 を返す（low VRAM の指定なしで 8GB に収まった）。
   - 生成: `node scripts/assets/hunyuan-img2glb.mjs <出力先> <画像.png> ...`。背景は API 側で自動で抜く（白背景の元絵で問題なし）。**1個 4〜7 秒**。出力は 23万〜68万三角形・7〜18MB と重いので、必ず Blender で削る。
   - 終了: `Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like 'D:\AI\3D_local\*' } | % { Stop-Process -Id $_.ProcessId -Force }`
   - 気づいたこと: 平たい物（葉1枚）は立体にすると薄く崩れるので、元絵の段階で厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
@@ -97,6 +97,9 @@
 - やること: 原点を接地面の中心へ、Y-up、ゲームの単位に合わせた大きさ、ポリゴン数の削減（目安: 拾うアイテム 500〜1500、敵 3000〜8000）、glTF 出力。
 - スクリプトは `scripts/assets/blender/` に置く。
 - 拾うアイテム: `blender -b --python scripts/assets/blender/prep-pickups.py -- <GLBのフォルダ> <出力先> <確認画像.png> [三角形の数]`。ファイル名の `-` より前（`hp-2601.glb` なら `hp`）を種類として `pickup_<種類>.glb` を書き出し、色を付けた並びの確認画像（Workbench）も出す。結晶（burst）だけ面を平らに塗る。5個で約20秒。
+  - **確認画像のパスは絶対パスで渡す**。相対パス（`out/x.png`）だと Blender が `C:\out\` に書き出した（2026-10-29）。
+  - 同じ種類の候補を比べるときは、候補ごとにフォルダを分けて1つずつ実行する（出力名が種類で決まるので上書きされる）。
+  - 元絵の言葉: 「翼（wings）」を入れると、2回とも目のある鳥の顔が出た（10-26、10-29）。翼のある形は避けるか、`bird, eyes, face` を否定に入れる。馬蹄形（horseshoe）は正面向きの U がそのまま立体になり、上から見ても読める。
 - 単色で描く小物には、ゲーム側で陰影の出るマテリアル（`MeshStandardMaterial`、発光は弱め 0.16）を使う。光を受けないマテリアルだと形が影絵になる。
 
 ## 効果音（Stable Audio 3 Small-SFX）

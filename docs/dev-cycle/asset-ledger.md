@@ -215,3 +215,21 @@
 | `assets_src/illust/2026-10-28/enemy-a.png` | 同上 | 敵の系統。棘の蔓に覆われた赤い卵・石畳・曇天 | 2811 | 不採用: 写真調でつるっとした卵、光る筋がない |
 | `assets_src/illust/2026-10-28/enemy-b.png` | 同上 | 同上 | 2812 | 不採用: 同上 |
 | `assets_src/illust/2026-10-28/chara-a.png` | Forge / softsketchIllustrious_v125（Euler a 28 steps CFG 5.5） | 人物の系統。青い髪のポニーテール・紺の装甲服・あおり | 2821 | 不採用: 線画寄りの淡い塗りで、手本のセル塗りと違う |
+
+## 2026-10-29 拾うアイテムの3Dモデル: 吸引石と加速の作り直し（B1-1 の続き）
+ツール: 2026-10-26 と同じ（Forge `juggernautXL_ragnarokBy`、DPM++ 2M、28 steps、CFG 5、1024×1024 → Hunyuan3D-2mini turbo 形状のみ、octree 256、5 steps、seed 1234 → Blender 5.1 `prep-pickups.py`、1200 三角形）。
+元絵・途中の GLB・確認画像: `assets_src/3d/2026-10-29-pickups/`（jobs.json にプロンプト全文、`sheet.jpg` が元絵8枚、`renders.jpg` が整形後5個）。
+共通プロンプト（後半）は 10-26 と同じ。ネガティブに `thin, flat, paper` を足した。
+
+| ファイル | 元絵（シード） | プロンプト（前半） | 採用 |
+|---|---|---|---|
+| `assets/pickups/pickup_magnet.glb`（22KB） | magnet-horseshoe-2902 | a chunky violet horseshoe-shaped magnet carved from smooth purple stone, thick U shape with two rounded prongs | 採用: ゲームのカメラから U の字に見える |
+| — | magnet-horseshoe-2901 | 同上 | 不採用: 斜めから見た形で、立体にすると口が狭い |
+| — | magnet-ring-2902 | a thick chunky donut-shaped violet stone ring with a large round hole in the center, smooth polished amethyst torus | 不採用: きれいな輪だが、元の輪の多面体と見分けが付かない |
+| — | magnet-ring-2901 | 同上 | 不採用: ドーナツ（パンの断面）が出た |
+| `assets/pickups/pickup_speed.glb`（22KB） | speed-arrow-2901 | a thick chunky lime-yellow arrowhead-shaped seed pod, plump pointed triangular nut with a rounded back | 採用: 尖った紡錘形。ゲームでは横に寝かせて速く回す |
+| — | speed-arrow-2902 | 同上 | 不採用: 立体にするといびつな塊 |
+| — | speed-wingseed-2901 / 2902 | a plump lime-yellow seed with two thick short swept-back wings, chunky winged nut shaped like a dart | 不採用: 2枚とも目のある鳥になった（10-26 に続き2回目。「翼」は鳥を呼ぶ） |
+
+採用: ゲームで使用。`Config.pickups.models.enabled: false` で6種すべて元の多面体に戻る。比較画像は devlog 2026-10-29。
+ライセンス: 10-26 と同じ（Hunyuan3D の地域の制限あり）。
