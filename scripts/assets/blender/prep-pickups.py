@@ -1,4 +1,4 @@
-# Shape-only Hunyuan3D GLBs -> small pickup GLBs (centered, longest side 1, decimated, no materials) + a preview render.
+# Image-to-3D GLBs (Tripo) -> small pickup GLBs (centered, longest side 1, decimated, no materials) + a preview render.
 #   blender -b --python scripts/assets/blender/prep-pickups.py -- <inDir> <outDir> <preview.png> [targetTris]
 import math
 import os

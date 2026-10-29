@@ -67,17 +67,18 @@
 
 ### B0 準備
 - [x] B0-1（2026-10-26。`asset-ledger.md` の「置き換え候補」に優先度つきで一覧化）モックの棚卸し：Primitive で描いているもの、仮の音、足りない音声を `asset-ledger.md` の「置き換え候補」に一覧化し、見た目の優先度をつける
-- [~] B0-2 生成スクリプトを（2026-10-21 Forge 用の start-forge-api.bat と forge-txt2img.mjs を追加。2026-10-23 音声用の irodori-batch.py を追加） `scripts/assets/` に用意（画像生成、Hunyuan3D 呼び出し、Blender での整形、効果音、音声）。手順は `asset-pipeline.md`
+- [~] B0-2 生成スクリプトを（2026-10-21 Forge 用の start-forge-api.bat と forge-txt2img.mjs を追加。2026-10-23 音声用の irodori-batch.py を追加） `scripts/assets/` に用意（画像生成、Blender での整形、効果音、音声。3D の生成は Tripo をユーザー承認のうえ Chrome で操作するので、スクリプトは作らない）。手順は `asset-pipeline.md`
 - [x] B0-3（2026-10-28。3系統（世界・敵・人物）の色・光・形の表と共通プロンプト、見比べの3点を `asset-pipeline.md` の「画風の基準」に書いた。プロンプトの詰めは B4-1）ゲームの画風の基準を決める：既存の `assets/promo` と立ち絵から色・質感の指針を `asset-pipeline.md` に書き、画像生成のプロンプトの共通部分にする
 
 - [~] B0-4 `D:\AI` のアプリの起動確認（2026-10-21 Forge の API 起動は確認済み。残り ComfyUI）：Forge の API 起動（`--api`）、ComfyUI が動くか、Live2D_AI の起動。結果を `asset-pipeline.md` のアプリ一覧に書く
 
 ### B1 3Dモデル（月・木）
 現状の Primitive（`src/entities.js`、`src/main.js`）：
-- [x] B1-1 拾うアイテム6種（HP・MP・バースト・磁石・シールド・スピード。`PICKUP_GEOMETRIES` 付近）（2026-10-26 HP・MP・バースト・シールドを置き換え。2026-10-29 磁石・スピードも置き換え。`Config.pickups.models.enabled: false` で元に戻る）
+- [ ] B1-1 拾うアイテム6種（HP・MP・バースト・磁石・シールド・スピード。`PICKUP_GEOMETRIES` 付近）（2026-10-26・29 に Hunyuan3D で6種を置き換えたが、**2026-10-29 に Hunyuan3D の利用条件のため外して元の多面体に戻した**。下の形の選び方は Tripo でも使える）
+  - [ ] Tripo で6種を作り直す（判断待ち: 何体・何クレジットまで使ってよいか。見込み 1体 100〜120。元絵は `assets_src/3d/2026-10-26-pickups/`・`2026-10-29-pickups/` の採用分がそのまま使えるが、Forge の juggernautXL は商用条件が「要確認」なので、Codex（GPT Image）で描き直すかも判断待ち）。組み込みは `PICKUP_MODELS`（`src/main.js`）に GLB を足し、`Config.pickups.models.enabled: true`
   - [x] 続き（2026-10-29 馬蹄形の紫の石。上から U の字に見える）: 磁石（吸引石）を上から見て分かる形で作り直す（輪・馬蹄形・穴の空いた石など、輪郭で見分けられるもの）
   - [x] 続き（2026-10-29 矢じり形の木の実を横に寝かせて回す。翼のある種は2回とも鳥の顔が出て不採用）: スピード（加速）を厚みのある形で作り直す（翼のある種を丸ごと、矢じり形の木の実など）
-  - [ ] Hunyuan3D の利用条件（EU・英国・韓国での使用禁止）を踏まえて、公開前に別の3D生成（TRELLIS など）に切り替えるか決める（判断待ち 2026-10-26）
+  - [x] Hunyuan3D の利用条件（EU・英国・韓国での使用禁止）を踏まえて、別の3D生成に切り替えるか決める（2026-10-29 ユーザー「やめておこう。Tripo にして」。Hunyuan3D はもう使わない）
 - [ ] B1-2 経験値オーブ（`usePrimitiveXp: true`。既存の `assets/xp/blue_crystal.glb` を使わない理由を確認してから）
 - [ ] B1-3 鳥形態の代替表示（Player の `createFishModel` / 予備の体）
 - [ ] B1-4 弾の見た目（Projectile の球）

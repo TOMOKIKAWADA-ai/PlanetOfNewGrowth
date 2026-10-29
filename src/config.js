@@ -421,10 +421,10 @@ export const Config = {
     orbSpeed: 9
   },
   pickups: {
-    // Generated meshes for dropped items (Hunyuan3D, 2026-10-26; see docs/dev-cycle/asset-ledger.md and PICKUP_MODELS in
-    // src/main.js). Magnet (horseshoe) and speed (arrowhead seed) were redone on 2026-10-29. enabled: false brings back all primitives.
+    // Generated meshes for dropped items (PICKUP_MODELS in src/main.js; see docs/dev-cycle/asset-ledger.md). The Hunyuan3D
+    // meshes (2026-10-26/29) were removed on 2026-10-29 over its license; to be remade with Tripo. enabled: false keeps primitives.
     models: {
-      enabled: true,
+      enabled: false,
       size: 0.72
     },
     spawnOffsetRadius: 1.35,

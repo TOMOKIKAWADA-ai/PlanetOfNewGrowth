@@ -14,14 +14,15 @@
 | しっぽり明朝／Zen角ゴシック New | SIL OFL 1.1 | ○ | 動画への使用は自由。フォント単体の販売は不可 |
 | Playwright / FFmpeg / Whisper small | Apache-2.0 / LGPL・GPL / MIT | ○ | 制作用の道具で、出力物には影響しない（Whisper は読み確認だけに使用） |
 | Stable Audio 3 Small-SFX | Stability AI Community License（コードは MIT） | △ | 年間売上100万ドル未満なら商用可。**商用で使うなら Stability AI への登録が必要**。出力は自分のもの。出力を他の生成AIの学習に使わない。文章処理に使う T5Gemma は Gemma 利用規約にも従う |
-| Hunyuan3D 2.0 | Tencent Hunyuan 3D 2.0 Community License | △〜× | **EU・英国・韓国は対象外。生成物をその地域で使用・配布・表示することも禁止**。世界向けに公開するゲームに生成物を入れると条件に触れるおそれがある。月間利用者100万人超は別途許諾が必要 |
+| Hunyuan3D 2.0 | Tencent Hunyuan 3D 2.0 Community License | × **使わない** | **EU・英国・韓国は対象外。生成物をその地域で使用・配布・表示することも禁止**。世界向けに公開するゲームに生成物を入れると条件に触れるおそれがある。月間利用者100万人超は別途許諾が必要。**2026-10-29 ユーザーの判断で使用をやめ、生成物はゲームとリポジトリから外した** |
+| Tripo（Tripo Studio、有料のクレジット） | Tripo の利用規約 | ○（要再確認） | 3D はこれだけを使う。敵の3D化で使用中。商用の条件（プランごとの権利）は、公開前に Tripo の規約の原文で再確認する |
 | SDXL base 1.0 | CreativeML Open RAIL++-M | ○ | 利用制限（有害用途の禁止）を守る |
 | juggernautXL_ragnarokBy | CreativeML Open RAIL 系＋RunDiffusion の追加条件 | 要確認 | 有料のAPIやサービスでモデルを動かすのは要許諾。生成画像の商用利用は版ごとに表記が違うため、Ragnarok 版のモデルページを確認する |
 | softsketchIllustrious_v125 | Illustrious XL 由来（Fair AI Public License 1.0-SD） | 要確認 | 生成画像の商用利用は可とする説明が多いが、原文で未確認。派生モデルの公開条件がある |
 | bluePencilXLLCM_v200 | 未確認 | 要確認 | モデルページで確認する |
 
 **運用ルール**
-- Hunyuan3D の生成物は、配布地域を決めるまで `config.js` の切り替えで元のモックに戻せる状態を保つ。世界向けに公開するなら、MIT などの3D生成（例: Microsoft TRELLIS）への切り替えを検討する。
+- 3D は Tripo で作る。Hunyuan3D は使わない（試作も含めて。2026-10-29 ユーザー「Hunyuan3D はライセンスの問題があるのでやめておこう。Tripo にして」）。
 - Stable Audio で作った効果音を入れたゲームを商用で公開する前に、ユーザーが Stability AI に登録する（アカウント操作なので自動では行わない）。
 - 画像生成のモデルは、この表で「要確認」のものを商用の素材に使わない。使った場合は台帳に記録し、公開前にモデルページを確認する。
 - ゲーム内の既存素材の出どころ（2026-10-21 ユーザー回答）: BGM `assets/audio/bgm.mp3` は **Magnific（旧 Freepik）の AI Music Generator**、立ち絵とプロモ画像（`assets/ui/characters`、`assets/promo`、タイトル画）は **GPT Image**、効果音 `assets/audio/sfx` は **Adobe Firefly**、キャラクター音声 `assets/audio/voice` は **Irodori-TTS**。ゲーム内の既存素材の出どころは、これですべて記録済み。
@@ -184,8 +185,8 @@
 | （`assets_src` のみ）pickup_magnet.glb | magnet-2601 | a smooth violet river stone with a carved spiral groove, faint lavender glow | 不採用: ゲームのカメラからは渦巻きが見えず、ただの球に見えた。元の輪の形のまま |
 | — | speed-2601 / 2602 | a lime-yellow winged maple seed (samara) with a single swept wing | 不採用: 2601 は鳥の顔が出た、2602 は薄い葉で立体に向かない |
 
-採用: ゲームで使用。`Config.pickups.models.enabled: false` で元の多面体に戻る。大きさは `Config.pickups.models.size`（0.72）。
-ライセンス: juggernautXL（CreativeML Open RAIL++-M 系）と Hunyuan3D-2mini（Tencent Hunyuan Community License。地域の制限あり）の条件は、公開前に上の「ライセンス」の節で再確認する。
+採用: ~~ゲームで使用~~ → **2026-10-29 に撤去**（下の「2026-10-29 Hunyuan3D をやめる」）。表の `assets/pickups/` のファイルはもう無い（git の履歴にだけある）。
+ライセンス: juggernautXL（CreativeML Open RAIL++-M 系）と Hunyuan3D-2mini（Tencent Hunyuan Community License。地域の制限あり）。
 
 ## 2026-10-27 効果音: アイテム取得と渇きの母の吸い上げ（B2-1）
 ツール: Stable Audio 3 Small-SFX（`D:\0001_App_Dev\audioMCP`、steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で一括生成（プロンプトの末尾に `, no music, no speech` を自動で付ける）。
@@ -231,5 +232,12 @@
 | — | speed-arrow-2902 | 同上 | 不採用: 立体にするといびつな塊 |
 | — | speed-wingseed-2901 / 2902 | a plump lime-yellow seed with two thick short swept-back wings, chunky winged nut shaped like a dart | 不採用: 2枚とも目のある鳥になった（10-26 に続き2回目。「翼」は鳥を呼ぶ） |
 
-採用: ゲームで使用。`Config.pickups.models.enabled: false` で6種すべて元の多面体に戻る。比較画像は devlog 2026-10-29。
+採用: ~~ゲームで使用~~ → **同日に撤去**（下の節）。
 ライセンス: 10-26 と同じ（Hunyuan3D の地域の制限あり）。
+
+## 2026-10-29 Hunyuan3D をやめる（ユーザーの判断「Hunyuan3D はライセンスの問題があるのでやめておこう。Tripo にして」）
+- ゲームから外したもの: `assets/pickups/pickup_{hp,mp,burst,shield,magnet,speed}.glb`（10-26・10-29 の6種）。`PICKUP_MODELS`（`src/main.js`）を空にし、`Config.pickups.models.enabled: false`。拾うアイテムは元の多面体に戻った。
+- リポジトリから外したもの: Hunyuan3D の出力が写った devlog の画像3枚（`2026-10-26-pickup-shapes.png`・`2026-10-26-pickups-compare.png`・`2026-10-29-pickups-compare.png`）、`scripts/assets/start-hunyuan-api.bat`・`hunyuan-img2glb.mjs`。git の履歴には残っている（履歴の書き換えはしていない）。
+- 手元に残っているもの（git 対象外）: `assets_src/3d/2026-10-26-pickups/`・`2026-10-29-pickups/` の Hunyuan3D の GLB。ゲームには使わない。元絵（Forge 製）は Tripo の入力に使える。
+- 2026-10-27 に試した敵（03 黒い棘の鎧）の Hunyuan3D 版は、もともとゲームに入れていない。
+- 作り直しは backlog B1-1（Tripo、ユーザーがクレジットの量を決めてから）。

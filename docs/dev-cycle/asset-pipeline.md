@@ -11,7 +11,8 @@
 | Stable Diffusion WebUI Forge | `D:\AI\webui_forge_cu121_torch231` | **画像生成の本命**。SDXL・Illustrious・Pony のモデル、LoRA、ControlNet（AnyTest）、タグ付け拡張が入っている | API 起動を確認済み（2026-10-21）。`scripts/assets/start-forge-api.bat` |
 | ComfyUI | `D:\AI\ComfyUI` | 細かいワークフロー（背景透過、連続生成、将来の動画生成） | 2024年末の版。起動方法を初回に確認。動かなければ更新か入れ直しで可 |
 | A1111 | `D:\AI\A1111` | SD1.5 しかないので基本は使わない | 予備 |
-| Hunyuan3D 2 | `D:\AI\3D_local` | 画像から3Dモデル | 形状のみ API で使用（2026-10-26、`scripts/assets/start-hunyuan-api.bat`）。テクスチャ生成は未検証 |
+| Tripo Studio（Web、有料のクレジット） | https://studio.tripo3d.ai（Claude in Chrome から操作） | 画像から3Dモデル（テクスチャ・四角形の面） | **3D はこれだけを使う**。生成はユーザーの承認後（下の「3Dモデル（Tripo）」） |
+| ~~Hunyuan3D 2~~ | `D:\AI\3D_local` | 画像から3Dモデル | **使わない**（2026-10-29、利用条件のため。試作にも使わない） |
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1` | 3Dの整形、ポリゴン削減、ターンテーブル画像 | 使用可 |
 | Stable Audio 3 Small-SFX | `D:\0001_App_Dev\audioMCP` | 効果音 | 認証済み、生成確認済み |
 | Irodori-TTS 4.1 | `D:\AI\Irodori-TTS-v4_1` | キャラクター音声 | 生成確認済み。v4（`D:\AI\Irodori-TTS-v4`）は旧版なので使わない |
@@ -20,7 +21,7 @@
 | Bionic（LM Studio） | `D:\AI\Bionic` | ローカルLLM | 文章は自分で書くので基本は使わない |
 | FFmpeg | `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-*\bin` | 音声の後処理、動画の編集・書き出し | 使用可 |
 
-ポートの重複に注意: Mesh Avatar Studio は 5173、Irodori の画面は 7860/7861、Stable Audio の画面は 7860、Hunyuan3D は 8080/8081、Forge は 7860。ゲームの開発サーバーは 5183 を使う。
+ポートの重複に注意: Mesh Avatar Studio は 5173、Irodori の画面は 7860/7861、Stable Audio の画面は 7860、Forge は 7860。ゲームの開発サーバーは 5183 を使う。
 新しいアプリを入れたら、この表に追加する。
 
 ## 共通の流れ
@@ -71,25 +72,22 @@
 
 判断の基準: 生成した絵は手本と並べて見比べ、(1) 光の向き（逆光か）、(2) 彩度の置き方（世界は低彩度、敵は赤だけ）、(3) 塗り（厚塗り・細密）の3点が合わなければ使わない。
 
-## 3Dモデル（Hunyuan3D 2.0 mini turbo）
+## 3Dモデル（Tripo）
 
-- 場所: `D:\AI\3D_local`（説明は `README-Hunyuan3D.md`）。
-- 自動化には API サーバーを使う（画面は使わない）。環境変数は `Hunyuan3D-Environment.bat` を `call` してから起動する:
-  ```bat
-  call D:\AI\3D_local\Hunyuan3D-Environment.bat
-  cd /d D:\AI\3D_local\Hunyuan3D\Hunyuan3D-2
-  "%HY3D_APP%\python_standalone\python.exe" -s api_server.py --host 127.0.0.1 --port 8081 --model_path tencent/Hunyuan3D-2mini
-  ```
-  low VRAM の起動オプションが api_server.py で使えるかは初回に確認する。足りなければ gradio_app.py の起動方法（`Start-Hunyuan3D.bat`）を参考に、小さな Python スクリプトから `hy3dgen` を直接呼ぶ。
-- `POST /generate` に JSON `{"image": <base64 PNG>, "seed": 1234, "octree_resolution": 256, "num_inference_steps": 5, "face_count": 8000, "texture": false}` を送ると GLB が返る。
-- テクスチャ生成は未検証（README 参照）。まずは形状だけを作り、色は Blender で頂点カラーかゲーム側のマテリアルで付ける。テクスチャ生成を試す日は、所要時間とVRAM使用量を記録する。
-- 終了は起動したプロセスを止める（`Stop-Hunyuan3D.bat` はインストール時の処理用）。
-- **2026-10-26 に動作確認（形状のみ）**:
-  - 起動: PowerShell から `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive\scripts\assets\start-hunyuan-api.bat"'`。ログは `tmp/hunyuan-api.log`（2026-10-29 に .bat のログの場所を main のフォルダに直した）。約1〜2分で `curl http://127.0.0.1:8081/status/x` が 200 を返す（low VRAM の指定なしで 8GB に収まった）。
-  - 生成: `node scripts/assets/hunyuan-img2glb.mjs <出力先> <画像.png> ...`。背景は API 側で自動で抜く（白背景の元絵で問題なし）。**1個 4〜7 秒**。出力は 23万〜68万三角形・7〜18MB と重いので、必ず Blender で削る。
-  - 終了: `Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like 'D:\AI\3D_local\*' } | % { Stop-Process -Id $_.ProcessId -Force }`
-  - 気づいたこと: 平たい物（葉1枚）は立体にすると薄く崩れるので、元絵の段階で厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
-  - `.bat` は Write ツールで書いてから CRLF に変換する（シェルの printf で書いたら `\3`・`\0`・`\t` が化けた。2026-10-26 にも1回起きた）。
+**3D は Tripo だけを使う。Hunyuan3D（`D:\AI\3D_local`）は利用条件（EU・英国・韓国での使用・表示の禁止）のため、2026-10-29 のユーザーの判断で使わない**。起動・試作もしない。
+
+- 進め方（定期のサイクルと、承認を受けたチャットで分ける）:
+  1. **定期のサイクル（月・木）**: Tripo に渡す元絵を作る（白背景、1体1枚か、敵は三面図）。`assets_src/3d/YYYY-MM-DD-<名前>/` に置き、devlog の「判断待ち」に「どの絵を何体・設定・見込みのクレジット」を書く。**Tripo には触らない**（外部へのアップロードとクレジット消費になるため）。
+  2. **ユーザーが承認したチャット**: Claude in Chrome（ユーザーのログイン済み Chrome）で Tripo Studio を操作して生成し、GLB をダウンロードする。生成前に画面の表示額を確かめ、承認された体数・クレジットを超えない。アップロードできるのはセッションのフォルダ（作業ツリーかスクラッチパッド）のファイルだけ。アプリ内ブラウザはアップロードに使えない。拡張がつながらないときは Claude アプリの再起動で直った。
+  3. **整形と組み込み（どちらでも）**: Blender で骨・モーション・ポリゴン削減（下の「3Dの整形（Blender）」と `scripts/blender/enemy_anim_lib.py`）、`config.js` の切り替えでモックに戻せる形でゲームに入れる。生成物は asset-ledger.md に記録する（Tripo の設定、元絵、クレジット）。
+- 設定（2026-10-26〜28 ユーザー指定）: Smart Mesh **P2.0**、面は **Quad（四角形）**（リグやモーションを付けやすい）。敵は **2000 面**（ゲームで約 3300〜4000 三角形）、小さい敵は 1500 面でも足りる、ボスは 8000 面まで。三面図があれば **Multiview**（前・左・後ろ・右に切り分けて渡す）。テクスチャあり。
+- 費用: 1体 100 クレジット＋テクスチャ 20（最初の見積もり 55 は外れた）。生成前に画面の表示額を見る。
+- Tripo のくせ（下の `strip-hanging-strings.py`・`paint_eye_eggs.py` は 2026-10-29 時点でブランチ `claude/enemy-3d-implementation-0a21a1` にだけあり、main にはまだ無い）:
+  - 絵から色を読めなかった所（細いひげ、花びらの裏など）を灰色で塗る。Blender の `enemy_anim_lib`（`is_unread_gray`・`delete_faces`・`repaint_faces`）で消すか塗り直す。
+  - 細い垂れ糸がある絵は糸を壁（円柱）にしてしまう。`scripts/assets/strip-hanging-strings.py` で糸を消してから渡す。
+  - テクスチャが error.11000 で通らないことがある。色なしで書き出し、Blender で塗る（`scripts/blender/paint_eye_eggs.py`）。
+- 元絵の選び方（Hunyuan3D の試作で分かったこと。Tripo でも同じ）: 平たい物（葉1枚）は立体にすると薄く崩れるので、厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
+- 元絵の商用条件: Forge の juggernautXL などは asset-ledger.md で「要確認」。商用の素材にする元絵は、条件を確かめたモデルか Codex（GPT Image）で描く。
 
 ## 3Dの整形（Blender）
 
