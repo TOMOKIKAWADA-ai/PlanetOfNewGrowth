@@ -10,16 +10,17 @@ test('every chapter names a boss and chapter one fights the mother egg', () => {
 });
 
 test('bosses that are not built yet fall back to the mother egg', () => {
-  assert.equal(getBossType('floodgateMother'), BOSS_TYPES[DEFAULT_BOSS]);
+  assert.equal(getBossType('swarmMother'), BOSS_TYPES[DEFAULT_BOSS]);
   assert.equal(getBossType(undefined).id, 'motherEgg');
-  assert.equal(isBossImplemented('floodgateMother'), false);
+  assert.equal(isBossImplemented('swarmMother'), false);
   for (const type of Object.values(BOSS_TYPES)) assert.equal(typeof type.update, 'function');
 });
 
 test('the displayed boss name falls back to the chapter name until the boss has its own', () => {
   assert.equal(getBossName(STAGES[1]), '母卵');
   assert.equal(getBossName(STAGES[6]), '白蓮の核');
-  assert.equal(getBossName({ boss: 'floodgateMother', motherName: '母卵' }), '母卵');
+  assert.equal(getBossName({ boss: 'swarmMother', motherName: '母卵' }), '母卵');
+  assert.equal(getBossName(STAGES[3]), '水門の母');
 });
 
 test('the thirst mother drains the nearest eggs and heals only by those left alive', async () => {
@@ -103,4 +104,47 @@ test('chapter two fights the pursuer: it walks toward the player, slides along w
   updatePursuer(mother, 0.01);
   assert.equal(calls.at(-1), `hit:${cfg.contactDamage}`);
   assert.equal(calls.filter(c => c.startsWith('hit')).length, 1); // bird form floats over it
+});
+
+test('the floodgate mother is immune while submerged and surfaces, stunned, after three fish bites', async () => {
+  const { floodgateBite, floodgateDamageScale, updateFloodgate } = await import('../src/bosses.js');
+  const { Config } = await import('../src/config.js');
+  const cfg = Config.boss.floodgateMother;
+  const calls = [];
+  const game = {
+    state: 'playing',
+    onFloodgateBite: (m, bites, needed) => calls.push(['bite', bites, needed]),
+    onFloodgateSurface: () => calls.push(['surface']),
+    onFloodgateSubmerge: () => calls.push(['submerge']),
+    onFloodgateStream: (m, count) => calls.push(['stream', count])
+  };
+  const mother = { game, position: { x: 0, z: 0 } };
+  const type = BOSS_TYPES.floodgateMother;
+  assert.equal(STAGES[3].boss, 'floodgateMother');
+  updateFloodgate(mother, cfg.firstStreamDelay + 0.01);
+  assert.deepEqual(calls.pop(), ['stream', cfg.streamCount]);
+  assert.equal(type.damageScale(mother), cfg.submergedDamageScale);
+  assert.equal(floodgateBite(mother), true);
+  assert.equal(floodgateBite(mother), true);
+  assert.deepEqual(calls.slice(-2), [['bite', 1, 3], ['bite', 2, 3]]);
+  assert.equal(floodgateBite(mother), true);
+  assert.deepEqual(calls.pop(), ['surface']);
+  assert.equal(mother.floodgate.state, 'surfaced');
+  assert.equal(type.damageScale(mother), cfg.surfacedDamageScale);
+  assert.equal(floodgateBite(mother), false, 'bites do not count while it is up');
+  updateFloodgate(mother, cfg.stunSeconds - 0.5);
+  assert.equal(calls.filter(([name]) => name === 'stream').length, 0, 'no tadpole lines while stunned');
+  updateFloodgate(mother, 0.6);
+  assert.deepEqual(calls.pop(), ['submerge']);
+  assert.equal(mother.floodgate.state, 'submerged');
+  assert.equal(mother.floodgate.bites, 0);
+  assert.equal(floodgateDamageScale('submerged', cfg), 0);
+});
+
+test('a tadpole line runs from the floodgate mother toward the player', async () => {
+  const { floodgateStreamPoints } = await import('../src/bosses.js');
+  const { direction, points } = floodgateStreamPoints({ x: 0, z: 0 }, { x: 10, z: 0 }, 3, 3, 1.5);
+  assert.deepEqual(direction, { x: 1, z: 0 });
+  assert.deepEqual(points, [{ x: 3, z: 0 }, { x: 4.5, z: 0 }, { x: 6, z: 0 }]);
+  assert.deepEqual(floodgateStreamPoints({ x: 2, z: 2 }, { x: 2, z: 2 }, 1, 3, 1).points, [{ x: 2, z: 5 }]);
 });

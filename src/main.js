@@ -16,7 +16,7 @@ import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.j
 import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
-import { getBossName } from './bosses.js';
+import { floodgateStreamPoints, getBossName, getBossType } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
@@ -134,7 +134,10 @@ const VOICE_URLS = {
     dying: [new URL('../assets/audio/voice/tsukimi/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href]
+    death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href],
+    bossAppear: [new URL('../assets/audio/voice/tsukimi/boss_appear_01.mp3', import.meta.url).href],
+    levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
+    lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -144,7 +147,10 @@ const VOICE_URLS = {
     dying: [new URL('../assets/audio/voice/akame/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href]
+    death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href],
+    bossAppear: [new URL('../assets/audio/voice/akame/boss_appear_01.mp3', import.meta.url).href],
+    levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
+    lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -154,7 +160,10 @@ const VOICE_URLS = {
     dying: [new URL('../assets/audio/voice/kiichigo/dying.mp3', import.meta.url).href],
     burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
-    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href]
+    death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href],
+    bossAppear: [new URL('../assets/audio/voice/kiichigo/boss_appear_01.mp3', import.meta.url).href],
+    levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
+    lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -413,6 +422,9 @@ class Game {
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
     this.pursuerHintShown = false;
     this.pursuerStats = { lays: 0, eggs: 0 };
+    this.floodgateHintShown = false;
+    this.floodgateImmuneHintTimer = 0;
+    this.floodgateStats = { bites: 0, surfaces: 0, streams: 0, tadpoles: 0 };
     const footprintCfg = Config.enemy.footprint;
     this.footprintsActive = footprintCfg.enabled && this.stageId >= footprintCfg.fromChapter;
     this.playerTrail = this.footprintsActive ? new PlayerTrail(footprintCfg.trailSeconds, footprintCfg.trailSampleInterval) : null;
@@ -1332,6 +1344,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.shake = Math.max(0, this.shake - dt * 1.7);
       this.updateSpawnPause(dt);
       if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
+      if (!this.lastMinuteCalled && this.elapsed >= Config.map.playSeconds - 60) {
+        this.lastMinuteCalled = true;
+        if (Config.audio.cueVoices) this.playVoice('lastMinute', { volume: 0.9 });
+      }
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
@@ -1507,11 +1523,14 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   spawnMotherEgg() {
     if (this.motherSpawned) return;
     this.motherSpawned = true;
+    // A boss that lives in the water (the floodgate mother) is placed off the shore, where fish form can reach it.
+    const wantsWater = this.isWaterStage && getBossType(this.stage.boss).prefersWater;
     let best = null;
     let bestDistance = -Infinity;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < (wantsWater ? 80 : 20); i++) {
       const point = randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
       if (this.isBlockedByBuilding(point, 3)) continue;
+      if (wantsWater && this.isWaterStageLand(point, Config.boss.floodgateMother.shoreMargin)) continue;
       const distance = horizontalDistanceSq(point, this.player.position);
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
@@ -1520,6 +1539,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     mother.maxHp *= this.stage.motherHpScale;
     mother.hp = mother.maxHp;
     this.spawnBurstEffect(position, 7, 0xff8b52);
+    if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
     this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
 
@@ -1542,8 +1562,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return this.spawnEnemy(type, egg.position, egg);
   }
 
-  spawnEnemy(type, position, homeEgg = null) {
-    if (!this.canSpawnEnemy()) return null;
+  // ignoreCap: enemies a boss sends itself (the floodgate mother's tadpole lines) appear even when the field is full.
+  spawnEnemy(type, position, homeEgg = null, { ignoreCap = false } = {}) {
+    if (!ignoreCap && !this.canSpawnEnemy()) return null;
     if (type === 'sniper') {
       const maxSnipers = this.elapsed >= 210
         ? Config.enemy.sniper.maxAliveDuringRush
@@ -2297,6 +2318,58 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(mother.position, 3.2, 0x9aa3a8, 0.5, 0.35);
   }
 
+  // Floodgate mother (src/bosses.js): bitten while submerged, surfaces stunned on the third bite, sends tadpole lines.
+  onFloodgateBite(mother, bites, needed) {
+    this.floodgateStats.bites += 1;
+    this.spawnRingEffect(mother.position, 3.4, 0x5fd0ff, 0.7, 0.4);
+    this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
+    this.showMessage(`噛みついた ${bites}/${needed}`, 0.9);
+  }
+
+  onFloodgateSurface(mother, seconds) {
+    this.floodgateStats.bites += 1;
+    this.floodgateStats.surfaces += 1;
+    this.spawnBurstEffect(mother.position, 6, 0x9ff3ff);
+    this.spawnRingEffect(mother.position, 4.2, 0xffe066, 0.9, 0.6);
+    this.playSfx('motherRelease', { volume: 0.7, cooldown: 0.4 });
+    this.showMessage(`${getBossName(this.stage)}が浮上して気絶した！ 今のうちに人間形態で撃とう`, Math.min(3, seconds));
+  }
+
+  onFloodgateSubmerge(mother) {
+    this.spawnRingEffect(mother.position, 3.6, 0x5fd0ff, 0.6, 0.5);
+    this.showMessage(`${getBossName(this.stage)}がまた潜った`, 1.2);
+  }
+
+  onFloodgateStream(mother, count) {
+    const cfg = Config.boss.floodgateMother;
+    if (!this.floodgateHintShown) {
+      this.floodgateHintShown = true;
+      this.showMessage(`${getBossName(this.stage)}は水に潜っていて攻撃が効かない
+魚形態で3回噛みつくと浮上する`, 3.4);
+    }
+    this.floodgateStats.streams += 1;
+    const { direction, points } = floodgateStreamPoints(mother.position, this.player.position, count, cfg.streamStart, cfg.streamSpacing);
+    for (const point of points) {
+      const position = new THREE.Vector3(point.x, 0, point.z);
+      if (!this.isWaterPosition(position)) break;
+      const tadpole = this.spawnEnemy('tadpole', position, null, { ignoreCap: true });
+      tadpole.position.set(point.x, 0, point.z);
+      tadpole.stream = { x: direction.x, z: direction.z, speed: cfg.streamSpeed, timer: cfg.streamSeconds, damage: cfg.streamDamage };
+      // A line is a passing hazard: it dissolves a little after it stops instead of growing into frogs.
+      tadpole.lifeTimer = cfg.streamSeconds + cfg.streamLinger;
+      tadpole.matureTimer = Infinity;
+      this.floodgateStats.tadpoles += 1;
+    }
+    this.spawnRingEffect(mother.position, 3.2, 0x5fd0ff, 0.55, 0.45);
+  }
+
+  // Hitting a boss that takes no damage right now: say why, at most every few seconds.
+  onBossImmuneHit(mother) {
+    if (!mother.floodgate || this.elapsed < this.floodgateImmuneHintTimer) return;
+    this.floodgateImmuneHintTimer = this.elapsed + 4;
+    this.showMessage('潜っていて効かない。魚形態で噛みつこう', 1.4);
+  }
+
   // An egg swallowed by the boss vanishes without dropping XP or items.
   consumeEggForBoss(egg) {
     egg.dead = true;
@@ -2554,6 +2627,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.state = 'levelup';
     this.settleCamera();
     this.playSfx('levelUp', { volume: 0.85 });
+    if (Config.audio.cueVoices) this.playVoice('levelUp', { volume: 0.8, cooldown: Config.audio.levelUpVoiceCooldown });
     this.hud.showLevelUp(pickUpgradeChoices(), (upgrade) => {
       this.playSfx('buttonConfirm', { volume: 0.75 });
       upgrade.apply(this);

@@ -119,8 +119,10 @@ function installBot({ speed, seed, dodge, realtime }) {
       const dz = target.position.z - p.z;
       const d = Math.hypot(dx, dz) || 1;
       // Humans shoot from range, so hold distance from the mother egg; birds dive onto targets.
-      const desired = player.form === 'human' && mother ? 9 : 0;
-      const pull = d > desired ? 1 : -0.6;
+      // The floodgate mother: swim right up to it while submerged (fish bites), stand within shot range while stunned.
+      const flood = mother?.floodgate;
+      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? 9 : 0;
+      const pull = (d > desired ? 1 : -0.6) * (flood?.state === 'submerged' ? 3 : 1);
       mx += (dx / d) * pull;
       mz += (dz / d) * pull;
     }
@@ -151,8 +153,13 @@ function installBot({ speed, seed, dodge, realtime }) {
     const shockwaveComing = dodge && waveActive
       && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2
         < (Config.egg.motherShockwaveRange + 2) ** 2;
+    const flood = mother?.floodgate;
+    const nearMother = mother && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2 < 49;
     if (player.form === 'human') {
-      if (shockwaveComing && player.mp > 5) {
+      if (flood?.state === 'submerged' && nearMother && game.isWaterPosition(player.position) && player.mp > 8) {
+        stats.transforms++;
+        press('transform');
+      } else if (shockwaveComing && player.mp > 5) {
         stats.transforms++;
         stats.shockwaves.dodgeAttempts++;
         press('transform');
@@ -164,6 +171,10 @@ function installBot({ speed, seed, dodge, realtime }) {
         stats.transforms++;
         press('transform');
       }
+    } else if (player.form === 'fish' && flood?.state === 'surfaced') {
+      press('transform');
+    } else if (player.form === 'bird' && flood?.state === 'submerged' && nearMother && player.diveState === 'ready') {
+      press('transform');
     } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready' && !shockwaveComing) {
       press('transform');
     }
@@ -243,6 +254,7 @@ function summarize(game, stats) {
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed) } : null,
     pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
+    floodgate: game.floodgateStats?.streams || game.floodgateStats?.bites ? { ...game.floodgateStats } : null,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,
     birdSeconds: Math.round(stats.birdSeconds),

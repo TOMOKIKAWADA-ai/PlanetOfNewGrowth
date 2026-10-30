@@ -36,12 +36,29 @@ export const BOSS_TYPES = Object.freeze({
     damageScale(egg) {
       return pursuerDamageScale(egg.pursuit?.state, Config.boss.pursuer);
     }
+  }),
+  // 第3章のボス。水の中に潜っているあいだは攻撃が効かず、プレイヤーへ向けてオタマジャクシの列を流す。
+  // 魚形態で3回噛みつくと浮上して気絶し、そのあいだは攻撃がよく効く（人間形態で撃つ・バースト）。
+  floodgateMother: Object.freeze({
+    id: 'floodgateMother',
+    name: '水門の母',
+    forecast: '潜っているあいだは攻撃が効かない。魚形態で3回噛みつくと浮上して気絶する',
+    prefersWater: true,
+    update(egg, dt) {
+      updateFloodgate(egg, dt);
+    },
+    damageScale(egg) {
+      return floodgateDamageScale(egg.floodgate?.state, Config.boss.floodgateMother);
+    },
+    fishBite(egg) {
+      return floodgateBite(egg);
+    }
   })
 });
 
 export const DEFAULT_BOSS = 'motherEgg';
 
-// まだ作っていないボス（追い手・水門の母など）を指定した章は、母卵の動きで戦う。
+// まだ作っていないボス（群れの母・白蓮の核など）を指定した章は、母卵の動きで戦う。
 export function getBossType(id) {
   return BOSS_TYPES[id] ?? BOSS_TYPES[DEFAULT_BOSS];
 }
@@ -164,4 +181,66 @@ export function updatePursuer(mother, dt) {
       player.takeDamage(cfg.contactDamage);
     }
   }
+}
+
+export function floodgateDamageScale(state, cfg) {
+  return state === 'surfaced' ? cfg.surfacedDamageScale : cfg.submergedDamageScale;
+}
+
+function floodgateState(mother, cfg) {
+  return mother.floodgate ??= { state: 'submerged', timer: 0, bites: 0, streamTimer: cfg.firstStreamDelay, surfaces: 0 };
+}
+
+// 魚形態の噛みつき。潜っているときだけ数え、bitesToSurface 回で浮上する。噛めたら true（噛みつきの間隔は呼び出し側）。
+export function floodgateBite(mother) {
+  const cfg = Config.boss.floodgateMother;
+  const flood = floodgateState(mother, cfg);
+  if (flood.state !== 'submerged') return false;
+  flood.bites += 1;
+  if (flood.bites >= cfg.bitesToSurface) {
+    flood.state = 'surfaced';
+    flood.timer = cfg.stunSeconds;
+    flood.bites = 0;
+    flood.surfaces += 1;
+    mother.game.onFloodgateSurface?.(mother, cfg.stunSeconds);
+  } else {
+    mother.game.onFloodgateBite?.(mother, flood.bites, cfg.bitesToSurface);
+  }
+  return true;
+}
+
+// submerged（攻撃が効かない。streamInterval ごとに列を流す） → (3回噛まれる) → surfaced（気絶） → submerged
+export function updateFloodgate(mother, dt) {
+  const game = mother.game;
+  if (game.state !== 'playing') return;
+  const cfg = Config.boss.floodgateMother;
+  const flood = floodgateState(mother, cfg);
+  if (flood.state === 'surfaced') {
+    flood.timer -= dt;
+    if (flood.timer <= 0) {
+      flood.state = 'submerged';
+      flood.streamTimer = cfg.streamAfterSubmerge;
+      game.onFloodgateSubmerge?.(mother);
+    }
+    return;
+  }
+  flood.streamTimer -= dt;
+  if (flood.streamTimer <= 0) {
+    flood.streamTimer = cfg.streamInterval;
+    game.onFloodgateStream?.(mother, cfg.streamCount);
+  }
+}
+
+// 列の並び: 母からプレイヤーの方へ、start から spacing おきに count 匹。プレイヤーと重なっていれば +z 向き。
+export function floodgateStreamPoints(from, toward, count, start, spacing) {
+  let dx = toward.x - from.x;
+  let dz = toward.z - from.z;
+  const length = Math.hypot(dx, dz);
+  if (length < 0.01) { dx = 0; dz = 1; } else { dx /= length; dz /= length; }
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    const distance = start + i * spacing;
+    points.push({ x: from.x + dx * distance, z: from.z + dz * distance });
+  }
+  return { direction: { x: dx, z: dz }, points };
 }

@@ -93,7 +93,11 @@ export const Config = {
     // Pause between the end of the dying scream and the last line.
     deathVoiceGap: 1.2,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
-    newSfx: true
+    newSfx: true,
+    // One-liners added 2026-10-30 when the boss appears, on level-up and at one minute left (false = none, as before).
+    cueVoices: true,
+    // Level-ups come often; the line plays at most once per this many seconds of battle time.
+    levelUpVoiceCooldown: 25
   },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
@@ -282,6 +286,28 @@ export const Config = {
       contactRadius: 3.1,
       contactDamage: 20,
       contactCooldown: 1.1
+    },
+    // Chapter 3's floodgate mother sits in the water. While submerged hits do submergedDamageScale and it sends a line
+    // of tadpoles toward the player every streamInterval seconds. Three fish-form bites make it surface, stunned, for
+    // stunSeconds, taking surfacedDamageScale. Set chapter 3's boss to 'motherEgg' to remove it.
+    floodgateMother: {
+      bitesToSurface: 3,
+      biteReach: 2.4,
+      biteCooldown: 0.8,
+      stunSeconds: 7,
+      submergedDamageScale: 0,
+      surfacedDamageScale: 1.6,
+      firstStreamDelay: 4,
+      streamInterval: 7.5,
+      streamAfterSubmerge: 2,
+      streamCount: 5,
+      streamStart: 3,
+      streamSpacing: 1.5,
+      streamSpeed: 5.5,
+      streamSeconds: 3.2,
+      streamDamage: 9,
+      streamLinger: 5,
+      shoreMargin: 1.35
     }
   },
   egg: {

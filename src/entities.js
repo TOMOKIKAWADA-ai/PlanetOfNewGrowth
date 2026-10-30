@@ -1308,12 +1308,27 @@ export class Player {
 
   tryFishBite() {
     if (this.specialTimer > 0) return;
+    if (this.tryFishBiteBoss()) return;
     const target = this.findNearestEgg(Config.player.fishEggRange, false);
     if (!target || !target.aquatic) return;
     this.faceAngle = angleToXZ(this.position, target.position);
     target.takeDamage(target.hp + 1, 'fishBite');
     this.specialTimer = Config.player.fishBiteCooldown;
     this.game.spawnDiveImpact(target.position);
+  }
+
+  // The floodgate mother (src/bosses.js) only counts bites while it is submerged; its body is larger, so the reach is too.
+  tryFishBiteBoss() {
+    const mother = this.game.motherEgg;
+    if (!mother || mother.dead || !mother.bossType?.fishBite) return false;
+    const cfg = Config.boss.floodgateMother;
+    const reach = Config.player.fishEggRange + cfg.biteReach;
+    if (horizontalDistanceSq(this.position, mother.position) > reach * reach) return false;
+    if (!mother.bossType.fishBite(mother)) return false;
+    this.faceAngle = angleToXZ(this.position, mother.position);
+    this.specialTimer = cfg.biteCooldown;
+    this.game.spawnDiveImpact(mother.position);
+    return true;
   }
 
   tryAutoShoot() {
@@ -1931,6 +1946,7 @@ export class Egg {
       this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
       this.bossType.update(this, dt);
       if (this.pursuit) this.updatePursuerShell(dt);
+      if (this.floodgate) this.updateFloodgateBody(dt);
     }
     if (this.isMother) return;
     this.updatePulse(dt);
@@ -1971,6 +1987,19 @@ export class Egg {
     this.ring.material.opacity = 0.34 + glow * 0.56;
     this.ring.scale.setScalar(1 + glow * 0.28);
     this.model.rotation.z = open ? 0 : Math.sin(this.pursuit.walk * 7) * 0.07;
+  }
+
+  // Floodgate mother (src/bosses.js): sunk low with a blue ring while submerged; risen, gold and reeling while stunned.
+  updateFloodgateBody(dt) {
+    const surfaced = this.floodgate.state === 'surfaced';
+    this.surfaceLift = clamp((this.surfaceLift ?? 0) + (surfaced ? dt * 2.4 : -dt * 1.2), 0, 1);
+    this.surfaceBaseY ??= this.model.position.y;
+    this.model.position.y = this.surfaceBaseY - 2.6 * (1 - this.surfaceLift);
+    const biteGlow = this.floodgate.bites / Config.boss.floodgateMother.bitesToSurface;
+    this.ring.material.color.setHex(surfaced ? 0xffe066 : 0x5fd0ff);
+    this.ring.material.opacity = surfaced ? 0.5 + Math.sin(this.age * 9) * 0.2 : 0.3 + biteGlow * 0.4;
+    this.ring.scale.setScalar(surfaced ? 1.15 : 1 + biteGlow * 0.25 + Math.sin(this.age * 2.2) * 0.04);
+    this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
   }
 
   updateMotherShockwave(dt) {
@@ -2016,6 +2045,7 @@ export class Egg {
       this.model.scale.multiplyScalar(1 + squash);
     }
     this.game.spawnHitSpark(this.position, bossScale < 1 ? 0x9aa3a8 : this.isMother ? 0xffbf61 : 0xd8ff7a);
+    if (this.isMother && bossScale === 0) this.game.onBossImmuneHit?.(this);
     if (this.hp <= 0) {
       this.dead = true;
       this.claimed = false;
@@ -2465,6 +2495,16 @@ export class Enemy {
   }
 
   updateAquaticLarva(dt) {
+    if (this.stream?.timer > 0) {
+      // A line sent by the floodgate mother: swims straight until its time is up or it reaches land.
+      this.stream.timer -= dt;
+      const next = { x: this.position.x + this.stream.x * this.stream.speed * dt, z: this.position.z + this.stream.z * this.stream.speed * dt };
+      if (this.game.isWaterPosition(next)) {
+        this.position.x = next.x;
+        this.position.z = next.z;
+      } else this.stream.timer = 0;
+      return;
+    }
     const distance = Math.sqrt(horizontalDistanceSq(this.position, this.game.player.position));
     if (distance < 3.2) this.moveAway(this.game.player.position, dt, this.speed);
     else {
@@ -2665,7 +2705,7 @@ export class Enemy {
     if (this.attackTimer > 0) return;
     this.attackTimer = 0.75;
     const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
-    player.takeDamage(this.stats.damage * multiplier);
+    player.takeDamage((this.stream?.timer > 0 ? this.stream.damage : this.stats.damage) * multiplier);
     if (this.type === 'footprint' && this.game.footprintStats) this.game.footprintStats.hits += 1;
     if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
   }
