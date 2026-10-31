@@ -137,7 +137,8 @@ const PLAYER_VISUALS = {
     url: TSUKIMI_FBX_URL,
     name: 'TsukimiPlayerFbx',
     birdUrl: TSUKIMI_BIRD_GLB_URL,
-    fishUrl: TSUKIMI_FISH_GLB_URL
+    fishUrl: TSUKIMI_FISH_GLB_URL,
+    droneModel: 'tsukimiDrone'
   },
   tsukimiGlb: {
     type: 'gltf',
@@ -145,7 +146,8 @@ const PLAYER_VISUALS = {
     name: 'TsukimiPlayer',
     axisFix: 'zUpToYUp',
     birdUrl: TSUKIMI_BIRD_GLB_URL,
-    fishUrl: TSUKIMI_FISH_GLB_URL
+    fishUrl: TSUKIMI_FISH_GLB_URL,
+    droneModel: 'tsukimiDrone'
   },
   akameFbx: {
     type: 'fbx',
@@ -173,6 +175,7 @@ const PLAYER_VISUALS = {
     axisFix: 'zUpToYUp',
     birdUrl: KIICHIGO_BIRD_GLB_URL,
     fishUrl: KIICHIGO_FISH_GLB_URL,
+    droneModel: 'kiichigoDrone',
     fbxAnimations: KIICHIGO_FBX_ANIMATIONS,
     burstVrmaUrl: KIICHIGO_BURST_VRMA_URL,
     useFbxAnimations: true,
@@ -1157,7 +1160,8 @@ export class Player {
 
   syncSeeds() {
     while (this.seeds.length < this.seedCount) {
-      const drone = this.game.cloneGameplayModel('drone');
+      const droneKey = PLAYER_VISUALS[Config.visuals.playerModel]?.droneModel;
+      const drone = (droneKey && this.game.cloneGameplayModel(droneKey)) ?? this.game.cloneGameplayModel('drone');
       const seed = drone
         ? this.createDroneVisual(drone)
         : (Config.visuals.useAssetModels ? this.game.assets?.cloneModel('seed') : null)

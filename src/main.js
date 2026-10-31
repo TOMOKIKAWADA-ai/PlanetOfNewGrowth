@@ -180,6 +180,16 @@ const GAMEPLAY_MODELS = {
     height: Config.visuals.droneModelHeight,
     centerXZ: true
   },
+  tsukimiDrone: {
+    url: new URL('../assets/drones/tsukimi_drone.glb', import.meta.url).href,
+    height: Config.visuals.droneModelHeight,
+    centerXZ: true
+  },
+  kiichigoDrone: {
+    url: new URL('../assets/drones/kiichigo_drone.glb', import.meta.url).href,
+    height: Config.visuals.droneModelHeight,
+    centerXZ: true
+  },
   xpCrystal: {
     url: new URL('../assets/xp/blue_crystal.glb', import.meta.url).href,
     height: 0.72,
