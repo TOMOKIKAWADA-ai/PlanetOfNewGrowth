@@ -21,6 +21,14 @@ const NEW_SPECIES = Object.freeze([
     form: 'どちらでも（同じ所を回らない。鳥で飛ぶと道が途切れる）',
     chapter: () => Config.enemy.footprint.fromChapter,
     enabled: () => Config.enemy.footprint.enabled
+  }),
+  Object.freeze({
+    id: 'crier',
+    name: '鳴き',
+    trait: '動かない。膨らんで鳴くと、周りの卵が早く孵る',
+    form: '鳥形態の急降下で潰す',
+    chapter: () => Config.enemy.crier.fromChapter,
+    enabled: () => Config.enemy.crier.enabled
   })
 ]);
 

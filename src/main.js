@@ -100,6 +100,7 @@ const MOTHER_SHOCKWAVE_TEXTURE_URL = new URL('../assets/effects/mother-shockwave
 const TSUKIMI_BEAM_TEXTURE_URL = new URL('../assets/effects/tsukimi-sustained-beam.png', import.meta.url).href;
 const KIICHIGO_SLASH_TEXTURE_URL = new URL('../assets/effects/kiichigo-alternating-slash.png', import.meta.url).href;
 const PLAYER_BURST_COLOR = 0xffdf70;
+const CRIER_RING_COLOR = 0xe7a6ff;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
 const SFX_URLS = {
   birdFeed: new URL('../assets/audio/sfx/bird_feed.wav', import.meta.url).href,
@@ -431,6 +432,9 @@ class Game {
     this.footprintHintShown = false;
     this.footprintStats = { spawned: 0, lost: 0, hits: 0 };
     this.trailMarkTimer = 0;
+    this.criersActive = Config.enemy.crier.enabled && this.stageId >= Config.enemy.crier.fromChapter;
+    this.crierHintShown = false;
+    this.crierStats = { spawned: 0, cries: 0, eggsHurried: 0, diveKills: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1559,6 +1563,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       type = 'shooter';
     }
     if (this.shouldHatchFootprint()) type = 'footprint';
+    else if (this.shouldHatchCrier()) type = 'crier';
     return this.spawnEnemy(type, egg.position, egg);
   }
 
@@ -1579,6 +1584,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.enemies.push(enemy);
     this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
     if (type === 'footprint') this.onFootprintSpawned();
+    if (type === 'crier') this.onCrierSpawned();
     return enemy;
   }
 
@@ -1595,6 +1601,47 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.footprintHintShown) return;
     this.footprintHintShown = true;
     this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6);
+  }
+
+  shouldHatchCrier() {
+    const cfg = Config.enemy.crier;
+    if (!this.criersActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'crier') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onCrierSpawned() {
+    this.crierStats.spawned += 1;
+    if (this.crierHintShown) return;
+    this.crierHintShown = true;
+    this.showMessage('鳴きが孵った。膨らんで鳴くと、周りの卵が早く孵る\n鳥形態の急降下なら一撃で潰せる', 3.6);
+  }
+
+  // 鳴く前の予兆。体が膨らむのに合わせて、足元に届く範囲の輪を出す。
+  onCrierSwell(crier) {
+    const cfg = Config.enemy.crier;
+    this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.32, cfg.swellSeconds);
+  }
+
+  // 鳴き声: 範囲内の卵（ボスは除く）の孵化を早め、若い卵は育てる。
+  onCrierCry(crier) {
+    const cfg = Config.enemy.crier;
+    const radiusSq = cfg.cryRadius * cfg.cryRadius;
+    let hurried = 0;
+    for (const egg of this.eggs) {
+      if (egg.dead || egg.isMother || horizontalDistanceSq(crier.position, egg.position) > radiusSq) continue;
+      if (egg.mature) egg.hatchTimer -= cfg.hatchAdvanceSeconds;
+      else egg.age += cfg.maturityAdvanceSeconds;
+      this.spawnHitSpark(egg.position, CRIER_RING_COLOR);
+      hurried++;
+    }
+    this.crierStats.cries += 1;
+    this.crierStats.eggsHurried += hurried;
+    this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.78, 0.5);
+    this.spawnRingEffect(crier.position, cfg.cryRadius * 0.5, 0xffffff, 0.5, 0.34);
+    const distanceSq = horizontalDistanceSq(crier.position, this.player.position);
+    if (distanceSq < 40 * 40) this.playSfx('motherRelease', { volume: 0.32, cooldown: 0.6 });
   }
 
   // 足跡がなぞる道を記録する。足跡が場にいるあいだは、その道をプレイヤーの足元に薄い印で残す。

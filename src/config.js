@@ -434,6 +434,29 @@ export const Config = {
       showTrail: true,
       trailMarkInterval: 0.32,
       trailMarkSeconds: 3.4
+    },
+    // 鳴き（E10、第4章の新種）。動かず、cryInterval ごとに swellSeconds かけて膨らみ、鳴いて
+    // cryRadius 以内の卵の孵化を hatchAdvanceSeconds 早める（まだ若い卵は maturityAdvanceSeconds 育てる）。
+    // 鳥形態の急降下は近くの卵より鳴きを先に狙い、一撃で潰す（birdDiveTarget）。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    crier: {
+      enabled: true,
+      fromChapter: 4,
+      fromElapsed: 40,
+      chance: 0.1,
+      maxAlive: 3,
+      hp: 44,
+      speed: 0,
+      damage: 6,
+      xp: 9,
+      walkAnimationSpeed: 1,
+      cryInterval: 6,
+      swellSeconds: 1.4,
+      swellScale: 0.5,
+      cryRadius: 9,
+      hatchAdvanceSeconds: 3,
+      maturityAdvanceSeconds: 4,
+      birdDiveTarget: true
     }
   },
   xp: {

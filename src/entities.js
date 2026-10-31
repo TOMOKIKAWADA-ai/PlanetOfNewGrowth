@@ -158,6 +158,8 @@ const poseQuat = new THREE.Quaternion();
 const SNIPER_VISUAL_SCALE = 1.12;
 const SNIPER_COLOR = 0xff1515;
 const FOOTPRINT_COLOR = 0xbcd8f2;
+const CRIER_COLOR = 0x6a3f86;
+const CRIER_GLOW = 0xe7a6ff;
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
@@ -168,7 +170,8 @@ const ENEMY_LOD_SPECS = {
   tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
   dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
   frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
-  footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 }
+  footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
+  crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -1543,7 +1546,7 @@ export class Player {
       const motherTarget = this.game.motherEgg && !this.game.motherEgg.dead
         ? this.findMotherForDive()
         : null;
-      this.startDive(motherTarget ?? target);
+      this.startDive(motherTarget ?? this.findCrierForDive() ?? target);
     } else if (this.diveState === 'warning') {
       this.diveTimer -= dt;
       if (!this.diveTarget || this.diveTarget.dead) {
@@ -1604,6 +1607,9 @@ export class Player {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
+    } else if (this.diveTarget.type === 'crier') {
+      this.diveTarget.takeDamage(this.diveTarget.hp + 10, this.position, true);
+      if (this.game.crierStats) this.game.crierStats.diveKills += 1;
     } else if (this.diveTarget.isMimic) {
       this.diveTarget.takeDamage(this.diveTarget.hp + 10, 'mimicBurst');
       this.stun(Config.egg.mimic.stunSeconds * this.mimicStunScale);
@@ -1625,6 +1631,20 @@ export class Player {
     if (!this.game.motherEgg || this.game.motherEgg.dead) return null;
     const distanceSq = horizontalDistanceSq(this.position, this.game.motherEgg.position);
     return distanceSq <= Config.player.birdMotherDetectRange ** 2 ? this.game.motherEgg : null;
+  }
+
+  // 鳴き（E10）は急降下で一撃。近くの卵より先に狙う。
+  findCrierForDive() {
+    if (!Config.enemy.crier.birdDiveTarget || !this.game.criersActive) return null;
+    const range = Config.player.birdEggDetectRange;
+    let best = null;
+    let bestDistance = range * range;
+    for (const enemy of this.game.enemies) {
+      if (enemy.dead || enemy.type !== 'crier' || enemy.claimed) continue;
+      const distanceSq = horizontalDistanceSq(this.position, enemy.position);
+      if (distanceSq <= bestDistance) { best = enemy; bestDistance = distanceSq; }
+    }
+    return best;
   }
 
   findNearestEnemy(radius) {
@@ -2107,6 +2127,7 @@ export class Enemy {
     this.object.add(this.hpBar);
     if (type === 'sniper') this.createSniperBeam();
     if (type === 'footprint') this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true };
+    if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
   }
 
   get stats() {
@@ -2124,6 +2145,7 @@ export class Enemy {
       shooter: 'shooterEnemy',
       sniper: 'shooterEnemy',
       footprint: 'chaserEnemy',
+      crier: 'spawnerEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2132,6 +2154,7 @@ export class Enemy {
       gameplayModel.userData.baseY = gameplayModel.position.y;
       if (type === 'sniper') this.styleSniperModel(gameplayModel);
       if (type === 'footprint') this.styleFootprintModel(gameplayModel);
+      if (type === 'crier') this.styleCrierModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2139,12 +2162,13 @@ export class Enemy {
       }
       return this.createLodModel(gameplayModel, type);
     }
-    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' ? 'skeleton' : type === 'spawner' ? 'vampire' : 'zombie';
+    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' ? 'skeleton' : type === 'spawner' || type === 'crier' ? 'vampire' : 'zombie';
     const model = Config.visuals.useAssetModels ? this.game.assets.cloneModel(key) : null;
     if (model) {
       model.scale.setScalar(type === 'guardian' ? 1.15 : type === 'spawner' ? 0.82 : type === 'chaser' ? 1.0 : 0.9);
       if (type === 'sniper') this.styleSniperModel(model);
       if (type === 'footprint') this.styleFootprintModel(model);
+      if (type === 'crier') this.styleCrierModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2194,6 +2218,29 @@ export class Enemy {
         material.opacity = 0.82;
         material.needsUpdate = true;
         this.footprintMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 鳴きは産卵獣の亜種なので同じ体を、くすんだ紫に塗る。膨らむあいだ光が強くなる（updateCrier）。
+  styleCrierModel(model) {
+    this.crierMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(CRIER_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(CRIER_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.2;
+        material.needsUpdate = true;
+        this.crierMaterials.push(material);
         return material;
       };
       child.material = Array.isArray(child.material)
@@ -2416,6 +2463,7 @@ export class Enemy {
     else if (this.type === 'shooter') this.updateShooter(dt);
     else if (this.type === 'guardian') this.updateGuardian(dt);
     else if (this.type === 'footprint') this.updateFootprint(dt);
+    else if (this.type === 'crier') this.updateCrier(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
@@ -2431,7 +2479,7 @@ export class Enemy {
     }
     clampToCircle(this.position, Config.map.radius - 1.2);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
-    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' ? Math.PI : 0);
+    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' || this.type === 'crier' ? Math.PI : 0);
     if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();
@@ -2492,6 +2540,27 @@ export class Enemy {
       if (!tracking && this.game.footprintStats) this.game.footprintStats.lost += 1;
       for (const material of this.footprintMaterials ?? []) material.opacity = tracking ? 0.82 : 0.4;
     }
+  }
+
+  // 動かない。cryInterval ごとに膨らみ（予兆）、膨らみきると鳴いて周りの卵の孵化を早める。
+  updateCrier(dt) {
+    const cfg = Config.enemy.crier;
+    const crier = this.crier;
+    crier.timer -= dt;
+    if (!crier.swelling && crier.timer <= cfg.swellSeconds) {
+      crier.swelling = true;
+      this.game.onCrierSwell?.(this);
+    }
+    const swell = crier.swelling ? clamp(1 - crier.timer / cfg.swellSeconds, 0, 1) : 0;
+    this.model.scale.copy(crier.baseScale).multiplyScalar(1 + swell * swell * cfg.swellScale);
+    for (const material of this.crierMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = 0.2 + swell * 1.3;
+    }
+    if (crier.timer > 0) return;
+    crier.timer = cfg.cryInterval;
+    crier.swelling = false;
+    this.model.scale.copy(crier.baseScale);
+    this.game.onCrierCry?.(this);
   }
 
   updateAquaticLarva(dt) {

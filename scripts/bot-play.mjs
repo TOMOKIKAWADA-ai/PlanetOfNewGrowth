@@ -3,9 +3,10 @@
 //
 //   npm run dev -- --port 5183
 //   node scripts/bot-play.mjs --runs 3 --character tsukimi --stage 1 --speed 4
+//   node scripts/bot-play.mjs --runs 1 --stage 3 --start 170 --record promo/YYYY-MM-DD/raw
 //
 // --record <dir> (backlog B6-1) plays in real time, saves a WebM per run to <dir> and an events JSON
-// (mother egg, bursts, dives, shockwave dodges, mimic stuns) with offsets into the video, for scripts/promo/cut-highlights.mjs.
+// (mother egg, bursts, dives, shockwave dodges, mimic stuns, crier cries) with offsets into the video, for scripts/promo/cut-highlights.mjs.
 //
 // Env: PLAYWRIGHT_MODULE (path to playwright), BOT_TEST_URL, BOT_TEST_BROWSER (default msedge).
 import { createRequire } from 'node:module';
@@ -24,6 +25,8 @@ const seedBase = Number(args.seed ?? 1);
 // --dodge 0 disables switching to bird form during the mother egg's shockwave warning (to compare with older runs).
 const dodge = args.dodge !== '0';
 const recordDir = args.record ?? null;
+// --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
+const startAt = Number(args.start ?? 0);
 const baseURL = process.env.BOT_TEST_URL || 'http://127.0.0.1:5183';
 
 const require = createRequire(import.meta.url);
@@ -31,7 +34,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, realtime }) {
+function installBot({ speed, seed, dodge, realtime, startAt }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -39,6 +42,7 @@ function installBot({ speed, seed, dodge, realtime }) {
   };
   const { game, input, Config } = window.__botTest;
   const player = game.player;
+  if (startAt > game.elapsed) game.elapsed = startAt;
   const stats = {
     samples: [], upgrades: [], damageTaken: 0, maxEggs: 0, maxEnemies: 0, birdSeconds: 0,
     transforms: 0, bursts: 0, frames: 0, realStart: performance.now(), motherSpawnedAt: null
@@ -74,6 +78,11 @@ function installBot({ speed, seed, dodge, realtime }) {
   const mark = (type, extra = {}) => stats.events.push({
     type, t: Math.round(game.elapsed * 10) / 10, video: Math.round(performance.now()) / 1000, ...extra
   });
+  const onCrierCry = game.onCrierCry;
+  game.onCrierCry = function (crier) {
+    mark('crierCry');
+    return onCrierCry.call(this, crier);
+  };
   const onPlayerStunned = game.onPlayerStunned;
   game.onPlayerStunned = function (...args) {
     mark('mimicStun');
@@ -254,6 +263,7 @@ function summarize(game, stats) {
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed) } : null,
     pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
+    criers: game.crierStats?.spawned ? { ...game.crierStats } : null,
     floodgate: game.floodgateStats?.streams || game.floodgateStats?.bites ? { ...game.floodgateStats } : null,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,
@@ -295,14 +305,14 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, realtime: Boolean(recordDir) });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, realtime: Boolean(recordDir), startAt });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
     result.seed = seedBase + run;
     result.errors = errors;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     const video = page.video();
     await context.close();
@@ -319,7 +329,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, startAt,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),
