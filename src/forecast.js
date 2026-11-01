@@ -29,6 +29,14 @@ const NEW_SPECIES = Object.freeze([
     form: '鳥形態の急降下で潰す',
     chapter: () => Config.enemy.crier.fromChapter,
     enabled: () => Config.enemy.crier.enabled
+  }),
+  Object.freeze({
+    id: 'hand',
+    name: '手',
+    trait: '近づくと腕を伸ばして掴みかかる。掴まれると遅くなる',
+    form: '鳥形態に変身して振りほどく（MPを残しておく）',
+    chapter: () => Config.enemy.hand.fromChapter,
+    enabled: () => Config.enemy.hand.enabled
   })
 ]);
 

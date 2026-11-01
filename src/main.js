@@ -101,31 +101,40 @@ const TSUKIMI_BEAM_TEXTURE_URL = new URL('../assets/effects/tsukimi-sustained-be
 const KIICHIGO_SLASH_TEXTURE_URL = new URL('../assets/effects/kiichigo-alternating-slash.png', import.meta.url).href;
 const PLAYER_BURST_COLOR = 0xffdf70;
 const CRIER_RING_COLOR = 0xe7a6ff;
+const HAND_RING_COLOR = 0xff6a3d;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
-const SFX_URLS = {
-  birdFeed: new URL('../assets/audio/sfx/bird_feed.wav', import.meta.url).href,
-  burstFire: new URL('../assets/audio/sfx/burst_fire.wav', import.meta.url).href,
-  burstPre: new URL('../assets/audio/sfx/burst_pre.wav', import.meta.url).href,
-  burstSpread: new URL('../assets/audio/sfx/burst_spread.wav', import.meta.url).href,
-  buttonCancel: new URL('../assets/audio/sfx/button_cancel.wav', import.meta.url).href,
-  buttonConfirm: new URL('../assets/audio/sfx/button_confirm.wav', import.meta.url).href,
-  eggBreak: new URL('../assets/audio/sfx/egg_break.wav', import.meta.url).href,
-  enemyDie: new URL('../assets/audio/sfx/enemy_die.wav', import.meta.url).href,
-  levelUp: new URL('../assets/audio/sfx/level_up.wav', import.meta.url).href,
-  motherCharge: new URL('../assets/audio/sfx/mother_charge.wav', import.meta.url).href,
-  motherRelease: new URL('../assets/audio/sfx/mother_release.wav', import.meta.url).href,
-  motherImpact: new URL('../assets/audio/sfx/mother_impact.wav', import.meta.url).href,
-  tsukimiBurst: new URL('../assets/audio/sfx/tsukimi_burst.wav', import.meta.url).href,
-  kiichigoBurst: new URL('../assets/audio/sfx/kiichigo_burst.wav', import.meta.url).href,
-  playerHit: new URL('../assets/audio/sfx/player_hit.wav', import.meta.url).href,
-  playerShot: new URL('../assets/audio/sfx/player_shot.wav', import.meta.url).href,
-  projectileHit: new URL('../assets/audio/sfx/projectile_hit.wav', import.meta.url).href,
-  transformBird: new URL('../assets/audio/sfx/transform_bird.wav', import.meta.url).href,
-  transformHuman: new URL('../assets/audio/sfx/transform_human.wav', import.meta.url).href,
-  xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href,
-  itemPickup: new URL('../assets/audio/sfx/item_pickup.wav', import.meta.url).href,
-  thirstDrain: new URL('../assets/audio/sfx/thirst_drain.wav', import.meta.url).href
+// Sound effect files by name. Config.audio.normalizedSfx picks the loudness-matched copies in sfx-normalized/
+// (made by scripts/assets/normalize-sfx.mjs, 2026-11-01); false = the original files as before.
+const SFX_FILES = {
+  birdFeed: 'bird_feed',
+  burstFire: 'burst_fire',
+  burstPre: 'burst_pre',
+  burstSpread: 'burst_spread',
+  buttonCancel: 'button_cancel',
+  buttonConfirm: 'button_confirm',
+  eggBreak: 'egg_break',
+  enemyDie: 'enemy_die',
+  levelUp: 'level_up',
+  motherCharge: 'mother_charge',
+  motherRelease: 'mother_release',
+  motherImpact: 'mother_impact',
+  tsukimiBurst: 'tsukimi_burst',
+  kiichigoBurst: 'kiichigo_burst',
+  playerHit: 'player_hit',
+  playerShot: 'player_shot',
+  projectileHit: 'projectile_hit',
+  transformBird: 'transform_bird',
+  transformHuman: 'transform_human',
+  xpPickup: 'xp_pickup',
+  itemPickup: 'item_pickup',
+  thirstDrain: 'thirst_drain'
 };
+const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
+const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
+const SFX_URLS = Object.fromEntries(Object.entries(SFX_FILES).map(([name, file]) => [
+  name,
+  (Config.audio.normalizedSfx && SFX_NORMALIZED_URLS[`../assets/audio/sfx-normalized/${file}.wav`]) || SFX_ORIGINAL_URLS[`../assets/audio/sfx/${file}.wav`]
+]));
 const VOICE_URLS = {
   tsukimi: {
     hit: [
@@ -435,6 +444,9 @@ class Game {
     this.criersActive = Config.enemy.crier.enabled && this.stageId >= Config.enemy.crier.fromChapter;
     this.crierHintShown = false;
     this.crierStats = { spawned: 0, cries: 0, eggsHurried: 0, diveKills: 0 };
+    this.handsActive = Config.enemy.hand.enabled && this.stageId >= Config.enemy.hand.fromChapter;
+    this.handHintShown = false;
+    this.handStats = { spawned: 0, windups: 0, misses: 0, grabs: 0, shaken: 0, timeouts: 0, freed: 0, heldSeconds: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1564,6 +1576,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     }
     if (this.shouldHatchFootprint()) type = 'footprint';
     else if (this.shouldHatchCrier()) type = 'crier';
+    else if (this.shouldHatchHand()) type = 'hand';
     return this.spawnEnemy(type, egg.position, egg);
   }
 
@@ -1585,6 +1598,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
     if (type === 'footprint') this.onFootprintSpawned();
     if (type === 'crier') this.onCrierSpawned();
+    if (type === 'hand') this.onHandSpawned();
     return enemy;
   }
 
@@ -1642,6 +1656,50 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(crier.position, cfg.cryRadius * 0.5, 0xffffff, 0.5, 0.34);
     const distanceSq = horizontalDistanceSq(crier.position, this.player.position);
     if (distanceSq < 40 * 40) this.playSfx('motherRelease', { volume: 0.32, cooldown: 0.6 });
+  }
+
+  shouldHatchHand() {
+    const cfg = Config.enemy.hand;
+    if (!this.handsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'hand') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onHandSpawned() {
+    this.handStats.spawned += 1;
+    if (this.handHintShown) return;
+    this.handHintShown = true;
+    this.showMessage('手が孵った。近づくと腕を伸ばして掴みかかる\n掴まれたら、鳥形態に変身すれば振りほどける', 3.6);
+  }
+
+  // 腕を伸ばしはじめた（予兆）。足元に届く範囲の輪を出す。
+  onHandWindup(hand) {
+    this.handStats.windups += 1;
+    this.spawnRingEffect(hand.position, Config.enemy.hand.reach, HAND_RING_COLOR, 0.34, Config.enemy.hand.windupSeconds);
+  }
+
+  onHandMiss() {
+    this.handStats.misses += 1;
+  }
+
+  onPlayerGrabbed(hand) {
+    this.handStats.grabs += 1;
+    this.handGrabStartedAt = this.elapsed;
+    this.spawnRingEffect(this.player.position, 1.6, HAND_RING_COLOR, 0.8, 0.4);
+    this.shake = Math.max(this.shake, 0.25);
+    this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8);
+  }
+
+  onPlayerReleased(hand, reason) {
+    if (reason === 'shaken') this.handStats.shaken += 1;
+    else if (reason === 'timeout') this.handStats.timeouts += 1;
+    else this.handStats.freed += 1;
+    this.handStats.heldSeconds += Math.max(0, this.elapsed - (this.handGrabStartedAt ?? this.elapsed));
+    if (reason === 'shaken') {
+      this.spawnParticleBurst(this.player.position, 24, HAND_RING_COLOR, 3.2, 0.45, 0.5);
+      this.playSfx('enemyDie', { volume: 0.4, cooldown: 0.2 });
+    }
   }
 
   // 足跡がなぞる道を記録する。足跡が場にいるあいだは、その道をプレイヤーの足元に薄い印で残す。

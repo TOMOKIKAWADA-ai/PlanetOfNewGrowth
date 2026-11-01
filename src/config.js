@@ -94,6 +94,8 @@ export const Config = {
     deathVoiceGap: 1.2,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
     newSfx: true,
+    // Effect files with loudness matched by role (assets/audio/sfx-normalized, 2026-11-01). false = original files.
+    normalizedSfx: true,
     // One-liners added 2026-10-30 when the boss appears, on level-up and at one minute left (false = none, as before).
     cueVoices: true,
     // Level-ups come often; the line plays at most once per this many seconds of battle time.
@@ -457,6 +459,29 @@ export const Config = {
       hatchAdvanceSeconds: 3,
       maturityAdvanceSeconds: 4,
       birdDiveTarget: true
+    },
+    // 手（E11、第4章の新種）。ゆっくり近づき、reach 以内に入ると windupSeconds かけて腕を伸ばし（予兆）、
+    // 伸ばしきったときに人間形態のプレイヤーが届く所にいれば掴む。掴まれると移動が grabSlow 倍になり、
+    // holdSeconds たつか、手を倒すか、鳥（魚）形態に変身すると離れる。空振り・離したあとは cooldown 秒休む。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    hand: {
+      enabled: true,
+      fromChapter: 4,
+      fromElapsed: 55,
+      chance: 0.1,
+      maxAlive: 3,
+      hp: 52,
+      speed: 1.9,
+      damage: 7,
+      xp: 9,
+      walkAnimationSpeed: 1.2,
+      reach: 5,
+      windupSeconds: 0.8,
+      holdSeconds: 3.5,
+      grabSlow: 0.35,
+      grabDamage: 5,
+      cooldown: 4,
+      firstCooldown: 1.5
     }
   },
   xp: {

@@ -116,6 +116,8 @@
 - 一括生成（2026-10-27 追加）: `scripts/assets/stable-audio-batch.py`。`stable-audio-3` フォルダで `.venv/Scripts/python.exe <スクリプト> <jobs.json> <出力フォルダ>`。jobs.json の書き方はスクリプトの先頭。モデルの読み込み約 20 秒、1本 1〜2 秒（3.4 秒の音でも）、GPU は最大 2.1GB。処理が終わるとプロセスごと終わるので、止める作業は要らない。
 - **長さは 2 秒以上で作る**（2026-10-27）。1.2 秒を指定したら4本とも、半分以上が振り切れた白色雑音になった。2 秒・3 秒は正常。短い音は 2〜3 秒で作って後から切る。
 - 候補の選び方（音を聞けない自動のサイクル用）: ffmpeg の `ebur128` でラウドネス、`silencedetect=n=-45dB:d=0.15` で途中の無音、`showspectrumpic` で周波数の絵、numpy で 0.1 秒ごとの音量の推移と主な周波数を見る。振り切れ（|x|>0.99 の割合）が出ていたら失敗。既存の効果音の大きさは -18〜-10 LUFS（xp_pickup -17.8、egg_break -12.4、mother_charge -10.3）なので、その範囲に合わせる。
+- **音量のそろえ方（2026-11-01、B2-2）**: `node scripts/assets/normalize-sfx.mjs` で `assets/audio/sfx/*.wav` を役割ごとの目標（よく鳴る音・メニュー -18、操作への返事 -15、大技とボス -12 LUFS）にそろえて `assets/audio/sfx-normalized/` に書き出す（数秒で終わる）。新しい効果音を足したら、`sfx/` に置いて `FILE_ROLES` に役割を書き、このスクリプトを流し直す（役割の無いファイルは飛ばして警告が出る）。ゲームは `Config.audio.normalizedSfx` が true なら `sfx-normalized/` を使い、無いファイルは `sfx/` から読む。`--dry` で測るだけ。
+  - 1 秒前後の音は loudnorm が効きにくいので、目標との差を一定の増減でかけ、`alimiter=limit=0.89:level=false:latency=1` で振り切れを止めている。大きく持ち上げる音（burst_spread +4.3 dB）はリミッターで頭が削られ、目標に 2 dB ほど届かない（-14.1）。
 
 ## 音声（Irodori-TTS v4.1）
 

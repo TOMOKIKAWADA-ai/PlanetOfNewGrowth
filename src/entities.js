@@ -160,6 +160,11 @@ const SNIPER_COLOR = 0xff1515;
 const FOOTPRINT_COLOR = 0xbcd8f2;
 const CRIER_COLOR = 0x6a3f86;
 const CRIER_GLOW = 0xe7a6ff;
+const HAND_COLOR = 0xb9a48f;
+const HAND_GLOW = 0xff6a3d;
+const HAND_ARM_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+const HAND_ARM_UP = new THREE.Vector3(0, 1, 0);
+const HAND_ARM_HEIGHT = 1.05;
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
@@ -171,7 +176,8 @@ const ENEMY_LOD_SPECS = {
   dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
   frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
   footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
-  crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 }
+  crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
+  hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -314,6 +320,9 @@ export class Player {
     this.pickupMagnetTimer = 0;
     this.speedBoostTimer = 0;
     this.stunTimer = 0;
+    // 手（E11）に掴まれているあいだ: 掴んでいる敵と残り時間。
+    this.grabbedBy = null;
+    this.grabTimer = 0;
     // Multipliers set by carry-over chapter rewards (Config.carryOver).
     this.burstCooldownScale = 1;
     this.formMpCostScale = 1;
@@ -1219,6 +1228,7 @@ export class Player {
     this.pickupMagnetTimer = Math.max(0, this.pickupMagnetTimer - dt);
     this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
     this.stunTimer = Math.max(0, this.stunTimer - dt);
+    this.updateGrab(dt);
 
     if (this.stunTimer <= 0) this.updateMovement(dt, input);
     this.updateFormResources(dt);
@@ -1236,7 +1246,8 @@ export class Player {
     normalizeXZ(tempVec, x, z);
     const hasMovementInput = movementStrength > 0.001;
     const boost = this.speedBoostTimer > 0 ? Config.pickups.speedBoostMultiplier : 1;
-    const speed = (this.form === 'bird' ? this.birdSpeed : this.form === 'fish' ? Config.player.fishSpeed : this.humanSpeed) * boost;
+    const grabSlow = this.grabbedBy ? Config.enemy.hand.grabSlow : 1;
+    const speed = (this.form === 'bird' ? this.birdSpeed : this.form === 'fish' ? Config.player.fishSpeed : this.humanSpeed) * boost * grabSlow;
     const diveLocked = this.form === 'bird' && (this.diveState === 'warning' || this.diveState === 'dive');
 
     if (this.form === 'bird') {
@@ -1620,6 +1631,35 @@ export class Player {
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
+  }
+
+  // 手（E11）に掴まれる。人間形態のときだけ。変身すれば振りほどける（updateGrab）。
+  grab(hand, seconds) {
+    if (this.dead || this.form !== 'human' || this.grabbedBy) return false;
+    this.grabbedBy = hand;
+    this.grabTimer = seconds;
+    this.takeDamage(Config.enemy.hand.grabDamage);
+    this.game.onPlayerGrabbed?.(hand);
+    return true;
+  }
+
+  updateGrab(dt) {
+    if (!this.grabbedBy) return;
+    this.grabTimer -= dt;
+    let reason = null;
+    if (this.form !== 'human') reason = 'shaken';
+    else if (this.dead || this.grabbedBy.dead) reason = 'freed';
+    else if (this.grabTimer <= 0) reason = 'timeout';
+    else if (horizontalDistanceSq(this.position, this.grabbedBy.position) > (Config.enemy.hand.reach * 1.6) ** 2) reason = 'freed';
+    if (reason) this.releaseGrab(reason);
+  }
+
+  releaseGrab(reason) {
+    const hand = this.grabbedBy;
+    if (!hand) return;
+    this.grabbedBy = null;
+    this.grabTimer = 0;
+    this.game.onPlayerReleased?.(hand, reason);
   }
 
   stun(seconds) {
@@ -2128,6 +2168,7 @@ export class Enemy {
     if (type === 'sniper') this.createSniperBeam();
     if (type === 'footprint') this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true };
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
+    if (type === 'hand') this.createHandArm();
   }
 
   get stats() {
@@ -2146,6 +2187,7 @@ export class Enemy {
       sniper: 'shooterEnemy',
       footprint: 'chaserEnemy',
       crier: 'spawnerEnemy',
+      hand: 'chaserEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2155,6 +2197,7 @@ export class Enemy {
       if (type === 'sniper') this.styleSniperModel(gameplayModel);
       if (type === 'footprint') this.styleFootprintModel(gameplayModel);
       if (type === 'crier') this.styleCrierModel(gameplayModel);
+      if (type === 'hand') this.styleHandModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2169,6 +2212,7 @@ export class Enemy {
       if (type === 'sniper') this.styleSniperModel(model);
       if (type === 'footprint') this.styleFootprintModel(model);
       if (type === 'crier') this.styleCrierModel(model);
+      if (type === 'hand') this.styleHandModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2247,6 +2291,42 @@ export class Enemy {
         ? child.material.map(recolor)
         : recolor(child.material);
     });
+  }
+
+  // 手は追い手と同じ人型の体を、灰色がかった肌色に塗る。腕を伸ばすあいだ赤く光る（updateHand）。
+  styleHandModel(model) {
+    this.handMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(HAND_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(HAND_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.08;
+        material.needsUpdate = true;
+        this.handMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 伸ばす腕。予兆のあいだは細く半透明、掴んでいるあいだは太くプレイヤーまで届く。
+  createHandArm() {
+    this.hand = { state: 'approach', timer: 0, cooldown: Config.enemy.hand.firstCooldown, aim: new THREE.Vector3() };
+    this.armMaterial = new THREE.MeshBasicMaterial({ color: HAND_GLOW, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false });
+    this.arm = new THREE.Mesh(HAND_ARM_GEOMETRY, this.armMaterial);
+    this.arm.name = 'HandArm';
+    this.arm.position.y = HAND_ARM_HEIGHT;
+    this.arm.visible = false;
+    this.arm.frustumCulled = false;
+    this.arm.renderOrder = 7;
+    this.object.add(this.arm);
   }
 
   createLodModel(highDetail, type) {
@@ -2452,6 +2532,7 @@ export class Enemy {
     }
     if (this.game.player.dead) {
       if (this.beam) this.beam.visible = false;
+      if (this.arm) this.arm.visible = false;
       this.beamState = 'idle';
       this.updateDeathApproach(dt);
     }
@@ -2464,6 +2545,7 @@ export class Enemy {
     else if (this.type === 'guardian') this.updateGuardian(dt);
     else if (this.type === 'footprint') this.updateFootprint(dt);
     else if (this.type === 'crier') this.updateCrier(dt);
+    else if (this.type === 'hand') this.updateHand(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
@@ -2561,6 +2643,75 @@ export class Enemy {
     crier.swelling = false;
     this.model.scale.copy(crier.baseScale);
     this.game.onCrierCry?.(this);
+  }
+
+  // 近づいて腕を伸ばし（予兆）、伸ばしきったときに届けば掴む。掴んでいるあいだは動かない。
+  // プレイヤーが変身するか、時間切れか、プレイヤーが離れすぎると離す（離す処理は Player.updateGrab）。
+  updateHand(dt) {
+    const cfg = Config.enemy.hand;
+    const hand = this.hand;
+    const player = this.game.player;
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, player.position));
+    hand.cooldown = Math.max(0, hand.cooldown - dt);
+    let glow = 0.08;
+    if (hand.state === 'approach') {
+      if (distance > 1.3) this.moveToward(player.position, dt, this.speed);
+      if (hand.cooldown <= 0 && distance <= cfg.reach && player.form === 'human' && !player.grabbedBy) {
+        hand.state = 'windup';
+        hand.timer = cfg.windupSeconds;
+        this.game.onHandWindup?.(this);
+      }
+    } else if (hand.state === 'windup') {
+      hand.timer -= dt;
+      const t = clamp(1 - hand.timer / cfg.windupSeconds, 0, 1);
+      glow = 0.08 + t * 1.2;
+      hand.aim.copy(player.position);
+      if (hand.timer <= 0) {
+        const canGrab = distance <= cfg.reach + 0.4 && player.form === 'human' && !player.dead && !player.grabbedBy && !(player.phaseTimer > 0);
+        if (canGrab) {
+          hand.state = 'hold';
+          player.grab?.(this, cfg.holdSeconds);
+        } else {
+          hand.state = 'approach';
+          hand.cooldown = cfg.cooldown * 0.5;
+          this.game.onHandMiss?.(this);
+        }
+      }
+      this.updateHandArm(t, false);
+    } else if (hand.state === 'hold') {
+      glow = 0.9;
+      hand.aim.copy(player.position);
+      if (player.grabbedBy !== this) {
+        hand.state = 'approach';
+        hand.cooldown = cfg.cooldown;
+      }
+    }
+    if (hand.state === 'hold') this.updateHandArm(1, true);
+    else if (hand.state === 'approach' && this.arm) this.arm.visible = false;
+    for (const material of this.handMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = glow;
+    }
+  }
+
+  // extend: 0〜1 の伸び具合。予兆では届く距離（reach）まで、掴んでいればプレイヤーまで。
+  updateHandArm(extend, holding) {
+    if (!this.arm) return;
+    const cfg = Config.enemy.hand;
+    const dx = this.hand.aim.x - this.position.x;
+    const dz = this.hand.aim.z - this.position.z;
+    const distance = Math.max(0.01, Math.hypot(dx, dz));
+    const length = holding ? distance : Math.min(distance, cfg.reach) * extend;
+    if (length < 0.05) {
+      this.arm.visible = false;
+      return;
+    }
+    tempVec2.set(dx / distance, 0, dz / distance);
+    this.arm.quaternion.setFromUnitVectors(HAND_ARM_UP, tempVec2);
+    this.arm.position.set(tempVec2.x * length * 0.5, HAND_ARM_HEIGHT, tempVec2.z * length * 0.5);
+    const radius = holding ? 0.16 : 0.07;
+    this.arm.scale.set(radius, length, radius);
+    this.armMaterial.opacity = holding ? 0.92 : 0.35 + extend * 0.4;
+    this.arm.visible = true;
   }
 
   updateAquaticLarva(dt) {
