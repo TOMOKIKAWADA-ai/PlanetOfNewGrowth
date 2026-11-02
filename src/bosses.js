@@ -53,12 +53,26 @@ export const BOSS_TYPES = Object.freeze({
     fishBite(egg) {
       return floodgateBite(egg);
     }
+  }),
+  // 第4章のボス。光の糸でつながった三つ子（体は母卵を3つ。spawnCount だけ並べて置く）。
+  // 1体を倒しても倒れるだけで、reviveSeconds 以内に残りを全部倒さないと起き上がる。衝撃波は立っている姉妹が順番に出す。
+  swarmMother: Object.freeze({
+    id: 'swarmMother',
+    name: '群れの母',
+    forecast: '光の糸でつながった三つ子。1体だけ倒しても、10秒以内に残りを倒さないと起き上がる',
+    spawnCount: Config.boss.swarmMother.count,
+    update(egg, dt) {
+      updateSwarmMember(egg, dt);
+    },
+    onLethal(egg) {
+      return swarmOnLethal(egg);
+    }
   })
 });
 
 export const DEFAULT_BOSS = 'motherEgg';
 
-// まだ作っていないボス（群れの母・白蓮の核など）を指定した章は、母卵の動きで戦う。
+// まだ作っていないボス（白蓮の核など）を指定した章は、母卵の動きで戦う。
 export function getBossType(id) {
   return BOSS_TYPES[id] ?? BOSS_TYPES[DEFAULT_BOSS];
 }
@@ -229,6 +243,106 @@ export function updateFloodgate(mother, dt) {
     flood.streamTimer = cfg.streamInterval;
     game.onFloodgateStream?.(mother, cfg.streamCount);
   }
+}
+
+// 群れの母の姉妹をつなぐ。members の順に衝撃波の番が回る。
+export function linkSwarm(members) {
+  const swarm = { members, shockwaveOwner: members[0] ?? null, downs: 0, revives: 0 };
+  for (const egg of members) {
+    egg.swarm = swarm;
+    egg.swarmDown = false;
+    egg.swarmDownTimer = 0;
+  }
+  return swarm;
+}
+
+export function swarmStanding(swarm, except = null) {
+  return swarm.members.filter((egg) => egg !== except && !egg.dead && !egg.swarmDown);
+}
+
+// 姉妹の HP が 0 になったとき。ほかに立っている姉妹がいれば倒れるだけ（true を返し、壊れない）。
+// 最後の1体なら、倒れている姉妹もまとめて壊し、false を返して通常の撃破（勝利）に進ませる。
+export function swarmOnLethal(egg) {
+  const swarm = egg.swarm;
+  if (!swarm) return false;
+  const cfg = Config.boss.swarmMother;
+  const standing = swarmStanding(swarm, egg);
+  if (standing.length > 0) {
+    egg.swarmDown = true;
+    egg.swarmDownTimer = cfg.reviveSeconds;
+    egg.hp = 0;
+    swarm.downs += 1;
+    if (swarm.shockwaveOwner === egg) handOverShockwave(swarm, standing, cfg);
+    egg.game.onSwarmMemberDown?.(egg, standing.length, cfg.reviveSeconds);
+    return true;
+  }
+  for (const sister of swarm.members) {
+    if (sister === egg || sister.dead) continue;
+    sister.dead = true;
+    sister.game.onSwarmMemberFinish?.(sister);
+  }
+  return false;
+}
+
+function handOverShockwave(swarm, standing, cfg) {
+  const order = swarm.members;
+  const from = order.indexOf(swarm.shockwaveOwner);
+  let next = null;
+  for (let i = 1; i <= order.length && !next; i++) {
+    const candidate = order[(from + i) % order.length];
+    if (standing.includes(candidate)) next = candidate;
+  }
+  swarm.shockwaveOwner = next;
+  if (next) {
+    next.shockwaveState = 'idle';
+    next.shockwaveTimer = Math.max(next.shockwaveTimer ?? 0, cfg.handoverDelay);
+  }
+}
+
+// 倒れている姉妹は起き上がりを待つ。立っている姉妹は、衝撃波の番なら母卵と同じ衝撃波を出し、出し終えたら次の姉妹へ番を渡す。
+export function updateSwarmMember(egg, dt) {
+  const game = egg.game;
+  if (game.state !== 'playing' || !egg.swarm) return;
+  const swarm = egg.swarm;
+  const cfg = Config.boss.swarmMother;
+  if (egg.swarmDown) {
+    egg.swarmDownTimer -= dt;
+    if (egg.swarmDownTimer > 0) return;
+    egg.swarmDown = false;
+    egg.swarmDownTimer = 0;
+    egg.hp = egg.maxHp * cfg.reviveHpRatio;
+    swarm.revives += 1;
+    if (!swarm.shockwaveOwner) {
+      swarm.shockwaveOwner = egg;
+      egg.shockwaveState = 'idle';
+      egg.shockwaveTimer = cfg.handoverDelay;
+    }
+    game.onSwarmMemberRevive?.(egg);
+    return;
+  }
+  if (swarm.shockwaveOwner !== egg) return;
+  const wasWarning = egg.shockwaveState === 'warning';
+  egg.updateMotherShockwave(dt);
+  if (wasWarning && egg.shockwaveState === 'idle') {
+    const interval = egg.shockwaveTimer;
+    handOverShockwave(swarm, swarmStanding(swarm), cfg);
+    if (swarm.shockwaveOwner && swarm.shockwaveOwner !== egg) swarm.shockwaveOwner.shockwaveTimer = interval;
+  }
+}
+
+// 姉妹を置く場所: center を囲む正三角形（count 体）。isBlocked なら少し内側へ寄せ、だめなら center に置く。
+export function swarmPositions(center, count, spread, rotation, isBlocked) {
+  const points = [];
+  for (let i = 0; i < count; i++) {
+    const angle = rotation + i / count * Math.PI * 2;
+    let point = null;
+    for (const scale of [1, 0.75, 0.5]) {
+      const candidate = { x: center.x + Math.sin(angle) * spread * scale, z: center.z + Math.cos(angle) * spread * scale };
+      if (!isBlocked(candidate)) { point = candidate; break; }
+    }
+    points.push(point ?? { x: center.x, z: center.z });
+  }
+  return points;
 }
 
 // 列の並び: 母からプレイヤーの方へ、start から spacing おきに count 匹。プレイヤーと重なっていれば +z 向き。

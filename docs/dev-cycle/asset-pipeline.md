@@ -88,6 +88,9 @@
   - テクスチャが error.11000 で通らないことがある。色なしで書き出し、Blender で塗る（`scripts/blender/paint_eye_eggs.py`）。
 - 元絵の選び方（Hunyuan3D の試作で分かったこと。Tripo でも同じ）: 平たい物（葉1枚）は立体にすると薄く崩れるので、厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
 - 元絵の商用条件: Forge の juggernautXL などは asset-ledger.md で「要確認」。商用の素材にする元絵は、条件を確かめたモデルか Codex（GPT Image）で描く。
+  - 2026-11-02: 商用 ○ の **`sd_xl_base_1.0`** でも敵の元絵は描ける（DPM++ 2M、30 steps、CFG 6、832×1216 で1枚 25〜30 秒。Forge の起動は約3分）。灰色と黒に赤だけ、という敵の画風に自然に寄った。
+  - 敵の体: `thorny vines` だと肩や背中から細い枝・糸が伸びる（Tripo が壁にしやすい）。`thick black vine bands wrapped tightly`・`compact silhouette` にし、否定に `antlers, horns, branches, tendrils, hair, wings, thin strands, floating strings` を入れると消えた。`A-pose, symmetrical, isolated on plain white background, no shadow` で正面の全身が出やすい（背景は薄い灰色になることが多い）。
+  - SDXL base の三面図（`character turnaround sheet, front view, side view and back view`）は、向きごとに別の生き物になり Multiview には使えなかった。Multiview が要る敵は、正面の1枚を Tripo に渡すか、別の方法（Codex など）で三面図を描く。
 
 ## 3Dの整形（Blender）
 

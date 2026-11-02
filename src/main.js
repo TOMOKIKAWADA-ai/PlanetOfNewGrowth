@@ -16,7 +16,7 @@ import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.j
 import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
-import { floodgateStreamPoints, getBossName, getBossType } from './bosses.js';
+import { floodgateStreamPoints, getBossName, getBossType, linkSwarm, swarmPositions } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
@@ -424,6 +424,7 @@ class Game {
     this.buildingObstacles = [];
     this.modelTemplates = new Map();
     this.motherEgg = null;
+    this.bossEggs = [];
     this.motherSpawned = false;
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
@@ -1369,7 +1370,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.player.update(dt, this.input);
       if (this.playerTrail) this.updatePlayerTrail(dt);
       for (const egg of this.eggs) egg.update(dt);
-      if (this.motherEgg) this.motherEgg.update(dt);
+      for (const mother of this.bossEggs) mother.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
       this.enemyGrid.rebuild(this.enemies);
       for (const projectile of this.projectiles) projectile.update(dt);
@@ -1438,7 +1439,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
     this.enemyGrid.rebuild(this.enemies);
     for (const egg of this.eggs) egg.update(dt);
-    if (this.motherEgg) this.motherEgg.update(dt);
+    for (const mother of this.bossEggs) mother.update(dt);
     for (const enemy of this.enemies) enemy.update(dt);
     this.enemyGrid.rebuild(this.enemies);
     for (const orb of this.xpOrbs) orb.update(dt);
@@ -1531,8 +1532,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const egg = new Egg(this, position, isMother);
     if (!isMother && this.mimicEggsActive && !egg.aquatic && Math.random() < Config.egg.mimic.chance) egg.isMimic = true;
     this.scene.add(egg.object);
-    if (isMother) this.motherEgg = egg;
-    else this.eggs.push(egg);
+    if (isMother) {
+      this.bossEggs.push(egg);
+      this.motherEgg ??= egg;
+    } else this.eggs.push(egg);
     return egg;
   }
 
@@ -1551,12 +1554,18 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
-    const mother = this.spawnEgg(position, true);
-    mother.maxHp *= this.stage.motherHpScale;
-    mother.hp = mother.maxHp;
+    const bossType = getBossType(this.stage.boss);
+    if (bossType.spawnCount > 1) {
+      this.spawnSwarmMother(position, bossType.spawnCount);
+    } else {
+      const mother = this.spawnEgg(position, true);
+      mother.maxHp *= this.stage.motherHpScale;
+      mother.hp = mother.maxHp;
+    }
     this.spawnBurstEffect(position, 7, 0xff8b52);
     if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
-    this.showMessage('\u30dc\u30b9\u51fa\u73fe');
+    if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6);
+    else this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
 
   spawnEnemyFromEgg(egg) {
@@ -1801,8 +1810,26 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.scratchEggs.length = 0;
     const radiusSq = radius * radius;
     for (const egg of this.eggs) if (!egg.dead && horizontalDistanceSq(position, egg.position) <= radiusSq) this.scratchEggs.push(egg);
-    if (includeMother && this.motherEgg && !this.motherEgg.dead && horizontalDistanceSq(position, this.motherEgg.position) <= radiusSq) this.scratchEggs.push(this.motherEgg);
+    if (includeMother) {
+      for (const mother of this.getBossTargets()) if (horizontalDistanceSq(position, mother.position) <= radiusSq) this.scratchEggs.push(mother);
+    }
     return this.scratchEggs;
+  }
+
+  // Boss bodies that can be hit and targeted: the swarm mother's fallen sisters are left out until they stand up.
+  getBossTargets() {
+    return this.bossEggs.filter((mother) => !mother.dead && !mother.swarmDown);
+  }
+
+  // The boss bar: the swarm mother's three sisters share one bar (a fallen sister counts as empty).
+  getBossHpRatio() {
+    let hp = 0;
+    let maxHp = 0;
+    for (const mother of this.bossEggs) {
+      maxHp += mother.maxHp;
+      if (!mother.dead) hp += Math.max(0, mother.hp);
+    }
+    return maxHp > 0 ? hp / maxHp : 0;
   }
 
   onEggDestroyed(egg, source) {
@@ -2466,6 +2493,103 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.floodgateStats.tadpoles += 1;
     }
     this.spawnRingEffect(mother.position, 3.2, 0x5fd0ff, 0.55, 0.45);
+  }
+
+  // Swarm mother (src/bosses.js): three sisters around the chosen spot, each with hpShare of the stage's mother HP,
+  // joined by threads of light.
+  spawnSwarmMother(center, count) {
+    const cfg = Config.boss.swarmMother;
+    const limit = Config.map.radius - 3;
+    const points = swarmPositions(center, count, cfg.spread, Math.random() * TAU,
+      (point) => Math.hypot(point.x, point.z) > limit || this.isBlockedByBuilding(point, 3));
+    const members = points.map((point) => {
+      const mother = this.spawnEgg(new THREE.Vector3(point.x, 0, point.z), true);
+      mother.maxHp *= this.stage.motherHpScale * cfg.hpShare;
+      mother.hp = mother.maxHp;
+      return mother;
+    });
+    linkSwarm(members);
+    this.spawnSwarmThreads(members);
+  }
+
+  // A sister fell: the threads to her turn red and a ring under her shrinks until she stands up again.
+  onSwarmMemberDown(mother, standing, seconds) {
+    this.playSfx('eggBreak', { volume: 0.8, cooldown: 0.1 });
+    this.spawnBurstEffect(mother.position, 5, 0xffd56b);
+    this.showMessage(`群れの母が1体倒れた\n${seconds}秒以内に残り${standing}体を倒せ`, 2.4);
+  }
+
+  onSwarmMemberRevive(mother) {
+    this.playSfx('motherCharge', { volume: 0.7, cooldown: 0.3 });
+    this.spawnRingEffect(mother.position, 4.2, 0xff5a5a, 0.85, 0.6);
+    this.showMessage('群れの母が起き上がった', 1.6);
+  }
+
+  // The last sister fell: the fallen ones break with her.
+  onSwarmMemberFinish(mother) {
+    this.scene.remove(mother.object);
+    this.spawnBurstEffect(mother.position, 7, 0xffd56b);
+  }
+
+  spawnSwarmThreads(members) {
+    const group = new THREE.Group();
+    const up = new THREE.Vector3(0, 1, 0);
+    const from = new THREE.Vector3();
+    const to = new THREE.Vector3();
+    const axis = new THREE.Vector3();
+    const threads = members.map((mother, i) => {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffe6a0, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+      });
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1, 6, 1, true), material);
+      group.add(beam);
+      return { a: mother, b: members[(i + 1) % members.length], beam, material };
+    });
+    const timers = members.map((mother) => {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xff5a5a, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+      });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.1, Config.performance.effectSegments), material);
+      ring.rotation.x = -Math.PI / 2;
+      ring.visible = false;
+      group.add(ring);
+      return { mother, ring };
+    });
+    group.renderOrder = 6;
+    this.scene.add(group);
+    const reviveSeconds = Config.boss.swarmMother.reviveSeconds;
+    let time = 0;
+    this.effects.push({
+      object: group,
+      life: 1,
+      update(effect, dt) {
+        time += dt;
+        if (members.every((mother) => mother.dead)) {
+          effect.life = 0;
+          return;
+        }
+        for (const thread of threads) {
+          thread.beam.visible = !thread.a.dead && !thread.b.dead;
+          if (!thread.beam.visible) continue;
+          const broken = thread.a.swarmDown || thread.b.swarmDown;
+          from.set(thread.a.position.x, 2.2, thread.a.position.z);
+          to.set(thread.b.position.x, 2.2, thread.b.position.z);
+          axis.subVectors(to, from);
+          const length = axis.length();
+          thread.beam.position.copy(from).addScaledVector(axis, 0.5);
+          thread.beam.scale.set(1, Math.max(0.01, length), 1);
+          if (length > 0.001) thread.beam.quaternion.setFromUnitVectors(up, axis.normalize());
+          thread.material.color.setHex(broken ? 0xff5a5a : 0xffe6a0);
+          thread.material.opacity = broken ? 0.4 + Math.sin(time * 10) * 0.25 : 0.45 + Math.sin(time * 3) * 0.12;
+        }
+        for (const timer of timers) {
+          timer.ring.visible = timer.mother.swarmDown && !timer.mother.dead;
+          if (!timer.ring.visible) continue;
+          timer.ring.position.set(timer.mother.position.x, 0.2, timer.mother.position.z);
+          timer.ring.scale.setScalar(0.35 + 0.65 * clamp(timer.mother.swarmDownTimer / reviveSeconds, 0, 1));
+        }
+      }
+    });
   }
 
   // Hitting a boss that takes no damage right now: say why, at most every few seconds.

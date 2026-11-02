@@ -120,7 +120,13 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
       mx += dx * w * 6;
       mz += dz * w * 6;
     }
-    const mother = game.motherEgg && !game.motherEgg.dead ? game.motherEgg : null;
+    // The swarm mother (chapter 4) has three bodies: go for the nearest one still standing.
+    let mother = null;
+    let motherBest = Infinity;
+    for (const body of game.getBossTargets ? game.getBossTargets() : []) {
+      const d2 = (body.position.x - p.x) ** 2 + (body.position.z - p.z) ** 2;
+      if (d2 < motherBest) { motherBest = d2; mother = body; }
+    }
     let target = mother;
     if (!target) {
       let best = Infinity;
@@ -161,7 +167,8 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
     }
     const nearbyEggs = game.eggs.filter(egg => !egg.dead
       && (egg.position.x - player.position.x) ** 2 + (egg.position.z - player.position.z) ** 2 < 225).length;
-    const mother = game.motherEgg && !game.motherEgg.dead ? game.motherEgg : null;
+    const bosses = (game.bossEggs ?? []).filter(body => !body.dead);
+    const mother = bosses.find(body => body.shockwaveState === 'warning') ?? bosses.find(body => !body.swarmDown) ?? null;
     // Stay airborne until the released wave has finished travelling, not just through the warning.
     if (mother?.shockwaveState === 'warning') lastWarningAt = game.elapsed;
     const waveActive = mother?.shockwaveState === 'warning'
@@ -276,6 +283,7 @@ function summarize(game, stats) {
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
     criers: game.crierStats?.spawned ? { ...game.crierStats } : null,
     hands: game.handStats?.spawned ? { ...game.handStats, heldSeconds: Math.round(game.handStats.heldSeconds * 10) / 10 } : null,
+    swarm: game.motherEgg?.swarm ? { downs: game.motherEgg.swarm.downs, revives: game.motherEgg.swarm.revives } : null,
     floodgate: game.floodgateStats?.streams || game.floodgateStats?.bites ? { ...game.floodgateStats } : null,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,

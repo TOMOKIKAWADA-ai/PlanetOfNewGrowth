@@ -310,6 +310,18 @@ export const Config = {
       streamDamage: 9,
       streamLinger: 5,
       shoreMargin: 1.35
+    },
+    // Chapter 4's swarm mother is three sisters joined by threads of light, each with hpShare of a mother's HP.
+    // A sister brought to 0 only falls down; unless the rest fall within reviveSeconds she stands up again with
+    // reviveHpRatio of her HP. Only one standing sister at a time charges the shockwave, taking turns.
+    // Set chapter 4's boss to 'motherEgg' to remove it.
+    swarmMother: {
+      count: 3,
+      spread: 6.5,
+      hpShare: 0.45,
+      reviveSeconds: 10,
+      reviveHpRatio: 0.6,
+      handoverDelay: 3
     }
   },
   egg: {

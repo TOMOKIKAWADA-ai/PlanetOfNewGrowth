@@ -16,6 +16,12 @@ import { Config } from './config.js';
 import { getBossType } from './bosses.js';
 import { advanceFootprint } from './footprints.js';
 
+// 狙えるボスの体（群れの母は倒れていない姉妹だけ）。ゲーム全体なしのテストでは motherEgg だけを見る。
+function bossTargets(game) {
+  if (game.getBossTargets) return game.getBossTargets();
+  return game.motherEgg && !game.motherEgg.dead ? [game.motherEgg] : [];
+}
+
 const CONTACT_SHADOW_TEXTURE_SIZE = 96;
 let contactShadowTexture = null;
 
@@ -1449,9 +1455,7 @@ export class Player {
         enemy.takeDamage(Config.player.tsukimiBeamEnemyDamage, this.position, false, false);
       }
     }
-    const eggs = this.game.motherEgg && !this.game.motherEgg.dead
-      ? [...this.game.eggs, this.game.motherEgg]
-      : this.game.eggs;
+    const eggs = [...this.game.eggs, ...bossTargets(this.game)];
     for (const egg of eggs) {
       if (egg.dead || !this.isInForwardStrip(egg.position, this.faceAngle, length, width)) continue;
       egg.takeDamage(egg.isMother ? Config.player.tsukimiBeamMotherDamage : Config.player.tsukimiBeamEggDamage, 'burst');
@@ -1554,9 +1558,7 @@ export class Player {
     if (this.diveState === 'ready') {
       if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
-      const motherTarget = this.game.motherEgg && !this.game.motherEgg.dead
-        ? this.findMotherForDive()
-        : null;
+      const motherTarget = this.findMotherForDive();
       this.startDive(motherTarget ?? this.findCrierForDive() ?? target);
     } else if (this.diveState === 'warning') {
       this.diveTimer -= dt;
@@ -1668,9 +1670,13 @@ export class Player {
   }
 
   findMotherForDive() {
-    if (!this.game.motherEgg || this.game.motherEgg.dead) return null;
-    const distanceSq = horizontalDistanceSq(this.position, this.game.motherEgg.position);
-    return distanceSq <= Config.player.birdMotherDetectRange ** 2 ? this.game.motherEgg : null;
+    let best = null;
+    let bestDistance = Config.player.birdMotherDetectRange ** 2;
+    for (const mother of bossTargets(this.game)) {
+      const distanceSq = horizontalDistanceSq(this.position, mother.position);
+      if (distanceSq <= bestDistance) { best = mother; bestDistance = distanceSq; }
+    }
+    return best;
   }
 
   // 鳴き（E10）は急降下で一撃。近くの卵より先に狙う。
@@ -1704,9 +1710,7 @@ export class Player {
   findNearestEgg(radius, includeMother) {
     let best = null;
     let bestDistance = Infinity;
-    const eggs = includeMother && this.game.motherEgg && !this.game.motherEgg.dead
-      ? [...this.game.eggs, this.game.motherEgg]
-      : this.game.eggs;
+    const eggs = includeMother ? [...this.game.eggs, ...bossTargets(this.game)] : this.game.eggs;
     for (const egg of eggs) {
       if (egg.dead || egg.claimed) continue;
       if (egg.isMother && !includeMother) continue;
@@ -2006,6 +2010,7 @@ export class Egg {
       this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
       this.bossType.update(this, dt);
       if (this.pursuit) this.updatePursuerShell(dt);
+      if (this.swarm) this.updateSwarmBody();
       if (this.floodgate) this.updateFloodgateBody(dt);
     }
     if (this.isMother) return;
@@ -2062,6 +2067,15 @@ export class Egg {
     this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
   }
 
+  // 群れの母（src/bosses.js）: 倒れている姉妹は縮んで輪が消え、起き上がりが近い（3 秒前から）と点滅する。
+  updateSwarmBody() {
+    if (!this.swarmDown) return;
+    const blink = this.swarmDownTimer < 3 && Math.sin(this.swarmDownTimer * 14) > 0;
+    this.model.scale.multiplyScalar(blink ? 0.7 : 0.5);
+    this.ring.visible = blink;
+    this.spore.visible = false;
+  }
+
   updateMotherShockwave(dt) {
     if (this.game.state !== 'playing') return;
     this.shockwaveTimer -= dt;
@@ -2093,7 +2107,7 @@ export class Egg {
       this.game.showMessage('\u6c34\u4e2d\u306e\u5375\u306f\u9b5a\u5f62\u614b\u3067\u99c6\u9664\u3067\u304d\u307e\u3059', 1.2);
       return;
     }
-    if (this.dead) return;
+    if (this.dead || this.swarmDown) return;
     if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
     const bossScale = this.isMother ? this.bossType.damageScale?.(this) ?? 1 : 1;
     amount *= bossScale;
@@ -2107,8 +2121,9 @@ export class Egg {
     this.game.spawnHitSpark(this.position, bossScale < 1 ? 0x9aa3a8 : this.isMother ? 0xffbf61 : 0xd8ff7a);
     if (this.isMother && bossScale === 0) this.game.onBossImmuneHit?.(this);
     if (this.hp <= 0) {
-      this.dead = true;
       this.claimed = false;
+      if (this.isMother && this.bossType.onLethal?.(this, source)) return;
+      this.dead = true;
       this.game.onEggDestroyed(this, source);
     }
   }

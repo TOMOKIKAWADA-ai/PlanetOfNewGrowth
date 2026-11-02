@@ -291,3 +291,13 @@
 | xp_pickup | よく鳴る | -17.8 (-1.7) | -0.2 | -18.0 (-1.9) |
 
 耳での確認はまだ（ユーザーの試聴待ち）。
+
+## 2026-11-02 手（第4章の新種）の Tripo 用の元絵（B1、E11 の専用の見た目）
+
+- ツール: Forge（API、`scripts/assets/forge-txt2img.mjs`）。モデル **`sd_xl_base_1.0`**（CreativeML Open RAIL++-M、商用 ○。「要確認」の juggernaut は使っていない）。DPM++ 2M、30 steps、CFG 6。
+- 置き場所: `assets_src/3d/2026-11-02-hand/`（`.gitignore` 対象。設定とシードは各 PNG と同名の JSON、ジョブは `jobs.json`・`jobs-v2.json`）。見比べ画像は `docs/devlog/img/2026-11-02-hand-source.jpg`。
+- 1回目（`jobs.json`）: 正面 832×1216 をシード 101〜104、三面図 1344×768 をシード 201・202。プロンプトの要点は `gaunt hunched humanoid creature with extremely long thin arms hanging down to its ankles, oversized long-fingered clawed hands, ashen grey skin, black thorny vines, glowing red cracks, faceless smooth egg-shaped head split by a glowing red seam, A-pose, symmetrical, isolated on plain white background, no shadow`。
+- 2回目（`jobs-v2.json`）: 細い枝が出たので `thick black vine bands`・`compact silhouette`・腕は膝まで、否定に `antlers, horns, branches, tendrils, hair, wings, thin strands, floating strings` を足し、シード 103・105・106・107。
+- 候補: **`hand-front-v2-103.png`**（第一候補。輪郭がすっきりして細い部品がない。少し機械っぽい）、`hand-front-103.png`（第二候補。いちばん生き物らしく腕が長いが、肩の上に細い枝があり Tripo が壁にしやすい）。
+- 不採用: 101（台座と地面つき）、102（細い蔓が多い）、104（斜め向きで影つき）、三面図 201・202（向きごとに別の生き物になり Multiview に使えない）、v2-105（脚が4本）、v2-106（右下に署名のような印、尾が2本）、v2-107（赤が出ない）。
+- Tripo での生成はまだ（ユーザーの承認待ち）。
