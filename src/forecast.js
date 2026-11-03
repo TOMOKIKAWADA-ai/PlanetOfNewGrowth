@@ -21,6 +21,38 @@ const NEW_SPECIES = Object.freeze([
     form: '輪から出るか、鳥形態で浮く。捕まったら連打で振りほどく',
     chapter: () => Config.enemy.vine.fromChapter,
     enabled: () => Config.enemy.vine.enabled
+  }),
+  Object.freeze({
+    id: 'footprint',
+    name: '足跡',
+    trait: '通った道を、数秒遅れでなぞって歩く',
+    form: 'どちらでも（同じ所を回らない。鳥で飛ぶと道が途切れる）',
+    chapter: () => Config.enemy.footprint.fromChapter,
+    enabled: () => Config.enemy.footprint.enabled
+  }),
+  Object.freeze({
+    id: 'crier',
+    name: '鳴き',
+    trait: '動かない。膨らんで鳴くと、周りの卵が早く孵る',
+    form: '鳥形態の急降下で潰す',
+    chapter: () => Config.enemy.crier.fromChapter,
+    enabled: () => Config.enemy.crier.enabled
+  }),
+  Object.freeze({
+    id: 'hand',
+    name: '手',
+    trait: '近づくと腕を伸ばして掴みかかる。掴まれると遅くなる',
+    form: '鳥形態に変身して振りほどく（MPを残しておく）',
+    chapter: () => Config.enemy.hand.fromChapter,
+    enabled: () => Config.enemy.hand.enabled
+  }),
+  Object.freeze({
+    id: 'rootsucker',
+    name: '吸水根',
+    trait: '動かない。根を張ると周りが乾き、その中ではMPが回復しない',
+    form: '人間形態で、円の外から撃つ',
+    chapter: () => Config.enemy.rootsucker.fromChapter,
+    enabled: () => Config.enemy.rootsucker.enabled
   })
 ]);
 

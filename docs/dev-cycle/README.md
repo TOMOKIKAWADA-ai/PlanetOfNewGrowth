@@ -24,13 +24,15 @@
 
 | 曜日 | 内容 | 主に使うアプリ |
 |---|---|---|
-| 月 | 3Dモデル（モックの置き換え） | Forge → Hunyuan3D → Blender |
+| 月 | 3Dモデル（モックの置き換え。Tripo での生成はユーザーの承認後） | 元絵（Forge など）→ Tripo → Blender |
 | 火 | 効果音 | Stable Audio 3 |
 | 水 | イラスト（一枚絵、背景、アイコン、キービジュアル） | Forge（SDXL / Illustrious） |
-| 木 | 3Dモデル（モックの置き換え） | Forge → Hunyuan3D → Blender |
+| 木 | 3Dモデル（同上） | 元絵（Forge など）→ Tripo → Blender |
 | 金 | 音声 | Irodori-TTS 4.1 |
 | 土 | 動画・SNS広報素材（プレイ動画、紹介画像、投稿文の案） | Playwright録画、FFmpeg、HyperFrames |
 | 日 | 動くアバター（Live2D_AI）か、素材の手直し・統一（隔週で交代）と週の振り返り | Mesh Avatar Studio |
+
+**3D は Tripo だけを使う。Hunyuan3D（`D:\AI\3D_local`）は利用条件の問題で使わない**（2026-10-29 ユーザーの判断）。Tripo は外部サービスへのアップロードとクレジット消費を伴うので、定期のサイクルでは生成しない。月・木は、Tripo に渡す元絵（三面図など）を作って devlog の「判断待ち」に「どの絵を何体、見込み何クレジット」と書くところまでと、Tripo から届いた GLB の整形（Blender で骨・モーション・ポリゴン削減）・ゲームへの組み込みを行う。生成はユーザーが承認したチャットで、Claude in Chrome から行う（手順は `asset-pipeline.md` の「3Dモデル（Tripo）」）。
 
 GPU は 8GB なので、生成ツールは**必ず1つずつ起動し、使い終わったら終了する**。各アプリの使い方は `asset-pipeline.md` に書く。
 SNS向けの素材は作るだけで、**投稿はしない**。投稿はユーザーが行う。

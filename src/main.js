@@ -16,7 +16,8 @@ import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.j
 import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
-import { getBossName } from './bosses.js';
+import { floodgateStreamPoints, getBossName, getBossType, linkSwarm, swarmPositions } from './bosses.js';
+import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -100,31 +101,45 @@ const MOTHER_SHOCKWAVE_TEXTURE_URL = new URL('../assets/effects/mother-shockwave
 const TSUKIMI_BEAM_TEXTURE_URL = new URL('../assets/effects/tsukimi-sustained-beam.png', import.meta.url).href;
 const KIICHIGO_SLASH_TEXTURE_URL = new URL('../assets/effects/kiichigo-alternating-slash.png', import.meta.url).href;
 const PLAYER_BURST_COLOR = 0xffdf70;
+const CRIER_RING_COLOR = 0xe7a6ff;
+const HAND_RING_COLOR = 0xff6a3d;
+const ROOTSUCKER_RING_COLOR = 0xf0c27a;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
-const SFX_URLS = {
-  birdFeed: new URL('../assets/audio/sfx/bird_feed.wav', import.meta.url).href,
-  burstFire: new URL('../assets/audio/sfx/burst_fire.wav', import.meta.url).href,
-  burstPre: new URL('../assets/audio/sfx/burst_pre.wav', import.meta.url).href,
-  burstSpread: new URL('../assets/audio/sfx/burst_spread.wav', import.meta.url).href,
-  buttonCancel: new URL('../assets/audio/sfx/button_cancel.wav', import.meta.url).href,
-  buttonConfirm: new URL('../assets/audio/sfx/button_confirm.wav', import.meta.url).href,
-  eggBreak: new URL('../assets/audio/sfx/egg_break.wav', import.meta.url).href,
-  enemyDie: new URL('../assets/audio/sfx/enemy_die.wav', import.meta.url).href,
-  levelUp: new URL('../assets/audio/sfx/level_up.wav', import.meta.url).href,
-  motherCharge: new URL('../assets/audio/sfx/mother_charge.wav', import.meta.url).href,
-  motherRelease: new URL('../assets/audio/sfx/mother_release.wav', import.meta.url).href,
-  motherImpact: new URL('../assets/audio/sfx/mother_impact.wav', import.meta.url).href,
-  tsukimiBurst: new URL('../assets/audio/sfx/tsukimi_burst.wav', import.meta.url).href,
-  kiichigoBurst: new URL('../assets/audio/sfx/kiichigo_burst.wav', import.meta.url).href,
-  playerHit: new URL('../assets/audio/sfx/player_hit.wav', import.meta.url).href,
-  playerShot: new URL('../assets/audio/sfx/player_shot.wav', import.meta.url).href,
-  projectileHit: new URL('../assets/audio/sfx/projectile_hit.wav', import.meta.url).href,
-  transformBird: new URL('../assets/audio/sfx/transform_bird.wav', import.meta.url).href,
-  transformHuman: new URL('../assets/audio/sfx/transform_human.wav', import.meta.url).href,
-  xpPickup: new URL('../assets/audio/sfx/xp_pickup.wav', import.meta.url).href,
-  itemPickup: new URL('../assets/audio/sfx/item_pickup.wav', import.meta.url).href,
-  thirstDrain: new URL('../assets/audio/sfx/thirst_drain.wav', import.meta.url).href
+// Sound effect files by name. Config.audio.normalizedSfx picks the loudness-matched copies in sfx-normalized/
+// (made by scripts/assets/normalize-sfx.mjs, 2026-11-01); false = the original files as before.
+const SFX_FILES = {
+  birdFeed: 'bird_feed',
+  burstFire: 'burst_fire',
+  burstPre: 'burst_pre',
+  burstSpread: 'burst_spread',
+  buttonCancel: 'button_cancel',
+  buttonConfirm: 'button_confirm',
+  eggBreak: 'egg_break',
+  enemyDie: 'enemy_die',
+  levelUp: 'level_up',
+  motherCharge: 'mother_charge',
+  motherRelease: 'mother_release',
+  motherImpact: 'mother_impact',
+  tsukimiBurst: 'tsukimi_burst',
+  kiichigoBurst: 'kiichigo_burst',
+  playerHit: 'player_hit',
+  playerShot: 'player_shot',
+  projectileHit: 'projectile_hit',
+  transformBird: 'transform_bird',
+  transformHuman: 'transform_human',
+  xpPickup: 'xp_pickup',
+  itemPickup: 'item_pickup',
+  thirstDrain: 'thirst_drain',
+  crierCry: 'crier_cry',
+  handGrab: 'hand_grab',
+  rootDry: 'root_dry'
 };
+const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
+const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
+const SFX_URLS = Object.fromEntries(Object.entries(SFX_FILES).map(([name, file]) => [
+  name,
+  (Config.audio.normalizedSfx && SFX_NORMALIZED_URLS[`../assets/audio/sfx-normalized/${file}.wav`]) || SFX_ORIGINAL_URLS[`../assets/audio/sfx/${file}.wav`]
+]));
 const VOICE_URLS = {
   tsukimi: {
     hit: [
@@ -143,7 +158,10 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/tsukimi/struggle_01.mp3', import.meta.url).href,
       new URL('../assets/audio/voice/tsukimi/struggle_02.mp3', import.meta.url).href
     ],
-    escape: [new URL('../assets/audio/voice/tsukimi/escape_01.mp3', import.meta.url).href]
+    escape: [new URL('../assets/audio/voice/tsukimi/escape_01.mp3', import.meta.url).href],
+    bossAppear: [new URL('../assets/audio/voice/tsukimi/boss_appear_01.mp3', import.meta.url).href],
+    levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
+    lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -162,7 +180,10 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/akame/struggle_01.mp3', import.meta.url).href,
       new URL('../assets/audio/voice/akame/struggle_02.mp3', import.meta.url).href
     ],
-    escape: [new URL('../assets/audio/voice/akame/escape_01.mp3', import.meta.url).href]
+    escape: [new URL('../assets/audio/voice/akame/escape_01.mp3', import.meta.url).href],
+    bossAppear: [new URL('../assets/audio/voice/akame/boss_appear_01.mp3', import.meta.url).href],
+    levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
+    lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -181,18 +202,19 @@ const VOICE_URLS = {
       new URL('../assets/audio/voice/kiichigo/struggle_01.mp3', import.meta.url).href,
       new URL('../assets/audio/voice/kiichigo/struggle_02.mp3', import.meta.url).href
     ],
-    escape: [new URL('../assets/audio/voice/kiichigo/escape_01.mp3', import.meta.url).href]
+    escape: [new URL('../assets/audio/voice/kiichigo/escape_01.mp3', import.meta.url).href],
+    bossAppear: [new URL('../assets/audio/voice/kiichigo/boss_appear_01.mp3', import.meta.url).href],
+    levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
+    lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
 // Installed once per page: the geometries are shared module state, and a new game (next chapter) reuses them.
 let pickupModelsInstalled = false;
-const PICKUP_MODELS = {
-  hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href,
-  mp: new URL('../assets/pickups/pickup_mp.glb', import.meta.url).href,
-  burst: new URL('../assets/pickups/pickup_burst.glb', import.meta.url).href,
-  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href
-};
+// Pickup type -> GLB from scripts/assets/blender/prep-pickups.py, e.g.
+//   hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href
+// Empty since 2026-10-29: the Hunyuan3D meshes were removed over its license, and the Tripo versions are not made yet.
+const PICKUP_MODELS = {};
 const GAMEPLAY_MODELS = {
   darkseedEgg: {
     url: new URL('../assets/eggs/darkseed.glb', import.meta.url).href,
@@ -434,6 +456,7 @@ class Game {
     this.buildingObstacles = [];
     this.modelTemplates = new Map();
     this.motherEgg = null;
+    this.bossEggs = [];
     this.motherSpawned = false;
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
@@ -448,6 +471,25 @@ class Game {
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
     this.pursuerHintShown = false;
     this.pursuerStats = { lays: 0, eggs: 0 };
+    this.floodgateHintShown = false;
+    this.floodgateImmuneHintTimer = 0;
+    this.floodgateStats = { bites: 0, surfaces: 0, streams: 0, tadpoles: 0 };
+    const footprintCfg = Config.enemy.footprint;
+    this.footprintsActive = footprintCfg.enabled && this.stageId >= footprintCfg.fromChapter;
+    this.playerTrail = this.footprintsActive ? new PlayerTrail(footprintCfg.trailSeconds, footprintCfg.trailSampleInterval) : null;
+    this.footprintHintShown = false;
+    this.footprintStats = { spawned: 0, lost: 0, hits: 0 };
+    this.trailMarkTimer = 0;
+    this.criersActive = Config.enemy.crier.enabled && this.stageId >= Config.enemy.crier.fromChapter;
+    this.crierHintShown = false;
+    this.crierStats = { spawned: 0, cries: 0, eggsHurried: 0, diveKills: 0 };
+    this.handsActive = Config.enemy.hand.enabled && this.stageId >= Config.enemy.hand.fromChapter;
+    this.handHintShown = false;
+    this.handStats = { spawned: 0, windups: 0, misses: 0, grabs: 0, shaken: 0, timeouts: 0, freed: 0, heldSeconds: 0 };
+    this.rootsuckersActive = Config.enemy.rootsucker.enabled && this.stageId >= Config.enemy.rootsucker.fromChapter;
+    this.rootsuckerHintShown = false;
+    this.dryGroundHintShown = false;
+    this.rootsuckerStats = { spawned: 0, rooted: 0, drySeconds: 0, dryMpLost: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1367,12 +1409,18 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.shake = Math.max(0, this.shake - dt * 1.7);
       this.updateSpawnPause(dt);
       if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
+      if (!this.lastMinuteCalled && this.elapsed >= Config.map.playSeconds - 60) {
+        this.lastMinuteCalled = true;
+        if (Config.audio.cueVoices) this.playVoice('lastMinute', { volume: 0.9 });
+      }
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
       this.updateVineBind(dt);
+      if (this.playerTrail) this.updatePlayerTrail(dt);
+      if (this.rootsuckersActive) this.updateDryGround(dt);
       for (const egg of this.eggs) egg.update(dt);
-      if (this.motherEgg) this.motherEgg.update(dt);
+      for (const mother of this.bossEggs) mother.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
       this.enemyGrid.rebuild(this.enemies);
       for (const projectile of this.projectiles) projectile.update(dt);
@@ -1442,7 +1490,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
     this.enemyGrid.rebuild(this.enemies);
     for (const egg of this.eggs) egg.update(dt);
-    if (this.motherEgg) this.motherEgg.update(dt);
+    for (const mother of this.bossEggs) mother.update(dt);
     for (const enemy of this.enemies) enemy.update(dt);
     this.enemyGrid.rebuild(this.enemies);
     for (const orb of this.xpOrbs) orb.update(dt);
@@ -1535,28 +1583,40 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const egg = new Egg(this, position, isMother);
     if (!isMother && this.mimicEggsActive && !egg.aquatic && Math.random() < Config.egg.mimic.chance) egg.isMimic = true;
     this.scene.add(egg.object);
-    if (isMother) this.motherEgg = egg;
-    else this.eggs.push(egg);
+    if (isMother) {
+      this.bossEggs.push(egg);
+      this.motherEgg ??= egg;
+    } else this.eggs.push(egg);
     return egg;
   }
 
   spawnMotherEgg() {
     if (this.motherSpawned) return;
     this.motherSpawned = true;
+    // A boss that lives in the water (the floodgate mother) is placed off the shore, where fish form can reach it.
+    const wantsWater = this.isWaterStage && getBossType(this.stage.boss).prefersWater;
     let best = null;
     let bestDistance = -Infinity;
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < (wantsWater ? 80 : 20); i++) {
       const point = randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
       if (this.isBlockedByBuilding(point, 3)) continue;
+      if (wantsWater && this.isWaterStageLand(point, Config.boss.floodgateMother.shoreMargin)) continue;
       const distance = horizontalDistanceSq(point, this.player.position);
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
-    const mother = this.spawnEgg(position, true);
-    mother.maxHp *= this.stage.motherHpScale;
-    mother.hp = mother.maxHp;
+    const bossType = getBossType(this.stage.boss);
+    if (bossType.spawnCount > 1) {
+      this.spawnSwarmMother(position, bossType.spawnCount);
+    } else {
+      const mother = this.spawnEgg(position, true);
+      mother.maxHp *= this.stage.motherHpScale;
+      mother.hp = mother.maxHp;
+    }
     this.spawnBurstEffect(position, 7, 0xff8b52);
-    this.showMessage('\u30dc\u30b9\u51fa\u73fe');
+    if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
+    if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6);
+    else this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
 
   spawnEnemyFromEgg(egg) {
@@ -1574,7 +1634,11 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     } else if (this.elapsed >= 35 && roll < 0.22) {
       type = 'shooter';
     }
-    if (type === 'chaser' && this.canSpawnVine() && Math.random() < Config.enemy.vine.spawnChance) type = 'vine';
+    if (this.shouldHatchFootprint()) type = 'footprint';
+    else if (this.shouldHatchCrier()) type = 'crier';
+    else if (this.shouldHatchHand()) type = 'hand';
+    else if (this.shouldHatchRootsucker()) type = 'rootsucker';
+    else if (type === 'chaser' && this.canSpawnVine() && Math.random() < Config.enemy.vine.spawnChance) type = 'vine';
     return this.spawnEnemy(type, egg.position, egg);
   }
 
@@ -1585,8 +1649,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return alive < Config.enemy.vine.maxAlive;
   }
 
-  spawnEnemy(type, position, homeEgg = null) {
-    if (!this.canSpawnEnemy()) return null;
+  // ignoreCap: enemies a boss sends itself (the floodgate mother's tadpole lines) appear even when the field is full.
+  spawnEnemy(type, position, homeEgg = null, { ignoreCap = false } = {}) {
+    if (!ignoreCap && !this.canSpawnEnemy()) return null;
     if (type === 'sniper') {
       const maxSnipers = this.elapsed >= 210
         ? Config.enemy.sniper.maxAliveDuringRush
@@ -1601,7 +1666,200 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.scene.add(enemy.object);
     this.enemies.push(enemy);
     this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
+    if (type === 'footprint') this.onFootprintSpawned();
+    if (type === 'crier') this.onCrierSpawned();
+    if (type === 'hand') this.onHandSpawned();
+    if (type === 'rootsucker') this.onRootsuckerSpawned();
     return enemy;
+  }
+
+  shouldHatchFootprint() {
+    const cfg = Config.enemy.footprint;
+    if (!this.footprintsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'footprint') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onFootprintSpawned() {
+    this.footprintStats.spawned += 1;
+    if (this.footprintHintShown) return;
+    this.footprintHintShown = true;
+    this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6);
+  }
+
+  shouldHatchCrier() {
+    const cfg = Config.enemy.crier;
+    if (!this.criersActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'crier') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onCrierSpawned() {
+    this.crierStats.spawned += 1;
+    if (this.crierHintShown) return;
+    this.crierHintShown = true;
+    this.showMessage('鳴きが孵った。膨らんで鳴くと、周りの卵が早く孵る\n鳥形態の急降下なら一撃で潰せる', 3.6);
+  }
+
+  // 鳴く前の予兆。体が膨らむのに合わせて、足元に届く範囲の輪を出す。
+  onCrierSwell(crier) {
+    const cfg = Config.enemy.crier;
+    this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.32, cfg.swellSeconds);
+  }
+
+  // 鳴き声: 範囲内の卵（ボスは除く）の孵化を早め、若い卵は育てる。
+  onCrierCry(crier) {
+    const cfg = Config.enemy.crier;
+    const radiusSq = cfg.cryRadius * cfg.cryRadius;
+    let hurried = 0;
+    for (const egg of this.eggs) {
+      if (egg.dead || egg.isMother || horizontalDistanceSq(crier.position, egg.position) > radiusSq) continue;
+      if (egg.mature) egg.hatchTimer -= cfg.hatchAdvanceSeconds;
+      else egg.age += cfg.maturityAdvanceSeconds;
+      this.spawnHitSpark(egg.position, CRIER_RING_COLOR);
+      hurried++;
+    }
+    this.crierStats.cries += 1;
+    this.crierStats.eggsHurried += hurried;
+    this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.78, 0.5);
+    this.spawnRingEffect(crier.position, cfg.cryRadius * 0.5, 0xffffff, 0.5, 0.34);
+    const distanceSq = horizontalDistanceSq(crier.position, this.player.position);
+    if (distanceSq < 40 * 40) {
+      if (Config.audio.newSfx) this.playSfx('crierCry', { volume: 0.55, cooldown: 0.6 });
+      else this.playSfx('motherRelease', { volume: 0.32, cooldown: 0.6 });
+    }
+  }
+
+  shouldHatchHand() {
+    const cfg = Config.enemy.hand;
+    if (!this.handsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'hand') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onHandSpawned() {
+    this.handStats.spawned += 1;
+    if (this.handHintShown) return;
+    this.handHintShown = true;
+    this.showMessage('手が孵った。近づくと腕を伸ばして掴みかかる\n掴まれたら、鳥形態に変身すれば振りほどける', 3.6);
+  }
+
+  // 腕を伸ばしはじめた（予兆）。足元に届く範囲の輪を出す。
+  onHandWindup(hand) {
+    this.handStats.windups += 1;
+    this.spawnRingEffect(hand.position, Config.enemy.hand.reach, HAND_RING_COLOR, 0.34, Config.enemy.hand.windupSeconds);
+  }
+
+  onHandMiss() {
+    this.handStats.misses += 1;
+  }
+
+  onPlayerGrabbed(hand) {
+    this.handStats.grabs += 1;
+    this.handGrabStartedAt = this.elapsed;
+    this.spawnRingEffect(this.player.position, 1.6, HAND_RING_COLOR, 0.8, 0.4);
+    this.shake = Math.max(this.shake, 0.25);
+    if (Config.audio.newSfx) this.playSfx('handGrab', { volume: 0.8, cooldown: 0.3 });
+    this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8);
+  }
+
+  onPlayerReleased(hand, reason) {
+    if (reason === 'shaken') this.handStats.shaken += 1;
+    else if (reason === 'timeout') this.handStats.timeouts += 1;
+    else this.handStats.freed += 1;
+    this.handStats.heldSeconds += Math.max(0, this.elapsed - (this.handGrabStartedAt ?? this.elapsed));
+    if (reason === 'shaken') {
+      this.spawnParticleBurst(this.player.position, 24, HAND_RING_COLOR, 3.2, 0.45, 0.5);
+      this.playSfx('enemyDie', { volume: 0.4, cooldown: 0.2 });
+    }
+  }
+
+  shouldHatchRootsucker() {
+    const cfg = Config.enemy.rootsucker;
+    if (!this.rootsuckersActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'rootsucker') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onRootsuckerSpawned() {
+    this.rootsuckerStats.spawned += 1;
+    if (this.rootsuckerHintShown) return;
+    this.rootsuckerHintShown = true;
+    this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6);
+  }
+
+  onRootsuckerRooted(rootsucker) {
+    this.rootsuckerStats.rooted += 1;
+    const cfg = Config.enemy.rootsucker;
+    this.spawnRingEffect(rootsucker.position, cfg.dryRadiusStart, ROOTSUCKER_RING_COLOR, 0.8, 0.5);
+    this.spawnDust(rootsucker.position, 0xb98a4f);
+    if (Config.audio.newSfx && horizontalDistanceSq(rootsucker.position, this.player.position) < 40 * 40) {
+      this.playSfx('rootDry', { volume: 0.6, cooldown: 0.5 });
+    }
+  }
+
+  // 吸水根の乾いた円のどれかの中か。人間形態の MP 回復を止めるのに使う（Player.updateFormResources）。
+  isOnDryGround(position) {
+    if (!this.rootsuckersActive) return false;
+    for (const enemy of this.enemies) {
+      if (enemy.type === 'rootsucker' && enemy.coversDryGround(position)) return true;
+    }
+    return false;
+  }
+
+  // 乾いた地面で MP が止まっている時間を数え、初めて止まったときに一言出す。
+  updateDryGround(dt) {
+    const player = this.player;
+    if (!player.onDryGround || player.form !== 'human' || player.mp >= player.maxMp) return;
+    this.rootsuckerStats.drySeconds += dt;
+    this.rootsuckerStats.dryMpLost += player.humanRegenMp * (1 - Config.enemy.rootsucker.dryRegenScale) * dt;
+    if (this.dryGroundHintShown) return;
+    this.dryGroundHintShown = true;
+    this.showMessage('乾いた地面ではMPが回復しない', 2.2);
+  }
+
+  // 足跡がなぞる道を記録する。足跡が場にいるあいだは、その道をプレイヤーの足元に薄い印で残す。
+  updatePlayerTrail(dt) {
+    const cfg = Config.enemy.footprint;
+    const player = this.player;
+    const grounded = player.form !== 'bird' && !player.dead;
+    this.playerTrail.record(this.elapsed, player.position.x, player.position.z, grounded);
+    if (!cfg.showTrail || !grounded) return;
+    this.trailMarkTimer -= dt;
+    if (this.trailMarkTimer > 0) return;
+    let anyFootprint = false;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'footprint') { anyFootprint = true; break; }
+    if (!anyFootprint) return;
+    this.trailMarkTimer = cfg.trailMarkInterval;
+    this.spawnTrailMark(player.position, cfg.trailMarkSeconds);
+  }
+
+  spawnTrailMark(position, seconds) {
+    this.trailMarkGeometry ??= new THREE.CircleGeometry(0.26, 10);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xa9c2dc, transparent: true, opacity: 0.42, depthWrite: false, toneMapped: false
+    });
+    const mark = new THREE.Mesh(this.trailMarkGeometry, material);
+    mark.rotation.x = -Math.PI / 2;
+    mark.scale.set(0.75, 1.15, 1);
+    mark.position.set(position.x, 0.04, position.z);
+    mark.renderOrder = 2;
+    this.scene.add(mark);
+    this.effects.push({
+      object: mark,
+      life: seconds,
+      duration: seconds,
+      dispose: false,
+      update(effect, dt) {
+        effect.life -= dt;
+        material.opacity = 0.42 * Math.max(0, effect.life / effect.duration);
+        if (effect.life <= 0) material.dispose();
+      }
+    });
   }
 
   ensureEggsExist() {
@@ -1663,8 +1921,26 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.scratchEggs.length = 0;
     const radiusSq = radius * radius;
     for (const egg of this.eggs) if (!egg.dead && horizontalDistanceSq(position, egg.position) <= radiusSq) this.scratchEggs.push(egg);
-    if (includeMother && this.motherEgg && !this.motherEgg.dead && horizontalDistanceSq(position, this.motherEgg.position) <= radiusSq) this.scratchEggs.push(this.motherEgg);
+    if (includeMother) {
+      for (const mother of this.getBossTargets()) if (horizontalDistanceSq(position, mother.position) <= radiusSq) this.scratchEggs.push(mother);
+    }
     return this.scratchEggs;
+  }
+
+  // Boss bodies that can be hit and targeted: the swarm mother's fallen sisters are left out until they stand up.
+  getBossTargets() {
+    return this.bossEggs.filter((mother) => !mother.dead && !mother.swarmDown);
+  }
+
+  // The boss bar: the swarm mother's three sisters share one bar (a fallen sister counts as empty).
+  getBossHpRatio() {
+    let hp = 0;
+    let maxHp = 0;
+    for (const mother of this.bossEggs) {
+      maxHp += mother.maxHp;
+      if (!mother.dead) hp += Math.max(0, mother.hp);
+    }
+    return maxHp > 0 ? hp / maxHp : 0;
   }
 
   onEggDestroyed(egg, source) {
@@ -2285,6 +2561,155 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(mother.position, 3.2, 0x9aa3a8, 0.5, 0.35);
   }
 
+  // Floodgate mother (src/bosses.js): bitten while submerged, surfaces stunned on the third bite, sends tadpole lines.
+  onFloodgateBite(mother, bites, needed) {
+    this.floodgateStats.bites += 1;
+    this.spawnRingEffect(mother.position, 3.4, 0x5fd0ff, 0.7, 0.4);
+    this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
+    this.showMessage(`噛みついた ${bites}/${needed}`, 0.9);
+  }
+
+  onFloodgateSurface(mother, seconds) {
+    this.floodgateStats.bites += 1;
+    this.floodgateStats.surfaces += 1;
+    this.spawnBurstEffect(mother.position, 6, 0x9ff3ff);
+    this.spawnRingEffect(mother.position, 4.2, 0xffe066, 0.9, 0.6);
+    this.playSfx('motherRelease', { volume: 0.7, cooldown: 0.4 });
+    this.showMessage(`${getBossName(this.stage)}が浮上して気絶した！ 今のうちに人間形態で撃とう`, Math.min(3, seconds));
+  }
+
+  onFloodgateSubmerge(mother) {
+    this.spawnRingEffect(mother.position, 3.6, 0x5fd0ff, 0.6, 0.5);
+    this.showMessage(`${getBossName(this.stage)}がまた潜った`, 1.2);
+  }
+
+  onFloodgateStream(mother, count) {
+    const cfg = Config.boss.floodgateMother;
+    if (!this.floodgateHintShown) {
+      this.floodgateHintShown = true;
+      this.showMessage(`${getBossName(this.stage)}は水に潜っていて攻撃が効かない
+魚形態で3回噛みつくと浮上する`, 3.4);
+    }
+    this.floodgateStats.streams += 1;
+    const { direction, points } = floodgateStreamPoints(mother.position, this.player.position, count, cfg.streamStart, cfg.streamSpacing);
+    for (const point of points) {
+      const position = new THREE.Vector3(point.x, 0, point.z);
+      if (!this.isWaterPosition(position)) break;
+      const tadpole = this.spawnEnemy('tadpole', position, null, { ignoreCap: true });
+      tadpole.position.set(point.x, 0, point.z);
+      tadpole.stream = { x: direction.x, z: direction.z, speed: cfg.streamSpeed, timer: cfg.streamSeconds, damage: cfg.streamDamage };
+      // A line is a passing hazard: it dissolves a little after it stops instead of growing into frogs.
+      tadpole.lifeTimer = cfg.streamSeconds + cfg.streamLinger;
+      tadpole.matureTimer = Infinity;
+      this.floodgateStats.tadpoles += 1;
+    }
+    this.spawnRingEffect(mother.position, 3.2, 0x5fd0ff, 0.55, 0.45);
+  }
+
+  // Swarm mother (src/bosses.js): three sisters around the chosen spot, each with hpShare of the stage's mother HP,
+  // joined by threads of light.
+  spawnSwarmMother(center, count) {
+    const cfg = Config.boss.swarmMother;
+    const limit = Config.map.radius - 3;
+    const points = swarmPositions(center, count, cfg.spread, Math.random() * TAU,
+      (point) => Math.hypot(point.x, point.z) > limit || this.isBlockedByBuilding(point, 3));
+    const members = points.map((point) => {
+      const mother = this.spawnEgg(new THREE.Vector3(point.x, 0, point.z), true);
+      mother.maxHp *= this.stage.motherHpScale * cfg.hpShare;
+      mother.hp = mother.maxHp;
+      return mother;
+    });
+    linkSwarm(members);
+    this.spawnSwarmThreads(members);
+  }
+
+  // A sister fell: the threads to her turn red and a ring under her shrinks until she stands up again.
+  onSwarmMemberDown(mother, standing, seconds) {
+    this.playSfx('eggBreak', { volume: 0.8, cooldown: 0.1 });
+    this.spawnBurstEffect(mother.position, 5, 0xffd56b);
+    this.showMessage(`群れの母が1体倒れた\n${seconds}秒以内に残り${standing}体を倒せ`, 2.4);
+  }
+
+  onSwarmMemberRevive(mother) {
+    this.playSfx('motherCharge', { volume: 0.7, cooldown: 0.3 });
+    this.spawnRingEffect(mother.position, 4.2, 0xff5a5a, 0.85, 0.6);
+    this.showMessage('群れの母が起き上がった', 1.6);
+  }
+
+  // The last sister fell: the fallen ones break with her.
+  onSwarmMemberFinish(mother) {
+    this.scene.remove(mother.object);
+    this.spawnBurstEffect(mother.position, 7, 0xffd56b);
+  }
+
+  spawnSwarmThreads(members) {
+    const group = new THREE.Group();
+    const up = new THREE.Vector3(0, 1, 0);
+    const from = new THREE.Vector3();
+    const to = new THREE.Vector3();
+    const axis = new THREE.Vector3();
+    const threads = members.map((mother, i) => {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffe6a0, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false
+      });
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1, 6, 1, true), material);
+      group.add(beam);
+      return { a: mother, b: members[(i + 1) % members.length], beam, material };
+    });
+    const timers = members.map((mother) => {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xff5a5a, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false, toneMapped: false
+      });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(2.6, 3.1, Config.performance.effectSegments), material);
+      ring.rotation.x = -Math.PI / 2;
+      ring.visible = false;
+      group.add(ring);
+      return { mother, ring };
+    });
+    group.renderOrder = 6;
+    this.scene.add(group);
+    const reviveSeconds = Config.boss.swarmMother.reviveSeconds;
+    let time = 0;
+    this.effects.push({
+      object: group,
+      life: 1,
+      update(effect, dt) {
+        time += dt;
+        if (members.every((mother) => mother.dead)) {
+          effect.life = 0;
+          return;
+        }
+        for (const thread of threads) {
+          thread.beam.visible = !thread.a.dead && !thread.b.dead;
+          if (!thread.beam.visible) continue;
+          const broken = thread.a.swarmDown || thread.b.swarmDown;
+          from.set(thread.a.position.x, 2.2, thread.a.position.z);
+          to.set(thread.b.position.x, 2.2, thread.b.position.z);
+          axis.subVectors(to, from);
+          const length = axis.length();
+          thread.beam.position.copy(from).addScaledVector(axis, 0.5);
+          thread.beam.scale.set(1, Math.max(0.01, length), 1);
+          if (length > 0.001) thread.beam.quaternion.setFromUnitVectors(up, axis.normalize());
+          thread.material.color.setHex(broken ? 0xff5a5a : 0xffe6a0);
+          thread.material.opacity = broken ? 0.4 + Math.sin(time * 10) * 0.25 : 0.45 + Math.sin(time * 3) * 0.12;
+        }
+        for (const timer of timers) {
+          timer.ring.visible = timer.mother.swarmDown && !timer.mother.dead;
+          if (!timer.ring.visible) continue;
+          timer.ring.position.set(timer.mother.position.x, 0.2, timer.mother.position.z);
+          timer.ring.scale.setScalar(0.35 + 0.65 * clamp(timer.mother.swarmDownTimer / reviveSeconds, 0, 1));
+        }
+      }
+    });
+  }
+
+  // Hitting a boss that takes no damage right now: say why, at most every few seconds.
+  onBossImmuneHit(mother) {
+    if (!mother.floodgate || this.elapsed < this.floodgateImmuneHintTimer) return;
+    this.floodgateImmuneHintTimer = this.elapsed + 4;
+    this.showMessage('潜っていて効かない。魚形態で噛みつこう', 1.4);
+  }
+
   // An egg swallowed by the boss vanishes without dropping XP or items.
   consumeEggForBoss(egg) {
     egg.dead = true;
@@ -2629,6 +3054,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.state = 'levelup';
     this.settleCamera();
     this.playSfx('levelUp', { volume: 0.85 });
+    if (Config.audio.cueVoices) this.playVoice('levelUp', { volume: 0.8, cooldown: Config.audio.levelUpVoiceCooldown });
     this.hud.showLevelUp(pickUpgradeChoices(), (upgrade) => {
       this.playSfx('buttonConfirm', { volume: 0.75 });
       upgrade.apply(this);

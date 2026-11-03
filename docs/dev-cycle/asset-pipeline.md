@@ -11,7 +11,8 @@
 | Stable Diffusion WebUI Forge | `D:\AI\webui_forge_cu121_torch231` | **画像生成の本命**。SDXL・Illustrious・Pony のモデル、LoRA、ControlNet（AnyTest）、タグ付け拡張が入っている | API 起動を確認済み（2026-10-21）。`scripts/assets/start-forge-api.bat` |
 | ComfyUI | `D:\AI\ComfyUI` | 細かいワークフロー（背景透過、連続生成、将来の動画生成） | 2024年末の版。起動方法を初回に確認。動かなければ更新か入れ直しで可 |
 | A1111 | `D:\AI\A1111` | SD1.5 しかないので基本は使わない | 予備 |
-| Hunyuan3D 2 | `D:\AI\3D_local` | 画像から3Dモデル | 形状のみ API で使用（2026-10-26、`scripts/assets/start-hunyuan-api.bat`）。テクスチャ生成は未検証 |
+| Tripo Studio（Web、有料のクレジット） | https://studio.tripo3d.ai（Claude in Chrome から操作） | 画像から3Dモデル（テクスチャ・四角形の面） | **3D はこれだけを使う**。生成はユーザーの承認後（下の「3Dモデル（Tripo）」） |
+| ~~Hunyuan3D 2~~ | `D:\AI\3D_local` | 画像から3Dモデル | **使わない**（2026-10-29、利用条件のため。試作にも使わない） |
 | Blender 5.1 | `C:\Program Files\Blender Foundation\Blender 5.1` | 3Dの整形、ポリゴン削減、ターンテーブル画像 | 使用可 |
 | Stable Audio 3 Small-SFX | `D:\0001_App_Dev\audioMCP` | 効果音 | 認証済み、生成確認済み |
 | Irodori-TTS 4.1 | `D:\AI\Irodori-TTS-v4_1` | キャラクター音声 | 生成確認済み。v4（`D:\AI\Irodori-TTS-v4`）は旧版なので使わない |
@@ -20,7 +21,7 @@
 | Bionic（LM Studio） | `D:\AI\Bionic` | ローカルLLM | 文章は自分で書くので基本は使わない |
 | FFmpeg | `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-*\bin` | 音声の後処理、動画の編集・書き出し | 使用可 |
 
-ポートの重複に注意: Mesh Avatar Studio は 5173、Irodori の画面は 7860/7861、Stable Audio の画面は 7860、Hunyuan3D は 8080/8081、Forge は 7860。ゲームの開発サーバーは 5183 を使う。
+ポートの重複に注意: Mesh Avatar Studio は 5173、Irodori の画面は 7860/7861、Stable Audio の画面は 7860、Forge は 7860。ゲームの開発サーバーは 5183 を使う。
 新しいアプリを入れたら、この表に追加する。
 
 ## 共通の流れ
@@ -32,7 +33,7 @@
 
 ## 画像生成（イラスト、3Dモデルの元絵）
 
-- 本命は Forge。`webui\webui-user.bat` は書き換えず、`scripts/assets/start-forge-api.bat`（`--api --nowebui --port 7865`）をバックグラウンドで起動する。PowerShell からは `cmd /c "D:\0001_App_Dev\search_survive_daily\scripts\assets\start-forge-api.bat"`。
+- 本命は Forge。`webui\webui-user.bat` は書き換えず、`scripts/assets/start-forge-api.bat`（`--api --nowebui --port 7865`）をバックグラウンドで起動する。PowerShell からは `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive\scripts\assets\start-forge-api.bat > D:\0001_App_Dev\search_survive\tmp\forge-api.log 2>&1"'`（2026-10-29 から main のフォルダ。準備完了まで約3分だった）。
   - API が応答するまで約2分。`curl http://127.0.0.1:7865/sdapi/v1/sd-models` が返れば準備完了。
   - 起動中に `stable-diffusion-webui-dataset-tag-editor` の `ModuleNotFoundError` が出るが、API には影響しない。
   - 起動用の .bat は CRLF・絶対パスで書く（LF のままや `cd /d` 頼りだと `environment.bat` が見つからず失敗した）。
@@ -71,25 +72,25 @@
 
 判断の基準: 生成した絵は手本と並べて見比べ、(1) 光の向き（逆光か）、(2) 彩度の置き方（世界は低彩度、敵は赤だけ）、(3) 塗り（厚塗り・細密）の3点が合わなければ使わない。
 
-## 3Dモデル（Hunyuan3D 2.0 mini turbo）
+## 3Dモデル（Tripo）
 
-- 場所: `D:\AI\3D_local`（説明は `README-Hunyuan3D.md`）。
-- 自動化には API サーバーを使う（画面は使わない）。環境変数は `Hunyuan3D-Environment.bat` を `call` してから起動する:
-  ```bat
-  call D:\AI\3D_local\Hunyuan3D-Environment.bat
-  cd /d D:\AI\3D_local\Hunyuan3D\Hunyuan3D-2
-  "%HY3D_APP%\python_standalone\python.exe" -s api_server.py --host 127.0.0.1 --port 8081 --model_path tencent/Hunyuan3D-2mini
-  ```
-  low VRAM の起動オプションが api_server.py で使えるかは初回に確認する。足りなければ gradio_app.py の起動方法（`Start-Hunyuan3D.bat`）を参考に、小さな Python スクリプトから `hy3dgen` を直接呼ぶ。
-- `POST /generate` に JSON `{"image": <base64 PNG>, "seed": 1234, "octree_resolution": 256, "num_inference_steps": 5, "face_count": 8000, "texture": false}` を送ると GLB が返る。
-- テクスチャ生成は未検証（README 参照）。まずは形状だけを作り、色は Blender で頂点カラーかゲーム側のマテリアルで付ける。テクスチャ生成を試す日は、所要時間とVRAM使用量を記録する。
-- 終了は起動したプロセスを止める（`Stop-Hunyuan3D.bat` はインストール時の処理用）。
-- **2026-10-26 に動作確認（形状のみ）**:
-  - 起動: PowerShell から `Start-Process -WindowStyle Hidden cmd -ArgumentList '/c "D:\0001_App_Dev\search_survive_daily\scripts\assets\start-hunyuan-api.bat"'`。ログは `tmp/hunyuan-api.log`。約1分で `curl http://127.0.0.1:8081/status/x` が 200 を返す（low VRAM の指定なしで 8GB に収まった）。
-  - 生成: `node scripts/assets/hunyuan-img2glb.mjs <出力先> <画像.png> ...`。背景は API 側で自動で抜く（白背景の元絵で問題なし）。**1個 4〜7 秒**。出力は 23万〜68万三角形・7〜18MB と重いので、必ず Blender で削る。
-  - 終了: `Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like 'D:\AI\3D_local\*' } | % { Stop-Process -Id $_.ProcessId -Force }`
-  - 気づいたこと: 平たい物（葉1枚）は立体にすると薄く崩れるので、元絵の段階で厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
-  - `.bat` は Write ツールで書いてから CRLF に変換する（シェルの printf で書いたら `\3`・`\0`・`\t` が化けた。2026-10-26 にも1回起きた）。
+**3D は Tripo だけを使う。Hunyuan3D（`D:\AI\3D_local`）は利用条件（EU・英国・韓国での使用・表示の禁止）のため、2026-10-29 のユーザーの判断で使わない**。起動・試作もしない。
+
+- 進め方（定期のサイクルと、承認を受けたチャットで分ける）:
+  1. **定期のサイクル（月・木）**: Tripo に渡す元絵を作る（白背景、1体1枚か、敵は三面図）。`assets_src/3d/YYYY-MM-DD-<名前>/` に置き、devlog の「判断待ち」に「どの絵を何体・設定・見込みのクレジット」を書く。**Tripo には触らない**（外部へのアップロードとクレジット消費になるため）。
+  2. **ユーザーが承認したチャット**: Claude in Chrome（ユーザーのログイン済み Chrome）で Tripo Studio を操作して生成し、GLB をダウンロードする。生成前に画面の表示額を確かめ、承認された体数・クレジットを超えない。アップロードできるのはセッションのフォルダ（作業ツリーかスクラッチパッド）のファイルだけ。アプリ内ブラウザはアップロードに使えない。拡張がつながらないときは Claude アプリの再起動で直った。
+  3. **整形と組み込み（どちらでも）**: Blender で骨・モーション・ポリゴン削減（下の「3Dの整形（Blender）」と `scripts/blender/enemy_anim_lib.py`）、`config.js` の切り替えでモックに戻せる形でゲームに入れる。生成物は asset-ledger.md に記録する（Tripo の設定、元絵、クレジット）。
+- 設定（2026-10-26〜28 ユーザー指定）: Smart Mesh **P2.0**、面は **Quad（四角形）**（リグやモーションを付けやすい）。敵は **2000 面**（ゲームで約 3300〜4000 三角形）、小さい敵は 1500 面でも足りる、ボスは 8000 面まで。三面図があれば **Multiview**（前・左・後ろ・右に切り分けて渡す）。テクスチャあり。
+- 費用: 1体 100 クレジット＋テクスチャ 20（最初の見積もり 55 は外れた）。生成前に画面の表示額を見る。
+- Tripo のくせ（下の `strip-hanging-strings.py`・`paint_eye_eggs.py` は 2026-10-29 時点でブランチ `claude/enemy-3d-implementation-0a21a1` にだけあり、main にはまだ無い）:
+  - 絵から色を読めなかった所（細いひげ、花びらの裏など）を灰色で塗る。Blender の `enemy_anim_lib`（`is_unread_gray`・`delete_faces`・`repaint_faces`）で消すか塗り直す。
+  - 細い垂れ糸がある絵は糸を壁（円柱）にしてしまう。`scripts/assets/strip-hanging-strings.py` で糸を消してから渡す。
+  - テクスチャが error.11000 で通らないことがある。色なしで書き出し、Blender で塗る（`scripts/blender/paint_eye_eggs.py`）。
+- 元絵の選び方（Hunyuan3D の試作で分かったこと。Tripo でも同じ）: 平たい物（葉1枚）は立体にすると薄く崩れるので、厚みのある形を選ぶ。ゲームのカメラは上から遠いので、**表面の模様（渦巻きなど）は見えない。輪郭で見分けられる形を選ぶ**。
+- 元絵の商用条件: Forge の juggernautXL などは asset-ledger.md で「要確認」。商用の素材にする元絵は、条件を確かめたモデルか Codex（GPT Image）で描く。
+  - 2026-11-02: 商用 ○ の **`sd_xl_base_1.0`** でも敵の元絵は描ける（DPM++ 2M、30 steps、CFG 6、832×1216 で1枚 25〜30 秒。Forge の起動は約3分）。灰色と黒に赤だけ、という敵の画風に自然に寄った。
+  - 敵の体: `thorny vines` だと肩や背中から細い枝・糸が伸びる（Tripo が壁にしやすい）。`thick black vine bands wrapped tightly`・`compact silhouette` にし、否定に `antlers, horns, branches, tendrils, hair, wings, thin strands, floating strings` を入れると消えた。`A-pose, symmetrical, isolated on plain white background, no shadow` で正面の全身が出やすい（背景は薄い灰色になることが多い）。
+  - SDXL base の三面図（`character turnaround sheet, front view, side view and back view`）は、向きごとに別の生き物になり Multiview には使えなかった。Multiview が要る敵は、正面の1枚を Tripo に渡すか、別の方法（Codex など）で三面図を描く。
 
 ## 3Dの整形（Blender）
 
@@ -97,6 +98,9 @@
 - やること: 原点を接地面の中心へ、Y-up、ゲームの単位に合わせた大きさ、ポリゴン数の削減（目安: 拾うアイテム 500〜1500、敵 3000〜8000）、glTF 出力。
 - スクリプトは `scripts/assets/blender/` に置く。
 - 拾うアイテム: `blender -b --python scripts/assets/blender/prep-pickups.py -- <GLBのフォルダ> <出力先> <確認画像.png> [三角形の数]`。ファイル名の `-` より前（`hp-2601.glb` なら `hp`）を種類として `pickup_<種類>.glb` を書き出し、色を付けた並びの確認画像（Workbench）も出す。結晶（burst）だけ面を平らに塗る。5個で約20秒。
+  - **確認画像のパスは絶対パスで渡す**。相対パス（`out/x.png`）だと Blender が `C:\out\` に書き出した（2026-10-29）。
+  - 同じ種類の候補を比べるときは、候補ごとにフォルダを分けて1つずつ実行する（出力名が種類で決まるので上書きされる）。
+  - 元絵の言葉: 「翼（wings）」を入れると、2回とも目のある鳥の顔が出た（10-26、10-29）。翼のある形は避けるか、`bird, eyes, face` を否定に入れる。馬蹄形（horseshoe）は正面向きの U がそのまま立体になり、上から見ても読める。
 - 単色で描く小物には、ゲーム側で陰影の出るマテリアル（`MeshStandardMaterial`、発光は弱め 0.16）を使う。光を受けないマテリアルだと形が影絵になる。
 
 ## 効果音（Stable Audio 3 Small-SFX）
@@ -114,7 +118,11 @@
 - 後処理: 無音のトリム、短いフェード、ラウドネスの正規化。FFmpeg は `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-*\bin` にある。
 - 一括生成（2026-10-27 追加）: `scripts/assets/stable-audio-batch.py`。`stable-audio-3` フォルダで `.venv/Scripts/python.exe <スクリプト> <jobs.json> <出力フォルダ>`。jobs.json の書き方はスクリプトの先頭。モデルの読み込み約 20 秒、1本 1〜2 秒（3.4 秒の音でも）、GPU は最大 2.1GB。処理が終わるとプロセスごと終わるので、止める作業は要らない。
 - **長さは 2 秒以上で作る**（2026-10-27）。1.2 秒を指定したら4本とも、半分以上が振り切れた白色雑音になった。2 秒・3 秒は正常。短い音は 2〜3 秒で作って後から切る。
+- **プロンプトは短く、音そのものを書く**（2026-11-03）。`A strange creature's eerie warbling call, a swollen throat croak rising into ...` のような長く比喩の多いプロンプト（2.5 秒）は、8本とも最初から最後まで同じ大きさの雑音になった（振り切れはないので、0.1 秒ごとの音量が平らなこと・周波数の絵が一面同じ色なことで見分ける）。`A monster croaking call, a deep frog croak that swells and ends in a short howl, creature vocalization`（3 秒）のように短くすると正常。同じ日の手の掴み（2 秒、具体的な音の並び）は1回目で正常だった。生成は 3 音 × 4 本で約 1 分 45 秒（読み込み込み）。
+- 周波数の見比べ画像は、各候補を `showspectrumpic=s=400x200:legend=0:scale=log:fscale=log` で描き、`xstack` で並べると1枚で比べられる。
 - 候補の選び方（音を聞けない自動のサイクル用）: ffmpeg の `ebur128` でラウドネス、`silencedetect=n=-45dB:d=0.15` で途中の無音、`showspectrumpic` で周波数の絵、numpy で 0.1 秒ごとの音量の推移と主な周波数を見る。振り切れ（|x|>0.99 の割合）が出ていたら失敗。既存の効果音の大きさは -18〜-10 LUFS（xp_pickup -17.8、egg_break -12.4、mother_charge -10.3）なので、その範囲に合わせる。
+- **音量のそろえ方（2026-11-01、B2-2）**: `node scripts/assets/normalize-sfx.mjs` で `assets/audio/sfx/*.wav` を役割ごとの目標（よく鳴る音・メニュー -18、操作への返事 -15、大技とボス -12 LUFS）にそろえて `assets/audio/sfx-normalized/` に書き出す（数秒で終わる）。新しい効果音を足したら、`sfx/` に置いて `FILE_ROLES` に役割を書き、このスクリプトを流し直す（役割の無いファイルは飛ばして警告が出る）。ゲームは `Config.audio.normalizedSfx` が true なら `sfx-normalized/` を使い、無いファイルは `sfx/` から読む。`--dry` で測るだけ。
+  - 1 秒前後の音は loudnorm が効きにくいので、目標との差を一定の増減でかけ、`alimiter=limit=0.89:level=false:latency=1` で振り切れを止めている。大きく持ち上げる音（burst_spread +4.3 dB）はリミッターで頭が削られ、目標に 2 dB ほど届かない（-14.1）。
 
 ## 音声（Irodori-TTS v4.1）
 
@@ -140,6 +148,9 @@
     - 参照音声があるとき、声質は手本から取られるので、`caption` は空か短くし、台詞ごとの `style`（演技の指定）で感情を付ける。手本の調子が出力に移りやすいので、手本には落ち着いた声と強めの声を混ぜる。
     - Irodori は参照音声を -16 LUFS にそろえてから使う（`--ref-normalize-db` の既定値）。合計 120 秒まで。短い台詞 4 本（参照 3 本）で 1 分 7 秒（読み込み込み）。
     - 手本の候補は `scripts/assets/voices/2026-10-24-ref-candidates.json`（3人×7本、各 6〜10 秒）で作った。ユーザーが選んだものを `assets_src/voice/refs/<キャラ>/` に置いてある（git 対象外。消えたら同じ台詞ファイルとシードで作り直せる）。新しい声はこの手本で作る（例: `scripts/assets/voices/2026-10-24-ref-remake.json`）。
+      - 2026-10-30: main で作業するようになってから、このフォルダに手本が無かった（git 対象外のため）。以前の worktree `D:\0001_App_Dev\search_survive_daily\assets_src\voice\refs\` からコピーした。無ければ同じ場所を見る。
+      - 9 台詞×3 シード（27 本）の生成は、モデルの読み込み込みで約 4 分。文字起こし（Whisper small）とアナライザーはそれぞれ 2〜3 分。
+      - 前後の余分な音は「0.2 秒未満のかたまりで、隣と 0.25 秒以上離れているもの」を端から落とすと、台詞を削らずに取れた（10-30 の 9 本）。
     - 参照ありで短い掛け声 54 本: 7 分 15 秒（参照なしより遅い）。参照なしのときと違い、後ろに余計な語が付く候補はなく、長さも短くまとまった。
     - 一括の後処理を bash で書くとき、作業ファイルを `rm $tmp` で消すと安全チェックで止められる。一時ファイルは scratchpad の固定パスに上書きしていく。
   - `configure()` が作業フォルダを Irodori に変えるので、引数のパスはスクリプト側で先に絶対パスにしている。
@@ -202,6 +213,10 @@
      - FFmpeg の drawtext にドライブ文字付きのフォントのパスを渡すとコロンでフィルタが壊れるので、Windows のフォントフォルダを作業フォルダにして `YuGothB.ttc` を名前だけで渡している。
      - 母卵はプレイヤーから遠くに出現するので、「出現」の場面に母卵自体は映らない。16:9 は上下を切るので HUD の上端（タイマー）が欠ける。
   - 確認はコマを並べた一枚で: `ffmpeg -i highlight-9x16.mp4 -vf "fps=1/2.6,scale=270:480,tile=6x2" -frames:v 1 contact.png`
+- **週の進捗素材（2026-10-31、B6-2）**:
+  - 並べ画像: `python scripts/promo/weekly-grid.py promo/YYYY-MM-DD/weekly-grid.png "見出し" <画像> "名前|一言" ...`（devlog のスクリーンショットを 16:10 に切って2列に並べる。確認用に HP を 9999 にした画面は HUD に値が写るので注意）。
+  - ボスの場面の録画: `bot-play.mjs --runs 1 --stage N --start 172 --seed 3 --record promo/YYYY-MM-DD/raw/chN`（ボスが出る 180 秒の少し前から実時間で録る。1章あたり約1分）。ボットは新種から逃げることが多いので、新種の場面は確認用の台本（敵と卵を置く）で録る方が早い。
+  - 縦動画: `MONTAGE_TITLE="見出し" node scripts/promo/montage.mjs out.mp4 "録画.webm|開始秒|終了秒|一言" ...`。16:9 を縦の真ん中に置く形（中央を縦に切り取ると、画面の端にいるボスが切れる）。一言に半角の `:` と `'` は使えない（消される）。区切りは全角の空白で。場面を選ぶ前に `ffmpeg -ss 15 -i x.webm -t 24 -vf "fps=1,scale=320:200,tile=6x4" -frames:v 1 contact.png` でコマを並べて見る。
 - 構成のある動画（トレーラー、紹介動画）は、HyperFrames のスキル（hyperframes、product-launch-video、general-video など）が使えれば使う。
 - **紹介動画の型「ゆるい3人の掛け合い」**（ユーザーが気に入った形）: HyperFrames レシピ `yurui-trio-howto` と、`D:\0001_App_Dev\search_survive_promo\_template-yurui-trio\README.md` の手順で作る。新しい紹介・SNS動画は、まずこのトーン（遊び方の説明中心、物語は一言だけ）で作る。
 - 投稿文の案は日本語で、短い本文、ハッシュタグ候補、添付する素材の一覧を書く。**投稿はしない。**

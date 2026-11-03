@@ -95,7 +95,14 @@ export const Config = {
     // 縛り蔓の声（捕まった瞬間・連打中の力み・振りほどいたとき）。false で出さない（捕まったときは被弾の声になる）。
     vineVoices: true,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
-    newSfx: true
+    // 2026-11-03: crier's cry, hand grab, rootsucker rooting (false = mother_release for the cry, no sound for the other two).
+    newSfx: true,
+    // Effect files with loudness matched by role (assets/audio/sfx-normalized, 2026-11-01). false = original files.
+    normalizedSfx: true,
+    // One-liners added 2026-10-30 when the boss appears, on level-up and at one minute left (false = none, as before).
+    cueVoices: true,
+    // Level-ups come often; the line plays at most once per this many seconds of battle time.
+    levelUpVoiceCooldown: 25
   },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
@@ -284,6 +291,40 @@ export const Config = {
       contactRadius: 3.1,
       contactDamage: 20,
       contactCooldown: 1.1
+    },
+    // Chapter 3's floodgate mother sits in the water. While submerged hits do submergedDamageScale and it sends a line
+    // of tadpoles toward the player every streamInterval seconds. Three fish-form bites make it surface, stunned, for
+    // stunSeconds, taking surfacedDamageScale. Set chapter 3's boss to 'motherEgg' to remove it.
+    floodgateMother: {
+      bitesToSurface: 3,
+      biteReach: 2.4,
+      biteCooldown: 0.8,
+      stunSeconds: 7,
+      submergedDamageScale: 0,
+      surfacedDamageScale: 1.6,
+      firstStreamDelay: 4,
+      streamInterval: 7.5,
+      streamAfterSubmerge: 2,
+      streamCount: 5,
+      streamStart: 3,
+      streamSpacing: 1.5,
+      streamSpeed: 5.5,
+      streamSeconds: 3.2,
+      streamDamage: 9,
+      streamLinger: 5,
+      shoreMargin: 1.35
+    },
+    // Chapter 4's swarm mother is three sisters joined by threads of light, each with hpShare of a mother's HP.
+    // A sister brought to 0 only falls down; unless the rest fall within reviveSeconds she stands up again with
+    // reviveHpRatio of her HP. Only one standing sister at a time charges the shockwave, taking turns.
+    // Set chapter 4's boss to 'motherEgg' to remove it.
+    swarmMother: {
+      count: 3,
+      spread: 6.5,
+      hpShare: 0.45,
+      reviveSeconds: 10,
+      reviveHpRatio: 0.6,
+      handoverDelay: 3
     }
   },
   egg: {
@@ -411,7 +452,101 @@ export const Config = {
     dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
     tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },
     dragonfly: { hp: 46, speed: 7.27, damage: 15, birdDamageMultiplier: 2.2, xp: 10 },
-    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13 }
+    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13 },
+    // 足跡（E8、第2章の新種）。プレイヤーの通った道を delaySeconds 遅れでなぞる（src/footprints.js）。
+    // 鳥形態で飛んだ区間は道が途切れ、そこに来た足跡は見失って lostSpeed でゆっくり寄ってくる。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    footprint: {
+      enabled: true,
+      fromChapter: 2,
+      fromElapsed: 30,
+      chance: 0.16,
+      maxAlive: 6,
+      hp: 30,
+      speed: 7.6,
+      lostSpeed: 1.6,
+      damage: 10,
+      xp: 7,
+      walkAnimationSpeed: 2.6,
+      delaySeconds: 2.6,
+      catchUpRate: 1.3,
+      joinRadius: 6,
+      reachDistance: 1.5,
+      rejoinInterval: 0.5,
+      trailSeconds: 14,
+      trailSampleInterval: 0.1,
+      // プレイヤーの足元に、足跡がなぞる道を薄い印で残す（足跡が場にいるときだけ）
+      showTrail: true,
+      trailMarkInterval: 0.32,
+      trailMarkSeconds: 3.4
+    },
+    // 鳴き（E10、第4章の新種）。動かず、cryInterval ごとに swellSeconds かけて膨らみ、鳴いて
+    // cryRadius 以内の卵の孵化を hatchAdvanceSeconds 早める（まだ若い卵は maturityAdvanceSeconds 育てる）。
+    // 鳥形態の急降下は近くの卵より鳴きを先に狙い、一撃で潰す（birdDiveTarget）。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    crier: {
+      enabled: true,
+      fromChapter: 4,
+      fromElapsed: 40,
+      chance: 0.1,
+      maxAlive: 3,
+      hp: 44,
+      speed: 0,
+      damage: 6,
+      xp: 9,
+      walkAnimationSpeed: 1,
+      cryInterval: 6,
+      swellSeconds: 1.4,
+      swellScale: 0.5,
+      cryRadius: 9,
+      hatchAdvanceSeconds: 3,
+      maturityAdvanceSeconds: 4,
+      birdDiveTarget: true
+    },
+    // 手（E11、第4章の新種）。ゆっくり近づき、reach 以内に入ると windupSeconds かけて腕を伸ばし（予兆）、
+    // 伸ばしきったときに人間形態のプレイヤーが届く所にいれば掴む。掴まれると移動が grabSlow 倍になり、
+    // holdSeconds たつか、手を倒すか、鳥（魚）形態に変身すると離れる。空振り・離したあとは cooldown 秒休む。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    hand: {
+      enabled: true,
+      fromChapter: 4,
+      fromElapsed: 55,
+      chance: 0.1,
+      maxAlive: 3,
+      hp: 52,
+      speed: 1.9,
+      damage: 7,
+      xp: 9,
+      walkAnimationSpeed: 1.2,
+      reach: 5,
+      windupSeconds: 0.8,
+      holdSeconds: 3.5,
+      grabSlow: 0.35,
+      grabDamage: 5,
+      cooldown: 4,
+      firstCooldown: 1.5
+    },
+    // 吸水根（E13、第5章の新種）。動かず、孵って rootSeconds たつと根を張り、足元に乾いた円を作る。
+    // 円の半径は dryRadiusStart から growSeconds かけて dryRadiusMax まで広がる。円の中にいる人間形態の
+    // プレイヤーは MP の回復が dryRegenScale 倍になる（0 で止まる）。倒すと円は消える。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    rootsucker: {
+      enabled: true,
+      fromChapter: 5,
+      fromElapsed: 45,
+      chance: 0.08,
+      maxAlive: 3,
+      hp: 60,
+      speed: 0,
+      damage: 6,
+      xp: 10,
+      walkAnimationSpeed: 1,
+      rootSeconds: 1.5,
+      dryRadiusStart: 3.5,
+      dryRadiusMax: 8,
+      growSeconds: 25,
+      dryRegenScale: 0
+    }
   },
   xp: {
     firstLevel: 18,
@@ -424,10 +559,10 @@ export const Config = {
     orbSpeed: 9
   },
   pickups: {
-    // Generated meshes for dropped items (Hunyuan3D, 2026-10-26; see docs/dev-cycle/asset-ledger.md and PICKUP_MODELS in
-    // src/main.js). Types without a model keep the primitive shape (magnet read as a blob from the game camera, speed has none yet). enabled: false brings back all primitives.
+    // Generated meshes for dropped items (PICKUP_MODELS in src/main.js; see docs/dev-cycle/asset-ledger.md). The Hunyuan3D
+    // meshes (2026-10-26/29) were removed on 2026-10-29 over its license; to be remade with Tripo. enabled: false keeps primitives.
     models: {
-      enabled: true,
+      enabled: false,
       size: 0.72
     },
     spawnOffsetRadius: 1.35,

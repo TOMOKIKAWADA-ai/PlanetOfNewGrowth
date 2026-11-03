@@ -14,14 +14,15 @@
 | しっぽり明朝／Zen角ゴシック New | SIL OFL 1.1 | ○ | 動画への使用は自由。フォント単体の販売は不可 |
 | Playwright / FFmpeg / Whisper small | Apache-2.0 / LGPL・GPL / MIT | ○ | 制作用の道具で、出力物には影響しない（Whisper は読み確認だけに使用） |
 | Stable Audio 3 Small-SFX | Stability AI Community License（コードは MIT） | △ | 年間売上100万ドル未満なら商用可。**商用で使うなら Stability AI への登録が必要**。出力は自分のもの。出力を他の生成AIの学習に使わない。文章処理に使う T5Gemma は Gemma 利用規約にも従う |
-| Hunyuan3D 2.0 | Tencent Hunyuan 3D 2.0 Community License | △〜× | **EU・英国・韓国は対象外。生成物をその地域で使用・配布・表示することも禁止**。世界向けに公開するゲームに生成物を入れると条件に触れるおそれがある。月間利用者100万人超は別途許諾が必要 |
+| Hunyuan3D 2.0 | Tencent Hunyuan 3D 2.0 Community License | × **使わない** | **EU・英国・韓国は対象外。生成物をその地域で使用・配布・表示することも禁止**。世界向けに公開するゲームに生成物を入れると条件に触れるおそれがある。月間利用者100万人超は別途許諾が必要。**2026-10-29 ユーザーの判断で使用をやめ、生成物はゲームとリポジトリから外した** |
+| Tripo（Tripo Studio、有料のクレジット） | Tripo の利用規約 | ○（要再確認） | 3D はこれだけを使う。敵の3D化で使用中。商用の条件（プランごとの権利）は、公開前に Tripo の規約の原文で再確認する |
 | SDXL base 1.0 | CreativeML Open RAIL++-M | ○ | 利用制限（有害用途の禁止）を守る |
 | juggernautXL_ragnarokBy | CreativeML Open RAIL 系＋RunDiffusion の追加条件 | 要確認 | 有料のAPIやサービスでモデルを動かすのは要許諾。生成画像の商用利用は版ごとに表記が違うため、Ragnarok 版のモデルページを確認する |
 | softsketchIllustrious_v125 | Illustrious XL 由来（Fair AI Public License 1.0-SD） | 要確認 | 生成画像の商用利用は可とする説明が多いが、原文で未確認。派生モデルの公開条件がある |
 | bluePencilXLLCM_v200 | 未確認 | 要確認 | モデルページで確認する |
 
 **運用ルール**
-- Hunyuan3D の生成物は、配布地域を決めるまで `config.js` の切り替えで元のモックに戻せる状態を保つ。世界向けに公開するなら、MIT などの3D生成（例: Microsoft TRELLIS）への切り替えを検討する。
+- 3D は Tripo で作る。Hunyuan3D は使わない（試作も含めて。2026-10-29 ユーザー「Hunyuan3D はライセンスの問題があるのでやめておこう。Tripo にして」）。
 - Stable Audio で作った効果音を入れたゲームを商用で公開する前に、ユーザーが Stability AI に登録する（アカウント操作なので自動では行わない）。
 - 画像生成のモデルは、この表で「要確認」のものを商用の素材に使わない。使った場合は台帳に記録し、公開前にモデルページを確認する。
 - ゲーム内の既存素材の出どころ（2026-10-21 ユーザー回答）: BGM `assets/audio/bgm.mp3` は **Magnific（旧 Freepik）の AI Music Generator**、立ち絵とプロモ画像（`assets/ui/characters`、`assets/promo`、タイトル画）は **GPT Image**、効果音 `assets/audio/sfx` は **Adobe Firefly**、キャラクター音声 `assets/audio/voice` は **Irodori-TTS**。ゲーム内の既存素材の出どころは、これですべて記録済み。
@@ -184,8 +185,8 @@
 | （`assets_src` のみ）pickup_magnet.glb | magnet-2601 | a smooth violet river stone with a carved spiral groove, faint lavender glow | 不採用: ゲームのカメラからは渦巻きが見えず、ただの球に見えた。元の輪の形のまま |
 | — | speed-2601 / 2602 | a lime-yellow winged maple seed (samara) with a single swept wing | 不採用: 2601 は鳥の顔が出た、2602 は薄い葉で立体に向かない |
 
-採用: ゲームで使用。`Config.pickups.models.enabled: false` で元の多面体に戻る。大きさは `Config.pickups.models.size`（0.72）。
-ライセンス: juggernautXL（CreativeML Open RAIL++-M 系）と Hunyuan3D-2mini（Tencent Hunyuan Community License。地域の制限あり）の条件は、公開前に上の「ライセンス」の節で再確認する。
+採用: ~~ゲームで使用~~ → **2026-10-29 に撤去**（下の「2026-10-29 Hunyuan3D をやめる」）。表の `assets/pickups/` のファイルはもう無い（git の履歴にだけある）。
+ライセンス: juggernautXL（CreativeML Open RAIL++-M 系）と Hunyuan3D-2mini（Tencent Hunyuan Community License。地域の制限あり）。
 
 ## 2026-10-27 効果音: アイテム取得と渇きの母の吸い上げ（B2-1）
 ツール: Stable Audio 3 Small-SFX（`D:\0001_App_Dev\audioMCP`、steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で一括生成（プロンプトの末尾に `, no music, no speech` を自動で付ける）。
@@ -242,3 +243,99 @@
 
 使い方: 捕まった瞬間に `bound`、連打中は前の声が終わってから `struggle`（2.2 秒に1回まで）、振りほどいたら `escape`（再生中の声は止める）。捕まっている間は被弾の声を出さない。捕まったまま倒れたら声を止めて死亡の叫びへ。`Config.audio.vineVoices: false` で出さない。
 **耳での確認はまだ**（音を聞けないので、文字起こしと音のかたまりで選んだ）。
+## 2026-10-29 拾うアイテムの3Dモデル: 吸引石と加速の作り直し（B1-1 の続き）
+ツール: 2026-10-26 と同じ（Forge `juggernautXL_ragnarokBy`、DPM++ 2M、28 steps、CFG 5、1024×1024 → Hunyuan3D-2mini turbo 形状のみ、octree 256、5 steps、seed 1234 → Blender 5.1 `prep-pickups.py`、1200 三角形）。
+元絵・途中の GLB・確認画像: `assets_src/3d/2026-10-29-pickups/`（jobs.json にプロンプト全文、`sheet.jpg` が元絵8枚、`renders.jpg` が整形後5個）。
+共通プロンプト（後半）は 10-26 と同じ。ネガティブに `thin, flat, paper` を足した。
+
+| ファイル | 元絵（シード） | プロンプト（前半） | 採用 |
+|---|---|---|---|
+| `assets/pickups/pickup_magnet.glb`（22KB） | magnet-horseshoe-2902 | a chunky violet horseshoe-shaped magnet carved from smooth purple stone, thick U shape with two rounded prongs | 採用: ゲームのカメラから U の字に見える |
+| — | magnet-horseshoe-2901 | 同上 | 不採用: 斜めから見た形で、立体にすると口が狭い |
+| — | magnet-ring-2902 | a thick chunky donut-shaped violet stone ring with a large round hole in the center, smooth polished amethyst torus | 不採用: きれいな輪だが、元の輪の多面体と見分けが付かない |
+| — | magnet-ring-2901 | 同上 | 不採用: ドーナツ（パンの断面）が出た |
+| `assets/pickups/pickup_speed.glb`（22KB） | speed-arrow-2901 | a thick chunky lime-yellow arrowhead-shaped seed pod, plump pointed triangular nut with a rounded back | 採用: 尖った紡錘形。ゲームでは横に寝かせて速く回す |
+| — | speed-arrow-2902 | 同上 | 不採用: 立体にするといびつな塊 |
+| — | speed-wingseed-2901 / 2902 | a plump lime-yellow seed with two thick short swept-back wings, chunky winged nut shaped like a dart | 不採用: 2枚とも目のある鳥になった（10-26 に続き2回目。「翼」は鳥を呼ぶ） |
+
+採用: ~~ゲームで使用~~ → **同日に撤去**（下の節）。
+ライセンス: 10-26 と同じ（Hunyuan3D の地域の制限あり）。
+
+## 2026-10-29 Hunyuan3D をやめる（ユーザーの判断「Hunyuan3D はライセンスの問題があるのでやめておこう。Tripo にして」）
+- ゲームから外したもの: `assets/pickups/pickup_{hp,mp,burst,shield,magnet,speed}.glb`（10-26・10-29 の6種）。`PICKUP_MODELS`（`src/main.js`）を空にし、`Config.pickups.models.enabled: false`。拾うアイテムは元の多面体に戻った。
+- リポジトリから外したもの: Hunyuan3D の出力が写った devlog の画像3枚（`2026-10-26-pickup-shapes.png`・`2026-10-26-pickups-compare.png`・`2026-10-29-pickups-compare.png`）、`scripts/assets/start-hunyuan-api.bat`・`hunyuan-img2glb.mjs`。git の履歴には残っている（履歴の書き換えはしていない）。
+- 手元に残っているもの（git 対象外）: `assets_src/3d/2026-10-26-pickups/`・`2026-10-29-pickups/` の Hunyuan3D の GLB。ゲームには使わない。元絵（Forge 製）は Tripo の入力に使える。
+- 2026-10-27 に試した敵（03 黒い棘の鎧）の Hunyuan3D 版は、もともとゲームに入れていない。
+- 作り直しは backlog B1-1（Tripo、ユーザーがクレジットの量を決めてから）。
+
+## 2026-10-30 ボス出現・レベルアップ・残り1分の一言（B3-2）
+ツール: Irodori-TTS v4.1（`Aratako/Irodori-TTS-v4.1-Small`、bf16）、`scripts/assets/irodori-batch.py` に手本（`assets_src/voice/refs/<キャラ>/`、10-24 にユーザーが選んだもの）を `refs` で指定。指定文は空、台詞ごとの演技の指定だけ。台詞ファイル `scripts/assets/voices/2026-10-30-b3-2.json`（演技の指定の全文はここ）、候補は `assets_src/voice/2026-10-30/`（各3シード、27 本、git 対象外）。手本は以前の worktree（`search_survive_daily`）からこのフォルダの `assets_src/voice/refs/` にコピーした。
+選び方（asset-pipeline.md の手順どおり）: Whisper small の文字起こし（全候補 0.75 以上。「一分→1分」「がんばろっ→頑張ろう」の表記違いは問題なし。アカメ s2502「お敷」は落とした）→ `voice-analyze.py` の声の高さと画像。後処理: 前後の 0.2 秒未満で 0.25 秒以上離れた音のかたまりを切る → loudnorm -15 LUFS → mp3（結果 -15.0〜-17.3 LUFS）。置き場所 `assets/audio/voice/<キャラ>/`。`Config.audio.cueVoices: false` で鳴らなくなる。
+
+| キャラ | ファイル | 台詞 | 採用シード | 長さ（秒） | 選んだ理由・落とした候補 |
+|---|---|---|---|---|---|
+| ツキミ | `boss_appear_01.mp3` | 来ました……大きいのが。 | 1501 | 2.37 | 3本とも同じ形。1502 は末尾に短い音、自然さも 2.33 と低い |
+| ツキミ | `level_up_01.mp3` | まだ、強くなれる。 | 1502 | 2.04 | 1501 は手本との近さ 0.85、1503 は高さ 237Hz で手本（285〜347）より低い |
+| ツキミ | `last_minute_01.mp3` | あと一分。落ち着いて。 | 1501 | 2.20 | 高さ 327Hz が手本の範囲内。1502 は 374Hz で高め |
+| アカメ | `boss_appear_01.mp3` | 大物だ。私が行く。 | 2501 | 1.87 | 低く言い切る（195Hz、手本 189〜210）。2502 は語の間に別の声、2503 は 264Hz で高め |
+| アカメ | `level_up_01.mp3` | 体が軽い。 | 2502 | 0.95 | 有声 0.74 で最もはっきり。2501・2503 は息が多い |
+| アカメ | `last_minute_01.mp3` | あと一分。押し切る。 | 2503 | 1.65 | 文字起こしが最も正確（0.88）。2501 は末尾に短い音、2502 は「お敷」 |
+| キイチゴ | `boss_appear_01.mp3` | うわ、でっかいの来た！ | 3501 | 2.63 | 3502・3503 は 0.8 秒後ろに余分な音 |
+| キイチゴ | `level_up_01.mp3` | いいね、いいね！ | 3503 | 1.94 | 3501・3502 は先頭に短い音。手本との近さも 0.83 で最も高い |
+| キイチゴ | `last_minute_01.mp3` | ラスト一分、がんばろっ！ | 3502 | 1.83 | 3501・3503 は前後に余分な音がいくつも付き 3.2 秒 |
+
+ツキミの3シードはどの台詞もほぼ同じ波形になった（手本が2本だけで、手本の調子が強く移る）。声色を変えたいときは、シードより演技の指定を変えるほうが効く。
+
+## 2026-11-01 効果音の音量そろえ（B2-2）
+ツール: FFmpeg 8.1（`D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-*\bin`）、`scripts/assets/normalize-sfx.mjs`。生成ではなく既存の音の加工（元の音の出どころとライセンスは各音の元の記録のまま）。
+元: `assets/audio/sfx/*.wav`（変えていない）。出力: `assets/audio/sfx-normalized/*.wav`（22 個、16bit）。`Config.audio.normalizedSfx: false` で元の音に戻る。
+処理: 目標との差だけ音量を上げ下げ（`volume`）→ リミッター（-1 dB）。目標は役割ごと（よく鳴る音・メニュー -18、操作への返事 -15、大技とボス -12 LUFS）。
+
+| ファイル | 役割 | 前 LUFS（ピーク dBFS） | 増減 dB | 後 LUFS（ピーク dBFS） |
+|---|---|---|---|---|
+| bird_feed | 操作 | -18.2 (0) | +3.2 | -16.4 (-0.8) |
+| burst_fire | 大技 | -10.1 (0) | -1.9 | -12.0 (-1.9) |
+| burst_pre | 大技 | -12.6 (0) | +0.6 | -12.3 (-0.8) |
+| burst_spread | 大技 | -16.3 (-0.6) | +4.3 | -14.1 (-0.4) |
+| button_cancel | メニュー | -18.5 (-10.8) | +0.5 | -18.0 (-10.3) |
+| button_confirm | メニュー | -18.5 (-4.0) | +0.5 | -18.0 (-3.5) |
+| egg_break | 操作 | -12.4 (0) | -2.6 | -15.0 (-2.6) |
+| enemy_die | よく鳴る | -14.9 (0) | -3.1 | -18.0 (-3.1) |
+| item_pickup | 操作 | -15.9 (-6.9) | +0.9 | -15.0 (-6.0) |
+| kiichigo_burst | 大技 | -10.7 (0) | -1.3 | -12.0 (-1.3) |
+| level_up | 大技 | -13.9 (0) | +1.9 | -12.6 (-0.7) |
+| mother_charge | ボス | -10.3 (-0.3) | -1.7 | -12.0 (-2.0) |
+| mother_impact | ボス | -13.7 (-0.7) | +1.7 | -12.7 (-1.0) |
+| mother_release | ボス | -8.1 (0) | -3.9 | -12.0 (-3.9) |
+| player_hit | 操作 | -15.6 (0) | +0.6 | -15.2 (-0.8) |
+| player_shot | よく鳴る | -16.4 (-2.2) | -1.6 | -18.0 (-3.8) |
+| projectile_hit | よく鳴る | -20.8 (0) | +2.8 | -19.1 (-0.9) |
+| thirst_drain | 操作 | -15.6 (-1.0) | +0.6 | -15.2 (-1.0) |
+| transform_bird | 操作 | -10.3 (0) | -4.7 | -15.0 (-4.7) |
+| transform_human | 操作 | -11.7 (0.1) | -3.3 | -15.0 (-3.2) |
+| tsukimi_burst | 大技 | -9.9 (0) | -2.1 | -12.0 (-2.1) |
+| xp_pickup | よく鳴る | -17.8 (-1.7) | -0.2 | -18.0 (-1.9) |
+
+耳での確認はまだ（ユーザーの試聴待ち）。
+
+## 2026-11-02 手（第4章の新種）の Tripo 用の元絵（B1、E11 の専用の見た目）
+
+- ツール: Forge（API、`scripts/assets/forge-txt2img.mjs`）。モデル **`sd_xl_base_1.0`**（CreativeML Open RAIL++-M、商用 ○。「要確認」の juggernaut は使っていない）。DPM++ 2M、30 steps、CFG 6。
+- 置き場所: `assets_src/3d/2026-11-02-hand/`（`.gitignore` 対象。設定とシードは各 PNG と同名の JSON、ジョブは `jobs.json`・`jobs-v2.json`）。見比べ画像は `docs/devlog/img/2026-11-02-hand-source.jpg`。
+- 1回目（`jobs.json`）: 正面 832×1216 をシード 101〜104、三面図 1344×768 をシード 201・202。プロンプトの要点は `gaunt hunched humanoid creature with extremely long thin arms hanging down to its ankles, oversized long-fingered clawed hands, ashen grey skin, black thorny vines, glowing red cracks, faceless smooth egg-shaped head split by a glowing red seam, A-pose, symmetrical, isolated on plain white background, no shadow`。
+- 2回目（`jobs-v2.json`）: 細い枝が出たので `thick black vine bands`・`compact silhouette`・腕は膝まで、否定に `antlers, horns, branches, tendrils, hair, wings, thin strands, floating strings` を足し、シード 103・105・106・107。
+- 候補: **`hand-front-v2-103.png`**（第一候補。輪郭がすっきりして細い部品がない。少し機械っぽい）、`hand-front-103.png`（第二候補。いちばん生き物らしく腕が長いが、肩の上に細い枝があり Tripo が壁にしやすい）。
+- 不採用: 101（台座と地面つき）、102（細い蔓が多い）、104（斜め向きで影つき）、三面図 201・202（向きごとに別の生き物になり Multiview に使えない）、v2-105（脚が4本）、v2-106（右下に署名のような印、尾が2本）、v2-107（赤が出ない）。
+- Tripo での生成はまだ（ユーザーの承認待ち）。
+
+## 2026-11-03 効果音: 鳴きの声・手の掴み・吸水根の根張り（B2-1）
+ツール: Stable Audio 3 Small-SFX（`D:\0001_App_Dev\audioMCP`、steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で一括生成（末尾に `, no music, no speech` を自動で付ける）。
+候補と jobs、周波数の見比べ画像（`grid.png`・`grid2.png`）: `assets_src/sfx/2026-11-03/`（git 対象外）。後処理は FFmpeg（先頭を切る → 長さを切る → フェード）のあと `normalize-sfx.mjs` で役割ごとの大きさにそろえた。耳での確認はまだ。
+
+| ファイル | 元（シード、長さ） | プロンプト | 後処理 | 採用 |
+|---|---|---|---|---|
+| `assets/audio/sfx/crier_cry.wav`（1.8 秒、そろえた後 -18.0 LUFS、よく鳴る） | crier_cry2_s23（3 秒） | A monster croaking call, a deep frog croak that swells and ends in a short howl, creature vocalization | 0.15〜1.95 秒を切り出し、1.4 秒から 0.4 秒のフェードアウト | 採用: 途中で途切れず（ほかの3本は 1.5 秒前後で一度切れる）、倍音のある声が少しずつ上がる。主な周波数 177 Hz |
+| `assets/audio/sfx/hand_grab.wav`（0.9 秒、-15.9 LUFS、操作） | hand_grab_s23（2 秒） | A fleshy creature hand suddenly grabbing and clamping, a wet slap followed by a tight leathery squeeze and creak, monster grab | 0.15〜1.05 秒、0.65 秒から 0.25 秒のフェードアウト | 採用: 4本とも「叩く音＋締める音」の2つの山。s23 がいちばん低く（主な周波数 334 Hz）肉っぽい。元が小さい（-32 LUFS）ので +17 dB 上げている |
+| `assets/audio/sfx/root_dry.wav`（1.3 秒、-16.5 LUFS、操作） | root_dry2_s37（3 秒） | Dry earth cracking and crumbling, wooden roots creaking, ground splitting | 0.15〜1.45 秒、1.0 秒から 0.3 秒のフェードアウト | 採用: ひび割れの細かい粒が並ぶ。4本のうち出だしがいちばん強い |
+| — | crier_cry2_s11 / s37 / s51、hand_grab_s11 / s37 / s51、root_dry2_s11 / s23 / s51 | 同上 | — | 次点（候補として残す） |
+| — | crier_cry_s11〜s51、root_dry_s11〜s51（**2.5 秒**、長く説明的なプロンプト） | `A strange creature's eerie warbling call, ...`、`Roots burrowing into dry soil, ...` | — | 失敗: 8本とも最初から最後まで同じ大きさ（-30 dB 前後）の広い帯域の雑音。短いプロンプト・3 秒で作り直したら正常（asset-pipeline.md に記録） |

@@ -152,6 +152,7 @@ export class Hud {
     if (this.messageTimer <= 0) this.centerMessage.classList.remove('show', 'boss-warning');
     this.setBar(this.hpBar, player.hp / player.maxHp);
     this.setBar(this.mpBar, player.mp / player.maxMp);
+    this.mpBar.parentElement?.parentElement?.classList.toggle('dry', Boolean(player.onDryGround) && player.mp < player.maxMp);
     this.setBar(this.burstBar, player.burst / Config.player.burstMax);
     const burstReady = player.burst >= Config.player.burstMax && player.burstCooldownTimer <= 0;
     this.burstMeter?.classList.toggle('ready', burstReady);
@@ -224,13 +225,25 @@ export class Hud {
     this.centerMessage.classList.add('boss-warning');
   }
 
+  nearestBossTarget() {
+    const player = this.game.player?.position;
+    let best = null;
+    let bestDistance = Infinity;
+    for (const mother of this.game.getBossTargets()) {
+      const distance = player ? mother.position.distanceToSquared(player) : 0;
+      if (distance < bestDistance) { best = mother; bestDistance = distance; }
+    }
+    return best;
+  }
+
   updateMother() {
-    const mother = this.game.motherEgg;
+    // The swarm mother has three bodies: the bar is their total and the arrow points at the nearest standing one.
+    const mother = this.nearestBossTarget() ?? this.game.motherEgg;
     const active = mother && !mother.dead;
     this.motherPanel.classList.toggle('hidden', !active);
     this.motherAlert.classList.toggle('hidden', true);
     if (!active) return;
-    this.setBar(this.motherBar, mother.hp / mother.maxHp);
+    this.setBar(this.motherBar, this.game.getBossHpRatio());
     const ndc = mother.position.clone().project(this.game.camera);
     const onscreen = ndc.z >= -1 && ndc.z <= 1 && Math.abs(ndc.x) <= 0.92 && Math.abs(ndc.y) <= 0.88;
     if (onscreen) return;

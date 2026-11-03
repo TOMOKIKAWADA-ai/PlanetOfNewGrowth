@@ -15,6 +15,13 @@ import {
 import { Config } from './config.js';
 import { getBossType } from './bosses.js';
 import { VineWarning, createVineEnemyModel } from './vines.js';
+import { advanceFootprint } from './footprints.js';
+
+// 狙えるボスの体（群れの母は倒れていない姉妹だけ）。ゲーム全体なしのテストでは motherEgg だけを見る。
+function bossTargets(game) {
+  if (game.getBossTargets) return game.getBossTargets();
+  return game.motherEgg && !game.motherEgg.dead ? [game.motherEgg] : [];
+}
 
 const CONTACT_SHADOW_TEXTURE_SIZE = 96;
 let contactShadowTexture = null;
@@ -165,6 +172,20 @@ const struggleParentQuat = new THREE.Quaternion();
 const struggleBodyQuat = new THREE.Quaternion();
 const SNIPER_VISUAL_SCALE = 1.12;
 const SNIPER_COLOR = 0xff1515;
+const FOOTPRINT_COLOR = 0xbcd8f2;
+const CRIER_COLOR = 0x6a3f86;
+const CRIER_GLOW = 0xe7a6ff;
+const HAND_COLOR = 0xb9a48f;
+const HAND_GLOW = 0xff6a3d;
+const HAND_ARM_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
+const HAND_ARM_UP = new THREE.Vector3(0, 1, 0);
+const HAND_ARM_HEIGHT = 1.05;
+const ROOTSUCKER_COLOR = 0x6b4a2b;
+const ROOTSUCKER_GLOW = 0xd99a4e;
+const DRY_CIRCLE_GEOMETRY = new THREE.CircleGeometry(1, 48);
+const DRY_EDGE_GEOMETRY = new THREE.RingGeometry(0.95, 1, 48);
+const DRY_CIRCLE_OPACITY = 0.42;
+const DRY_EDGE_OPACITY = 0.7;
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
@@ -175,7 +196,11 @@ const ENEMY_LOD_SPECS = {
   tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
   dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
   frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
-  vine: { color: 0x6b4d2a, radius: 0.5, height: 1.5, segments: 6 }
+  vine: { color: 0x6b4d2a, radius: 0.5, height: 1.5, segments: 6 },
+  footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
+  crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
+  hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
+  rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -226,6 +251,8 @@ const PICKUP_MATERIALS = Object.fromEntries(
   ])
 );
 
+const INSTALLED_PICKUP_MODELS = new Set();
+
 // A generated pickup mesh has real shape, so it gets a lit material (an unlit one would flatten it to a silhouette).
 // The geometry arrives normalized to a longest side of 1 (scripts/assets/blender/prep-pickups.py).
 export function installPickupModel(type, geometry, size) {
@@ -233,6 +260,7 @@ export function installPickupModel(type, geometry, size) {
   if (!spec) return;
   geometry.scale(size, size, size);
   PICKUP_GEOMETRIES[type] = geometry;
+  INSTALLED_PICKUP_MODELS.add(type);
   PICKUP_MATERIALS[type] = new THREE.MeshStandardMaterial({
     color: spec.color, emissive: spec.color, emissiveIntensity: 0.16, roughness: 0.4, metalness: 0.05
   });
@@ -330,6 +358,9 @@ export class Player {
     // （待機アニメーションには首・太もも・足の動きがないので、戻さないと回転が積み重なる）。
     this.overlaySavedPose = new Map();
     this.overlayTouchedBones = new Set();
+    // 手（E11）に掴まれているあいだ: 掴んでいる敵と残り時間。
+    this.grabbedBy = null;
+    this.grabTimer = 0;
     // Multipliers set by carry-over chapter rewards (Config.carryOver).
     this.burstCooldownScale = 1;
     this.formMpCostScale = 1;
@@ -1237,6 +1268,7 @@ export class Player {
     this.stunTimer = Math.max(0, this.stunTimer - dt);
     this.bindImmuneTimer = Math.max(0, this.bindImmuneTimer - dt);
     this.updateBind(dt, input);
+    this.updateGrab(dt);
 
     if (this.stunTimer <= 0 && !(this.bindTimer > 0)) this.updateMovement(dt, input);
     this.updateFormResources(dt);
@@ -1254,7 +1286,8 @@ export class Player {
     normalizeXZ(tempVec, x, z);
     const hasMovementInput = movementStrength > 0.001;
     const boost = this.speedBoostTimer > 0 ? Config.pickups.speedBoostMultiplier : 1;
-    const speed = (this.form === 'bird' ? this.birdSpeed : this.form === 'fish' ? Config.player.fishSpeed : this.humanSpeed) * boost;
+    const grabSlow = this.grabbedBy ? Config.enemy.hand.grabSlow : 1;
+    const speed = (this.form === 'bird' ? this.birdSpeed : this.form === 'fish' ? Config.player.fishSpeed : this.humanSpeed) * boost * grabSlow;
     const diveLocked = this.form === 'bird' && (this.diveState === 'warning' || this.diveState === 'dive');
 
     if (this.form === 'bird') {
@@ -1306,8 +1339,12 @@ export class Player {
 
   updateFormResources(dt) {
     if (this.form === 'human') {
-      this.mp = clamp(this.mp + this.humanRegenMp * dt, 0, this.maxMp);
+      // 吸水根の乾いた円の中では回復しない（Config.enemy.rootsucker.dryRegenScale 倍）
+      this.onDryGround = this.game.isOnDryGround?.(this.position) ?? false;
+      const regenScale = this.onDryGround ? Config.enemy.rootsucker.dryRegenScale : 1;
+      this.mp = clamp(this.mp + this.humanRegenMp * regenScale * dt, 0, this.maxMp);
     } else {
+      this.onDryGround = false;
       const formCost = (this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost) * this.formMpCostScale;
       this.mp = clamp(this.mp - formCost * dt, 0, this.maxMp);
       if (this.mp <= 0) this.returnToHuman(true);
@@ -1329,12 +1366,27 @@ export class Player {
 
   tryFishBite() {
     if (this.specialTimer > 0) return;
+    if (this.tryFishBiteBoss()) return;
     const target = this.findNearestEgg(Config.player.fishEggRange, false);
     if (!target || !target.aquatic) return;
     this.faceAngle = angleToXZ(this.position, target.position);
     target.takeDamage(target.hp + 1, 'fishBite');
     this.specialTimer = Config.player.fishBiteCooldown;
     this.game.spawnDiveImpact(target.position);
+  }
+
+  // The floodgate mother (src/bosses.js) only counts bites while it is submerged; its body is larger, so the reach is too.
+  tryFishBiteBoss() {
+    const mother = this.game.motherEgg;
+    if (!mother || mother.dead || !mother.bossType?.fishBite) return false;
+    const cfg = Config.boss.floodgateMother;
+    const reach = Config.player.fishEggRange + cfg.biteReach;
+    if (horizontalDistanceSq(this.position, mother.position) > reach * reach) return false;
+    if (!mother.bossType.fishBite(mother)) return false;
+    this.faceAngle = angleToXZ(this.position, mother.position);
+    this.specialTimer = cfg.biteCooldown;
+    this.game.spawnDiveImpact(mother.position);
+    return true;
   }
 
   tryAutoShoot() {
@@ -1441,9 +1493,7 @@ export class Player {
         enemy.takeDamage(Config.player.tsukimiBeamEnemyDamage, this.position, false, false);
       }
     }
-    const eggs = this.game.motherEgg && !this.game.motherEgg.dead
-      ? [...this.game.eggs, this.game.motherEgg]
-      : this.game.eggs;
+    const eggs = [...this.game.eggs, ...bossTargets(this.game)];
     for (const egg of eggs) {
       if (egg.dead || !this.isInForwardStrip(egg.position, this.faceAngle, length, width)) continue;
       egg.takeDamage(egg.isMother ? Config.player.tsukimiBeamMotherDamage : Config.player.tsukimiBeamEggDamage, 'burst');
@@ -1546,10 +1596,8 @@ export class Player {
     if (this.diveState === 'ready') {
       if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
-      const motherTarget = this.game.motherEgg && !this.game.motherEgg.dead
-        ? this.findMotherForDive()
-        : null;
-      this.startDive(motherTarget ?? target);
+      const motherTarget = this.findMotherForDive();
+      this.startDive(motherTarget ?? this.findCrierForDive() ?? target);
     } else if (this.diveState === 'warning') {
       this.diveTimer -= dt;
       if (!this.diveTarget || this.diveTarget.dead) {
@@ -1610,6 +1658,9 @@ export class Player {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
+    } else if (this.diveTarget.type === 'crier') {
+      this.diveTarget.takeDamage(this.diveTarget.hp + 10, this.position, true);
+      if (this.game.crierStats) this.game.crierStats.diveKills += 1;
     } else if (this.diveTarget.isMimic) {
       this.diveTarget.takeDamage(this.diveTarget.hp + 10, 'mimicBurst');
       this.stun(Config.egg.mimic.stunSeconds * this.mimicStunScale);
@@ -1620,6 +1671,35 @@ export class Player {
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
+  }
+
+  // 手（E11）に掴まれる。人間形態のときだけ。変身すれば振りほどける（updateGrab）。
+  grab(hand, seconds) {
+    if (this.dead || this.form !== 'human' || this.grabbedBy) return false;
+    this.grabbedBy = hand;
+    this.grabTimer = seconds;
+    this.takeDamage(Config.enemy.hand.grabDamage);
+    this.game.onPlayerGrabbed?.(hand);
+    return true;
+  }
+
+  updateGrab(dt) {
+    if (!this.grabbedBy) return;
+    this.grabTimer -= dt;
+    let reason = null;
+    if (this.form !== 'human') reason = 'shaken';
+    else if (this.dead || this.grabbedBy.dead) reason = 'freed';
+    else if (this.grabTimer <= 0) reason = 'timeout';
+    else if (horizontalDistanceSq(this.position, this.grabbedBy.position) > (Config.enemy.hand.reach * 1.6) ** 2) reason = 'freed';
+    if (reason) this.releaseGrab(reason);
+  }
+
+  releaseGrab(reason) {
+    const hand = this.grabbedBy;
+    if (!hand) return;
+    this.grabbedBy = null;
+    this.grabTimer = 0;
+    this.game.onPlayerReleased?.(hand, reason);
   }
 
   stun(seconds) {
@@ -1667,9 +1747,27 @@ export class Player {
   }
 
   findMotherForDive() {
-    if (!this.game.motherEgg || this.game.motherEgg.dead) return null;
-    const distanceSq = horizontalDistanceSq(this.position, this.game.motherEgg.position);
-    return distanceSq <= Config.player.birdMotherDetectRange ** 2 ? this.game.motherEgg : null;
+    let best = null;
+    let bestDistance = Config.player.birdMotherDetectRange ** 2;
+    for (const mother of bossTargets(this.game)) {
+      const distanceSq = horizontalDistanceSq(this.position, mother.position);
+      if (distanceSq <= bestDistance) { best = mother; bestDistance = distanceSq; }
+    }
+    return best;
+  }
+
+  // 鳴き（E10）は急降下で一撃。近くの卵より先に狙う。
+  findCrierForDive() {
+    if (!Config.enemy.crier.birdDiveTarget || !this.game.criersActive) return null;
+    const range = Config.player.birdEggDetectRange;
+    let best = null;
+    let bestDistance = range * range;
+    for (const enemy of this.game.enemies) {
+      if (enemy.dead || enemy.type !== 'crier' || enemy.claimed) continue;
+      const distanceSq = horizontalDistanceSq(this.position, enemy.position);
+      if (distanceSq <= bestDistance) { best = enemy; bestDistance = distanceSq; }
+    }
+    return best;
   }
 
   findNearestEnemy(radius) {
@@ -1690,9 +1788,7 @@ export class Player {
   findNearestEgg(radius, includeMother) {
     let best = null;
     let bestDistance = Infinity;
-    const eggs = includeMother && this.game.motherEgg && !this.game.motherEgg.dead
-      ? [...this.game.eggs, this.game.motherEgg]
-      : this.game.eggs;
+    const eggs = includeMother ? [...this.game.eggs, ...bossTargets(this.game)] : this.game.eggs;
     for (const egg of eggs) {
       if (egg.dead || egg.claimed) continue;
       if (egg.isMother && !includeMother) continue;
@@ -2101,6 +2197,8 @@ export class Egg {
       this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
       this.bossType.update(this, dt);
       if (this.pursuit) this.updatePursuerShell(dt);
+      if (this.swarm) this.updateSwarmBody();
+      if (this.floodgate) this.updateFloodgateBody(dt);
     }
     if (this.isMother) return;
     this.updatePulse(dt);
@@ -2143,6 +2241,28 @@ export class Egg {
     this.model.rotation.z = open ? 0 : Math.sin(this.pursuit.walk * 7) * 0.07;
   }
 
+  // Floodgate mother (src/bosses.js): sunk low with a blue ring while submerged; risen, gold and reeling while stunned.
+  updateFloodgateBody(dt) {
+    const surfaced = this.floodgate.state === 'surfaced';
+    this.surfaceLift = clamp((this.surfaceLift ?? 0) + (surfaced ? dt * 2.4 : -dt * 1.2), 0, 1);
+    this.surfaceBaseY ??= this.model.position.y;
+    this.model.position.y = this.surfaceBaseY - 2.6 * (1 - this.surfaceLift);
+    const biteGlow = this.floodgate.bites / Config.boss.floodgateMother.bitesToSurface;
+    this.ring.material.color.setHex(surfaced ? 0xffe066 : 0x5fd0ff);
+    this.ring.material.opacity = surfaced ? 0.5 + Math.sin(this.age * 9) * 0.2 : 0.3 + biteGlow * 0.4;
+    this.ring.scale.setScalar(surfaced ? 1.15 : 1 + biteGlow * 0.25 + Math.sin(this.age * 2.2) * 0.04);
+    this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
+  }
+
+  // 群れの母（src/bosses.js）: 倒れている姉妹は縮んで輪が消え、起き上がりが近い（3 秒前から）と点滅する。
+  updateSwarmBody() {
+    if (!this.swarmDown) return;
+    const blink = this.swarmDownTimer < 3 && Math.sin(this.swarmDownTimer * 14) > 0;
+    this.model.scale.multiplyScalar(blink ? 0.7 : 0.5);
+    this.ring.visible = blink;
+    this.spore.visible = false;
+  }
+
   updateMotherShockwave(dt) {
     if (this.game.state !== 'playing') return;
     this.shockwaveTimer -= dt;
@@ -2174,7 +2294,7 @@ export class Egg {
       this.game.showMessage('\u6c34\u4e2d\u306e\u5375\u306f\u9b5a\u5f62\u614b\u3067\u99c6\u9664\u3067\u304d\u307e\u3059', 1.2);
       return;
     }
-    if (this.dead) return;
+    if (this.dead || this.swarmDown) return;
     if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
     const bossScale = this.isMother ? this.bossType.damageScale?.(this) ?? 1 : 1;
     amount *= bossScale;
@@ -2186,9 +2306,11 @@ export class Egg {
       this.model.scale.multiplyScalar(1 + squash);
     }
     this.game.spawnHitSpark(this.position, bossScale < 1 ? 0x9aa3a8 : this.isMother ? 0xffbf61 : 0xd8ff7a);
+    if (this.isMother && bossScale === 0) this.game.onBossImmuneHit?.(this);
     if (this.hp <= 0) {
-      this.dead = true;
       this.claimed = false;
+      if (this.isMother && this.bossType.onLethal?.(this, source)) return;
+      this.dead = true;
       this.game.onEggDestroyed(this, source);
     }
   }
@@ -2258,6 +2380,10 @@ export class Enemy {
     this.hpBar = this.createHpBar();
     this.object.add(this.hpBar);
     if (type === 'sniper') this.createSniperBeam();
+    if (type === 'footprint') this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true };
+    if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
+    if (type === 'hand') this.createHandArm();
+    if (type === 'rootsucker') this.createDryCircle();
   }
 
   get stats() {
@@ -2275,6 +2401,10 @@ export class Enemy {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
       sniper: 'shooterEnemy',
+      footprint: 'chaserEnemy',
+      crier: 'spawnerEnemy',
+      hand: 'chaserEnemy',
+      rootsucker: 'guardianEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2282,6 +2412,10 @@ export class Enemy {
     if (gameplayModel) {
       gameplayModel.userData.baseY = gameplayModel.position.y;
       if (type === 'sniper') this.styleSniperModel(gameplayModel);
+      if (type === 'footprint') this.styleFootprintModel(gameplayModel);
+      if (type === 'crier') this.styleCrierModel(gameplayModel);
+      if (type === 'hand') this.styleHandModel(gameplayModel);
+      if (type === 'rootsucker') this.styleRootsuckerModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2289,11 +2423,15 @@ export class Enemy {
       }
       return this.createLodModel(gameplayModel, type);
     }
-    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' ? 'skeleton' : type === 'spawner' ? 'vampire' : 'zombie';
+    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' || type === 'rootsucker' ? 'skeleton' : type === 'spawner' || type === 'crier' ? 'vampire' : 'zombie';
     const model = Config.visuals.useAssetModels ? this.game.assets.cloneModel(key) : null;
     if (model) {
       model.scale.setScalar(type === 'guardian' ? 1.15 : type === 'spawner' ? 0.82 : type === 'chaser' ? 1.0 : 0.9);
       if (type === 'sniper') this.styleSniperModel(model);
+      if (type === 'footprint') this.styleFootprintModel(model);
+      if (type === 'crier') this.styleCrierModel(model);
+      if (type === 'hand') this.styleHandModel(model);
+      if (type === 'rootsucker') this.styleRootsuckerModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2324,6 +2462,143 @@ export class Enemy {
         ? child.material.map(recolor)
         : recolor(child.material);
     });
+  }
+
+  // 足跡は追い手の写しのような、青白く透けた体にする。見失うと更に薄くなる（updateFootprint）。
+  styleFootprintModel(model) {
+    this.footprintMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(FOOTPRINT_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(0x4f86c4);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.9;
+        material.transparent = true;
+        material.opacity = 0.82;
+        material.needsUpdate = true;
+        this.footprintMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 鳴きは産卵獣の亜種なので同じ体を、くすんだ紫に塗る。膨らむあいだ光が強くなる（updateCrier）。
+  styleCrierModel(model) {
+    this.crierMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(CRIER_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(CRIER_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.2;
+        material.needsUpdate = true;
+        this.crierMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 手は追い手と同じ人型の体を、灰色がかった肌色に塗る。腕を伸ばすあいだ赤く光る（updateHand）。
+  styleHandModel(model) {
+    this.handMaterials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(HAND_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(HAND_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.08;
+        material.needsUpdate = true;
+        this.handMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 吸水根は大きな体（守り手）を、土色に塗って低く構える。根を張るあいだ光が強くなる（updateRootsucker）。
+  styleRootsuckerModel(model) {
+    this.rootsuckerMaterials = [];
+    model.scale.multiplyScalar(0.92);
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(ROOTSUCKER_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(ROOTSUCKER_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.1;
+        material.needsUpdate = true;
+        this.rootsuckerMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 乾いた円。地面に貼る薄い土色の円と、縁の明るい輪。根を張ると現れて広がる。
+  createDryCircle() {
+    this.root = { timer: Config.enemy.rootsucker.rootSeconds, rooted: false, age: 0, radius: 0 };
+    this.dryCircle = new THREE.Group();
+    this.dryCircle.name = 'DryCircle';
+    this.dryCircle.position.y = 0.05;
+    this.dryCircle.rotation.x = -Math.PI / 2;
+    this.dryFillMaterial = new THREE.MeshBasicMaterial({ color: 0xa0773f, transparent: true, opacity: 0, depthWrite: false });
+    this.dryEdgeMaterial = new THREE.MeshBasicMaterial({ color: 0xf0c27a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+    const fill = new THREE.Mesh(DRY_CIRCLE_GEOMETRY, this.dryFillMaterial);
+    const edge = new THREE.Mesh(DRY_EDGE_GEOMETRY, this.dryEdgeMaterial);
+    fill.renderOrder = 1;
+    edge.renderOrder = 2;
+    this.dryCircle.add(fill, edge);
+    this.dryCircle.scale.setScalar(0.01);
+    this.dryCircle.visible = false;
+    this.object.add(this.dryCircle);
+  }
+
+  // 乾いた円の今の半径。根を張る前と倒れたあとは 0。
+  get dryRadius() {
+    return this.root?.rooted && !this.dead ? this.root.radius : 0;
+  }
+
+  coversDryGround(position) {
+    const radius = this.dryRadius;
+    return radius > 0 && horizontalDistanceSq(this.position, position) <= radius * radius;
+  }
+
+  // 伸ばす腕。予兆のあいだは細く半透明、掴んでいるあいだは太くプレイヤーまで届く。
+  createHandArm() {
+    this.hand = { state: 'approach', timer: 0, cooldown: Config.enemy.hand.firstCooldown, aim: new THREE.Vector3() };
+    this.armMaterial = new THREE.MeshBasicMaterial({ color: HAND_GLOW, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false });
+    this.arm = new THREE.Mesh(HAND_ARM_GEOMETRY, this.armMaterial);
+    this.arm.name = 'HandArm';
+    this.arm.position.y = HAND_ARM_HEIGHT;
+    this.arm.visible = false;
+    this.arm.frustumCulled = false;
+    this.arm.renderOrder = 7;
+    this.object.add(this.arm);
   }
 
   createLodModel(highDetail, type) {
@@ -2529,6 +2804,7 @@ export class Enemy {
     }
     if (this.game.player.dead) {
       if (this.beam) this.beam.visible = false;
+      if (this.arm) this.arm.visible = false;
       this.beamState = 'idle';
       this.updateDeathApproach(dt);
     }
@@ -2540,9 +2816,15 @@ export class Enemy {
     else if (this.type === 'shooter') this.updateShooter(dt);
     else if (this.type === 'guardian') this.updateGuardian(dt);
     else if (this.type === 'vine') this.updateVine(dt);
+    else if (this.type === 'footprint') this.updateFootprint(dt);
+    else if (this.type === 'crier') this.updateCrier(dt);
+    else if (this.type === 'hand') this.updateHand(dt);
+    else if (this.type === 'rootsucker') this.updateRootsucker(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
-    if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
+    // 根を張った吸水根は押されても動かない（乾いた円がずれないように）
+    if (this.root?.rooted) this.knock.set(0, 0, 0);
+    else if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
     if (this.knock.lengthSq() > 0.001) {
       this.position.x += this.knock.x * dt;
       this.position.z += this.knock.z * dt;
@@ -2557,7 +2839,7 @@ export class Enemy {
     // しばっている間は根を張っている（押されてもツタの付け根が離れない）。
     if (this.vineState === 'binding') this.position.copy(this.vineAnchor);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
-    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' ? Math.PI : 0);
+    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' || this.type === 'crier' ? Math.PI : 0);
     if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
     else if (this.type === 'vine') this.animateVineModel(dt);
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
@@ -2600,7 +2882,159 @@ export class Enemy {
     this.position.z += Math.cos(angle) * dt * 0.16;
   }
 
+  // 道の上の、数秒前にプレイヤーがいた地点へ向かう。道が途切れていれば見失い、ゆっくり寄りながら道を探す。
+  updateFootprint(dt) {
+    const cfg = Config.enemy.footprint;
+    const trail = this.game.playerTrail;
+    const target = trail ? advanceFootprint(this.footprint, trail, this.game.elapsed, dt, cfg, this.position) : null;
+    const tracking = !!target;
+    if (tracking) {
+      const dx = target.x - this.position.x;
+      const dz = target.z - this.position.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance > 1e-4) this.moveToward(target, dt, Math.min(this.speed, distance / Math.max(dt, 1e-4)));
+    } else {
+      this.moveToward(this.game.player.position, dt, cfg.lostSpeed);
+    }
+    if (tracking !== this.footprint.tracking) {
+      this.footprint.tracking = tracking;
+      if (!tracking && this.game.footprintStats) this.game.footprintStats.lost += 1;
+      for (const material of this.footprintMaterials ?? []) material.opacity = tracking ? 0.82 : 0.4;
+    }
+  }
+
+  // 動かない。cryInterval ごとに膨らみ（予兆）、膨らみきると鳴いて周りの卵の孵化を早める。
+  updateCrier(dt) {
+    const cfg = Config.enemy.crier;
+    const crier = this.crier;
+    crier.timer -= dt;
+    if (!crier.swelling && crier.timer <= cfg.swellSeconds) {
+      crier.swelling = true;
+      this.game.onCrierSwell?.(this);
+    }
+    const swell = crier.swelling ? clamp(1 - crier.timer / cfg.swellSeconds, 0, 1) : 0;
+    this.model.scale.copy(crier.baseScale).multiplyScalar(1 + swell * swell * cfg.swellScale);
+    for (const material of this.crierMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = 0.2 + swell * 1.3;
+    }
+    if (crier.timer > 0) return;
+    crier.timer = cfg.cryInterval;
+    crier.swelling = false;
+    this.model.scale.copy(crier.baseScale);
+    this.game.onCrierCry?.(this);
+  }
+
+  // 近づいて腕を伸ばし（予兆）、伸ばしきったときに届けば掴む。掴んでいるあいだは動かない。
+  // プレイヤーが変身するか、時間切れか、プレイヤーが離れすぎると離す（離す処理は Player.updateGrab）。
+  updateRootsucker(dt) {
+    const cfg = Config.enemy.rootsucker;
+    const root = this.root;
+    let glow = 0.1;
+    if (!root.rooted) {
+      root.timer -= dt;
+      glow = 0.1 + clamp(1 - root.timer / cfg.rootSeconds, 0, 1) * 0.8;
+      if (root.timer <= 0) {
+        root.rooted = true;
+        root.age = 0;
+        this.dryCircle.visible = true;
+        this.game.onRootsuckerRooted?.(this);
+      }
+    }
+    if (root.rooted) {
+      root.age += dt;
+      const grow = clamp(root.age / cfg.growSeconds, 0, 1);
+      root.radius = cfg.dryRadiusStart + (cfg.dryRadiusMax - cfg.dryRadiusStart) * grow;
+      // 根を張ってすぐは小さく現れてから所定の半径へ。広がっているあいだは縁が脈打つ。
+      const appear = clamp(root.age / 0.6, 0, 1);
+      this.dryCircle.scale.setScalar(Math.max(0.01, root.radius * (0.6 + appear * 0.4)));
+      this.dryFillMaterial.opacity = DRY_CIRCLE_OPACITY * appear;
+      const pulse = grow < 1 ? 0.75 + Math.sin(this.game.elapsed * 3.2) * 0.25 : 0.7;
+      this.dryEdgeMaterial.opacity = DRY_EDGE_OPACITY * appear * pulse;
+      glow = 0.35;
+    }
+    for (const material of this.rootsuckerMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = glow;
+    }
+  }
+
+  updateHand(dt) {
+    const cfg = Config.enemy.hand;
+    const hand = this.hand;
+    const player = this.game.player;
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, player.position));
+    hand.cooldown = Math.max(0, hand.cooldown - dt);
+    let glow = 0.08;
+    if (hand.state === 'approach') {
+      if (distance > 1.3) this.moveToward(player.position, dt, this.speed);
+      if (hand.cooldown <= 0 && distance <= cfg.reach && player.form === 'human' && !player.grabbedBy) {
+        hand.state = 'windup';
+        hand.timer = cfg.windupSeconds;
+        this.game.onHandWindup?.(this);
+      }
+    } else if (hand.state === 'windup') {
+      hand.timer -= dt;
+      const t = clamp(1 - hand.timer / cfg.windupSeconds, 0, 1);
+      glow = 0.08 + t * 1.2;
+      hand.aim.copy(player.position);
+      if (hand.timer <= 0) {
+        const canGrab = distance <= cfg.reach + 0.4 && player.form === 'human' && !player.dead && !player.grabbedBy && !(player.phaseTimer > 0);
+        if (canGrab) {
+          hand.state = 'hold';
+          player.grab?.(this, cfg.holdSeconds);
+        } else {
+          hand.state = 'approach';
+          hand.cooldown = cfg.cooldown * 0.5;
+          this.game.onHandMiss?.(this);
+        }
+      }
+      this.updateHandArm(t, false);
+    } else if (hand.state === 'hold') {
+      glow = 0.9;
+      hand.aim.copy(player.position);
+      if (player.grabbedBy !== this) {
+        hand.state = 'approach';
+        hand.cooldown = cfg.cooldown;
+      }
+    }
+    if (hand.state === 'hold') this.updateHandArm(1, true);
+    else if (hand.state === 'approach' && this.arm) this.arm.visible = false;
+    for (const material of this.handMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = glow;
+    }
+  }
+
+  // extend: 0〜1 の伸び具合。予兆では届く距離（reach）まで、掴んでいればプレイヤーまで。
+  updateHandArm(extend, holding) {
+    if (!this.arm) return;
+    const cfg = Config.enemy.hand;
+    const dx = this.hand.aim.x - this.position.x;
+    const dz = this.hand.aim.z - this.position.z;
+    const distance = Math.max(0.01, Math.hypot(dx, dz));
+    const length = holding ? distance : Math.min(distance, cfg.reach) * extend;
+    if (length < 0.05) {
+      this.arm.visible = false;
+      return;
+    }
+    tempVec2.set(dx / distance, 0, dz / distance);
+    this.arm.quaternion.setFromUnitVectors(HAND_ARM_UP, tempVec2);
+    this.arm.position.set(tempVec2.x * length * 0.5, HAND_ARM_HEIGHT, tempVec2.z * length * 0.5);
+    const radius = holding ? 0.16 : 0.07;
+    this.arm.scale.set(radius, length, radius);
+    this.armMaterial.opacity = holding ? 0.92 : 0.35 + extend * 0.4;
+    this.arm.visible = true;
+  }
+
   updateAquaticLarva(dt) {
+    if (this.stream?.timer > 0) {
+      // A line sent by the floodgate mother: swims straight until its time is up or it reaches land.
+      this.stream.timer -= dt;
+      const next = { x: this.position.x + this.stream.x * this.stream.speed * dt, z: this.position.z + this.stream.z * this.stream.speed * dt };
+      if (this.game.isWaterPosition(next)) {
+        this.position.x = next.x;
+        this.position.z = next.z;
+      } else this.stream.timer = 0;
+      return;
+    }
     const distance = Math.sqrt(horizontalDistanceSq(this.position, this.game.player.position));
     if (distance < 3.2) this.moveAway(this.game.player.position, dt, this.speed);
     else {
@@ -2900,7 +3334,8 @@ export class Enemy {
     if (this.attackTimer > 0) return;
     this.attackTimer = 0.75;
     const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
-    player.takeDamage(this.stats.damage * multiplier);
+    player.takeDamage((this.stream?.timer > 0 ? this.stream.damage : this.stats.damage) * multiplier);
+    if (this.type === 'footprint' && this.game.footprintStats) this.game.footprintStats.hits += 1;
     if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
   }
 
@@ -3245,6 +3680,8 @@ export class ExperienceOrb {
     this.object.rotation.y += dt * (this.type === 'speed' ? 7 : 4);
     this.model.rotation.x = Math.sin(this.game.elapsed * 5 + this.position.x) * 0.08;
     if (this.type === 'magnet') this.model.rotation.x += Math.PI * 0.5;
+    // The generated speed seed points up; laid on its side it reads as a spinning dart from the game camera.
+    if (this.type === 'speed' && INSTALLED_PICKUP_MODELS.has('speed')) this.model.rotation.z = Math.PI * 0.5;
     this.glow.visible = showGlow;
     if (showGlow) this.glow.material.opacity = 0.13 + Math.sin(this.game.elapsed * 7 + this.position.x) * 0.035;
     this.object.position.y = 0.45 + Math.sin(this.game.elapsed * 6 + this.position.x) * 0.08;
