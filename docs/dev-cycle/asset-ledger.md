@@ -301,3 +301,15 @@
 - 候補: **`hand-front-v2-103.png`**（第一候補。輪郭がすっきりして細い部品がない。少し機械っぽい）、`hand-front-103.png`（第二候補。いちばん生き物らしく腕が長いが、肩の上に細い枝があり Tripo が壁にしやすい）。
 - 不採用: 101（台座と地面つき）、102（細い蔓が多い）、104（斜め向きで影つき）、三面図 201・202（向きごとに別の生き物になり Multiview に使えない）、v2-105（脚が4本）、v2-106（右下に署名のような印、尾が2本）、v2-107（赤が出ない）。
 - Tripo での生成はまだ（ユーザーの承認待ち）。
+
+## 2026-11-03 効果音: 鳴きの声・手の掴み・吸水根の根張り（B2-1）
+ツール: Stable Audio 3 Small-SFX（`D:\0001_App_Dev\audioMCP`、steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で一括生成（末尾に `, no music, no speech` を自動で付ける）。
+候補と jobs、周波数の見比べ画像（`grid.png`・`grid2.png`）: `assets_src/sfx/2026-11-03/`（git 対象外）。後処理は FFmpeg（先頭を切る → 長さを切る → フェード）のあと `normalize-sfx.mjs` で役割ごとの大きさにそろえた。耳での確認はまだ。
+
+| ファイル | 元（シード、長さ） | プロンプト | 後処理 | 採用 |
+|---|---|---|---|---|
+| `assets/audio/sfx/crier_cry.wav`（1.8 秒、そろえた後 -18.0 LUFS、よく鳴る） | crier_cry2_s23（3 秒） | A monster croaking call, a deep frog croak that swells and ends in a short howl, creature vocalization | 0.15〜1.95 秒を切り出し、1.4 秒から 0.4 秒のフェードアウト | 採用: 途中で途切れず（ほかの3本は 1.5 秒前後で一度切れる）、倍音のある声が少しずつ上がる。主な周波数 177 Hz |
+| `assets/audio/sfx/hand_grab.wav`（0.9 秒、-15.9 LUFS、操作） | hand_grab_s23（2 秒） | A fleshy creature hand suddenly grabbing and clamping, a wet slap followed by a tight leathery squeeze and creak, monster grab | 0.15〜1.05 秒、0.65 秒から 0.25 秒のフェードアウト | 採用: 4本とも「叩く音＋締める音」の2つの山。s23 がいちばん低く（主な周波数 334 Hz）肉っぽい。元が小さい（-32 LUFS）ので +17 dB 上げている |
+| `assets/audio/sfx/root_dry.wav`（1.3 秒、-16.5 LUFS、操作） | root_dry2_s37（3 秒） | Dry earth cracking and crumbling, wooden roots creaking, ground splitting | 0.15〜1.45 秒、1.0 秒から 0.3 秒のフェードアウト | 採用: ひび割れの細かい粒が並ぶ。4本のうち出だしがいちばん強い |
+| — | crier_cry2_s11 / s37 / s51、hand_grab_s11 / s37 / s51、root_dry2_s11 / s23 / s51 | 同上 | — | 次点（候補として残す） |
+| — | crier_cry_s11〜s51、root_dry_s11〜s51（**2.5 秒**、長く説明的なプロンプト） | `A strange creature's eerie warbling call, ...`、`Roots burrowing into dry soil, ...` | — | 失敗: 8本とも最初から最後まで同じ大きさ（-30 dB 前後）の広い帯域の雑音。短いプロンプト・3 秒で作り直したら正常（asset-pipeline.md に記録） |

@@ -150,6 +150,7 @@ export class Hud {
     if (this.messageTimer <= 0) this.centerMessage.classList.remove('show', 'boss-warning');
     this.setBar(this.hpBar, player.hp / player.maxHp);
     this.setBar(this.mpBar, player.mp / player.maxMp);
+    this.mpBar.parentElement?.parentElement?.classList.toggle('dry', Boolean(player.onDryGround) && player.mp < player.maxMp);
     this.setBar(this.burstBar, player.burst / Config.player.burstMax);
     const burstReady = player.burst >= Config.player.burstMax && player.burstCooldownTimer <= 0;
     this.burstMeter?.classList.toggle('ready', burstReady);

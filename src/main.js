@@ -102,6 +102,7 @@ const KIICHIGO_SLASH_TEXTURE_URL = new URL('../assets/effects/kiichigo-alternati
 const PLAYER_BURST_COLOR = 0xffdf70;
 const CRIER_RING_COLOR = 0xe7a6ff;
 const HAND_RING_COLOR = 0xff6a3d;
+const ROOTSUCKER_RING_COLOR = 0xf0c27a;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
 // Sound effect files by name. Config.audio.normalizedSfx picks the loudness-matched copies in sfx-normalized/
 // (made by scripts/assets/normalize-sfx.mjs, 2026-11-01); false = the original files as before.
@@ -127,7 +128,10 @@ const SFX_FILES = {
   transformHuman: 'transform_human',
   xpPickup: 'xp_pickup',
   itemPickup: 'item_pickup',
-  thirstDrain: 'thirst_drain'
+  thirstDrain: 'thirst_drain',
+  crierCry: 'crier_cry',
+  handGrab: 'hand_grab',
+  rootDry: 'root_dry'
 };
 const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
 const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
@@ -448,6 +452,10 @@ class Game {
     this.handsActive = Config.enemy.hand.enabled && this.stageId >= Config.enemy.hand.fromChapter;
     this.handHintShown = false;
     this.handStats = { spawned: 0, windups: 0, misses: 0, grabs: 0, shaken: 0, timeouts: 0, freed: 0, heldSeconds: 0 };
+    this.rootsuckersActive = Config.enemy.rootsucker.enabled && this.stageId >= Config.enemy.rootsucker.fromChapter;
+    this.rootsuckerHintShown = false;
+    this.dryGroundHintShown = false;
+    this.rootsuckerStats = { spawned: 0, rooted: 0, drySeconds: 0, dryMpLost: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1369,6 +1377,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
       if (this.playerTrail) this.updatePlayerTrail(dt);
+      if (this.rootsuckersActive) this.updateDryGround(dt);
       for (const egg of this.eggs) egg.update(dt);
       for (const mother of this.bossEggs) mother.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
@@ -1586,6 +1595,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.shouldHatchFootprint()) type = 'footprint';
     else if (this.shouldHatchCrier()) type = 'crier';
     else if (this.shouldHatchHand()) type = 'hand';
+    else if (this.shouldHatchRootsucker()) type = 'rootsucker';
     return this.spawnEnemy(type, egg.position, egg);
   }
 
@@ -1608,6 +1618,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (type === 'footprint') this.onFootprintSpawned();
     if (type === 'crier') this.onCrierSpawned();
     if (type === 'hand') this.onHandSpawned();
+    if (type === 'rootsucker') this.onRootsuckerSpawned();
     return enemy;
   }
 
@@ -1664,7 +1675,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.78, 0.5);
     this.spawnRingEffect(crier.position, cfg.cryRadius * 0.5, 0xffffff, 0.5, 0.34);
     const distanceSq = horizontalDistanceSq(crier.position, this.player.position);
-    if (distanceSq < 40 * 40) this.playSfx('motherRelease', { volume: 0.32, cooldown: 0.6 });
+    if (distanceSq < 40 * 40) {
+      if (Config.audio.newSfx) this.playSfx('crierCry', { volume: 0.55, cooldown: 0.6 });
+      else this.playSfx('motherRelease', { volume: 0.32, cooldown: 0.6 });
+    }
   }
 
   shouldHatchHand() {
@@ -1697,6 +1711,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.handGrabStartedAt = this.elapsed;
     this.spawnRingEffect(this.player.position, 1.6, HAND_RING_COLOR, 0.8, 0.4);
     this.shake = Math.max(this.shake, 0.25);
+    if (Config.audio.newSfx) this.playSfx('handGrab', { volume: 0.8, cooldown: 0.3 });
     this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8);
   }
 
@@ -1709,6 +1724,51 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.spawnParticleBurst(this.player.position, 24, HAND_RING_COLOR, 3.2, 0.45, 0.5);
       this.playSfx('enemyDie', { volume: 0.4, cooldown: 0.2 });
     }
+  }
+
+  shouldHatchRootsucker() {
+    const cfg = Config.enemy.rootsucker;
+    if (!this.rootsuckersActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'rootsucker') alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onRootsuckerSpawned() {
+    this.rootsuckerStats.spawned += 1;
+    if (this.rootsuckerHintShown) return;
+    this.rootsuckerHintShown = true;
+    this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6);
+  }
+
+  onRootsuckerRooted(rootsucker) {
+    this.rootsuckerStats.rooted += 1;
+    const cfg = Config.enemy.rootsucker;
+    this.spawnRingEffect(rootsucker.position, cfg.dryRadiusStart, ROOTSUCKER_RING_COLOR, 0.8, 0.5);
+    this.spawnDust(rootsucker.position, 0xb98a4f);
+    if (Config.audio.newSfx && horizontalDistanceSq(rootsucker.position, this.player.position) < 40 * 40) {
+      this.playSfx('rootDry', { volume: 0.6, cooldown: 0.5 });
+    }
+  }
+
+  // 吸水根の乾いた円のどれかの中か。人間形態の MP 回復を止めるのに使う（Player.updateFormResources）。
+  isOnDryGround(position) {
+    if (!this.rootsuckersActive) return false;
+    for (const enemy of this.enemies) {
+      if (enemy.type === 'rootsucker' && enemy.coversDryGround(position)) return true;
+    }
+    return false;
+  }
+
+  // 乾いた地面で MP が止まっている時間を数え、初めて止まったときに一言出す。
+  updateDryGround(dt) {
+    const player = this.player;
+    if (!player.onDryGround || player.form !== 'human' || player.mp >= player.maxMp) return;
+    this.rootsuckerStats.drySeconds += dt;
+    this.rootsuckerStats.dryMpLost += player.humanRegenMp * (1 - Config.enemy.rootsucker.dryRegenScale) * dt;
+    if (this.dryGroundHintShown) return;
+    this.dryGroundHintShown = true;
+    this.showMessage('乾いた地面ではMPが回復しない', 2.2);
   }
 
   // 足跡がなぞる道を記録する。足跡が場にいるあいだは、その道をプレイヤーの足元に薄い印で残す。

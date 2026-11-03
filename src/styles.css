@@ -195,6 +195,9 @@ body,
 .meter.hp { grid-column: 1; grid-row: 1; }
 .meter.mp { grid-column: 1; grid-row: 2; }
 .meter.burst { grid-column: 1; grid-row: 3; }
+/* 吸水根の乾いた円の中で MP が止まっているとき */
+.meter.mp.dry i { filter: saturate(0.25) sepia(0.8) brightness(0.85); }
+.meter.mp.dry span::after { content: " 乾"; color: #f0c27a; }
 
 .meter {
   height: 60px;

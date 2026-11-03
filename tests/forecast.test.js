@@ -18,12 +18,14 @@ test('the forecast names the chapter boss and its hint, falling back to the moth
 
 test('a new species is forecast only on the chapter it first appears and only while enabled', () => {
   const from = Config.egg.mimic.fromChapter;
-  assert.deepEqual(buildForecast(STAGES[from]).species.map(s => s.name), ['擬態卵']);
+  // 第5章は吸水根（E13）も同じ章から出る
+  const sameChapter = Config.enemy.rootsucker.fromChapter === from ? ['吸水根'] : [];
+  assert.deepEqual(buildForecast(STAGES[from]).species.map(s => s.name), ['擬態卵', ...sameChapter]);
   assert.equal(buildForecast(STAGES[1]).species.length, 0);
   if (STAGES[from + 1]) assert.equal(buildForecast(STAGES[from + 1]).species.length, 0);
   Config.egg.mimic.enabled = false;
   try {
-    assert.equal(buildForecast(STAGES[from]).species.length, 0);
+    assert.deepEqual(buildForecast(STAGES[from]).species.map(s => s.name), sameChapter);
   } finally {
     Config.egg.mimic.enabled = true;
   }

@@ -37,6 +37,14 @@ const NEW_SPECIES = Object.freeze([
     form: '鳥形態に変身して振りほどく（MPを残しておく）',
     chapter: () => Config.enemy.hand.fromChapter,
     enabled: () => Config.enemy.hand.enabled
+  }),
+  Object.freeze({
+    id: 'rootsucker',
+    name: '吸水根',
+    trait: '動かない。根を張ると周りが乾き、その中ではMPが回復しない',
+    form: '人間形態で、円の外から撃つ',
+    chapter: () => Config.enemy.rootsucker.fromChapter,
+    enabled: () => Config.enemy.rootsucker.enabled
   })
 ]);
 

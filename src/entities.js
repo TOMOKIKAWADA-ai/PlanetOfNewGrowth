@@ -171,6 +171,12 @@ const HAND_GLOW = 0xff6a3d;
 const HAND_ARM_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true);
 const HAND_ARM_UP = new THREE.Vector3(0, 1, 0);
 const HAND_ARM_HEIGHT = 1.05;
+const ROOTSUCKER_COLOR = 0x6b4a2b;
+const ROOTSUCKER_GLOW = 0xd99a4e;
+const DRY_CIRCLE_GEOMETRY = new THREE.CircleGeometry(1, 48);
+const DRY_EDGE_GEOMETRY = new THREE.RingGeometry(0.95, 1, 48);
+const DRY_CIRCLE_OPACITY = 0.42;
+const DRY_EDGE_OPACITY = 0.7;
 const ENEMY_LOD_SPECS = {
   chaser: { color: 0x180c0d, radius: 0.46, height: 1.28, segments: 5 },
   shooter: { color: 0x180c0d, radius: 0.42, height: 1.12, segments: 5 },
@@ -183,7 +189,8 @@ const ENEMY_LOD_SPECS = {
   frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
   footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
   crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
-  hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 }
+  hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
+  rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -1305,8 +1312,12 @@ export class Player {
 
   updateFormResources(dt) {
     if (this.form === 'human') {
-      this.mp = clamp(this.mp + this.humanRegenMp * dt, 0, this.maxMp);
+      // 吸水根の乾いた円の中では回復しない（Config.enemy.rootsucker.dryRegenScale 倍）
+      this.onDryGround = this.game.isOnDryGround?.(this.position) ?? false;
+      const regenScale = this.onDryGround ? Config.enemy.rootsucker.dryRegenScale : 1;
+      this.mp = clamp(this.mp + this.humanRegenMp * regenScale * dt, 0, this.maxMp);
     } else {
+      this.onDryGround = false;
       const formCost = (this.form === 'fish' ? Config.player.fishMpCost : this.birdMpCost) * this.formMpCostScale;
       this.mp = clamp(this.mp - formCost * dt, 0, this.maxMp);
       if (this.mp <= 0) this.returnToHuman(true);
@@ -2184,6 +2195,7 @@ export class Enemy {
     if (type === 'footprint') this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true };
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
     if (type === 'hand') this.createHandArm();
+    if (type === 'rootsucker') this.createDryCircle();
   }
 
   get stats() {
@@ -2203,6 +2215,7 @@ export class Enemy {
       footprint: 'chaserEnemy',
       crier: 'spawnerEnemy',
       hand: 'chaserEnemy',
+      rootsucker: 'guardianEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2213,6 +2226,7 @@ export class Enemy {
       if (type === 'footprint') this.styleFootprintModel(gameplayModel);
       if (type === 'crier') this.styleCrierModel(gameplayModel);
       if (type === 'hand') this.styleHandModel(gameplayModel);
+      if (type === 'rootsucker') this.styleRootsuckerModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2220,7 +2234,7 @@ export class Enemy {
       }
       return this.createLodModel(gameplayModel, type);
     }
-    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' ? 'skeleton' : type === 'spawner' || type === 'crier' ? 'vampire' : 'zombie';
+    const key = type === 'shooter' || type === 'sniper' ? 'ghost' : type === 'guardian' || type === 'rootsucker' ? 'skeleton' : type === 'spawner' || type === 'crier' ? 'vampire' : 'zombie';
     const model = Config.visuals.useAssetModels ? this.game.assets.cloneModel(key) : null;
     if (model) {
       model.scale.setScalar(type === 'guardian' ? 1.15 : type === 'spawner' ? 0.82 : type === 'chaser' ? 1.0 : 0.9);
@@ -2228,6 +2242,7 @@ export class Enemy {
       if (type === 'footprint') this.styleFootprintModel(model);
       if (type === 'crier') this.styleCrierModel(model);
       if (type === 'hand') this.styleHandModel(model);
+      if (type === 'rootsucker') this.styleRootsuckerModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2329,6 +2344,59 @@ export class Enemy {
         ? child.material.map(recolor)
         : recolor(child.material);
     });
+  }
+
+  // 吸水根は大きな体（守り手）を、土色に塗って低く構える。根を張るあいだ光が強くなる（updateRootsucker）。
+  styleRootsuckerModel(model) {
+    this.rootsuckerMaterials = [];
+    model.scale.multiplyScalar(0.92);
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(ROOTSUCKER_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(ROOTSUCKER_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.1;
+        material.needsUpdate = true;
+        this.rootsuckerMaterials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 乾いた円。地面に貼る薄い土色の円と、縁の明るい輪。根を張ると現れて広がる。
+  createDryCircle() {
+    this.root = { timer: Config.enemy.rootsucker.rootSeconds, rooted: false, age: 0, radius: 0 };
+    this.dryCircle = new THREE.Group();
+    this.dryCircle.name = 'DryCircle';
+    this.dryCircle.position.y = 0.05;
+    this.dryCircle.rotation.x = -Math.PI / 2;
+    this.dryFillMaterial = new THREE.MeshBasicMaterial({ color: 0xa0773f, transparent: true, opacity: 0, depthWrite: false });
+    this.dryEdgeMaterial = new THREE.MeshBasicMaterial({ color: 0xf0c27a, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false, toneMapped: false });
+    const fill = new THREE.Mesh(DRY_CIRCLE_GEOMETRY, this.dryFillMaterial);
+    const edge = new THREE.Mesh(DRY_EDGE_GEOMETRY, this.dryEdgeMaterial);
+    fill.renderOrder = 1;
+    edge.renderOrder = 2;
+    this.dryCircle.add(fill, edge);
+    this.dryCircle.scale.setScalar(0.01);
+    this.dryCircle.visible = false;
+    this.object.add(this.dryCircle);
+  }
+
+  // 乾いた円の今の半径。根を張る前と倒れたあとは 0。
+  get dryRadius() {
+    return this.root?.rooted && !this.dead ? this.root.radius : 0;
+  }
+
+  coversDryGround(position) {
+    const radius = this.dryRadius;
+    return radius > 0 && horizontalDistanceSq(this.position, position) <= radius * radius;
   }
 
   // 伸ばす腕。予兆のあいだは細く半透明、掴んでいるあいだは太くプレイヤーまで届く。
@@ -2561,9 +2629,12 @@ export class Enemy {
     else if (this.type === 'footprint') this.updateFootprint(dt);
     else if (this.type === 'crier') this.updateCrier(dt);
     else if (this.type === 'hand') this.updateHand(dt);
+    else if (this.type === 'rootsucker') this.updateRootsucker(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
-    if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
+    // 根を張った吸水根は押されても動かない（乾いた円がずれないように）
+    if (this.root?.rooted) this.knock.set(0, 0, 0);
+    else if (this.distanceSqToPlayer <= Config.performance.enemyAvoidanceDistance ** 2) this.applyAvoidance(dt);
     if (this.knock.lengthSq() > 0.001) {
       this.position.x += this.knock.x * dt;
       this.position.z += this.knock.z * dt;
@@ -2662,6 +2733,37 @@ export class Enemy {
 
   // 近づいて腕を伸ばし（予兆）、伸ばしきったときに届けば掴む。掴んでいるあいだは動かない。
   // プレイヤーが変身するか、時間切れか、プレイヤーが離れすぎると離す（離す処理は Player.updateGrab）。
+  updateRootsucker(dt) {
+    const cfg = Config.enemy.rootsucker;
+    const root = this.root;
+    let glow = 0.1;
+    if (!root.rooted) {
+      root.timer -= dt;
+      glow = 0.1 + clamp(1 - root.timer / cfg.rootSeconds, 0, 1) * 0.8;
+      if (root.timer <= 0) {
+        root.rooted = true;
+        root.age = 0;
+        this.dryCircle.visible = true;
+        this.game.onRootsuckerRooted?.(this);
+      }
+    }
+    if (root.rooted) {
+      root.age += dt;
+      const grow = clamp(root.age / cfg.growSeconds, 0, 1);
+      root.radius = cfg.dryRadiusStart + (cfg.dryRadiusMax - cfg.dryRadiusStart) * grow;
+      // 根を張ってすぐは小さく現れてから所定の半径へ。広がっているあいだは縁が脈打つ。
+      const appear = clamp(root.age / 0.6, 0, 1);
+      this.dryCircle.scale.setScalar(Math.max(0.01, root.radius * (0.6 + appear * 0.4)));
+      this.dryFillMaterial.opacity = DRY_CIRCLE_OPACITY * appear;
+      const pulse = grow < 1 ? 0.75 + Math.sin(this.game.elapsed * 3.2) * 0.25 : 0.7;
+      this.dryEdgeMaterial.opacity = DRY_EDGE_OPACITY * appear * pulse;
+      glow = 0.35;
+    }
+    for (const material of this.rootsuckerMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = glow;
+    }
+  }
+
   updateHand(dt) {
     const cfg = Config.enemy.hand;
     const hand = this.hand;

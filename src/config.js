@@ -93,6 +93,7 @@ export const Config = {
     // Pause between the end of the dying scream and the last line.
     deathVoiceGap: 1.2,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
+    // 2026-11-03: crier's cry, hand grab, rootsucker rooting (false = mother_release for the cry, no sound for the other two).
     newSfx: true,
     // Effect files with loudness matched by role (assets/audio/sfx-normalized, 2026-11-01). false = original files.
     normalizedSfx: true,
@@ -494,6 +495,27 @@ export const Config = {
       grabDamage: 5,
       cooldown: 4,
       firstCooldown: 1.5
+    },
+    // 吸水根（E13、第5章の新種）。動かず、孵って rootSeconds たつと根を張り、足元に乾いた円を作る。
+    // 円の半径は dryRadiusStart から growSeconds かけて dryRadiusMax まで広がる。円の中にいる人間形態の
+    // プレイヤーは MP の回復が dryRegenScale 倍になる（0 で止まる）。倒すと円は消える。
+    // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    rootsucker: {
+      enabled: true,
+      fromChapter: 5,
+      fromElapsed: 45,
+      chance: 0.08,
+      maxAlive: 3,
+      hp: 60,
+      speed: 0,
+      damage: 6,
+      xp: 10,
+      walkAnimationSpeed: 1,
+      rootSeconds: 1.5,
+      dryRadiusStart: 3.5,
+      dryRadiusMax: 8,
+      growSeconds: 25,
+      dryRegenScale: 0
     }
   },
   xp: {
