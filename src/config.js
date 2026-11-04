@@ -516,6 +516,26 @@ export const Config = {
       dryRadiusMax: 8,
       growSeconds: 25,
       dryRegenScale: 0
+    },
+    // 割れ殻（E14 の片方。第3章から）。普通に近づいてくる殻をかぶった敵。バースト技で倒すと
+    // splitCount 体の「半分」に割れる（半分は HP・経験値が halfScale 倍で、もう割れない）。
+    // 半分は割れてから halfBurstImmuneSeconds のあいだバースト技を受けない（続くビームや斬撃でまとめて消えないように）。
+    // 普通の射撃・パルス・急降下で倒せば割れない。卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    splitshell: {
+      enabled: true,
+      fromChapter: 3,
+      fromElapsed: 40,
+      chance: 0.1,
+      maxAlive: 4,
+      hp: 46,
+      speed: 2.2,
+      damage: 8,
+      xp: 8,
+      walkAnimationSpeed: 1.1,
+      splitCount: 2,
+      halfScale: 0.5,
+      halfBurstImmuneSeconds: 0.9,
+      halfSpread: 1.6
     }
   },
   xp: {

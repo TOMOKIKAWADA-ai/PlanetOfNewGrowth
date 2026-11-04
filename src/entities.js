@@ -173,6 +173,8 @@ const HAND_ARM_UP = new THREE.Vector3(0, 1, 0);
 const HAND_ARM_HEIGHT = 1.05;
 const ROOTSUCKER_COLOR = 0x6b4a2b;
 const ROOTSUCKER_GLOW = 0xd99a4e;
+const SPLITSHELL_COLOR = 0xd8ccb0;
+const SPLITSHELL_GLOW = 0xfff0b8;
 const DRY_CIRCLE_GEOMETRY = new THREE.CircleGeometry(1, 48);
 const DRY_EDGE_GEOMETRY = new THREE.RingGeometry(0.95, 1, 48);
 const DRY_CIRCLE_OPACITY = 0.42;
@@ -190,7 +192,8 @@ const ENEMY_LOD_SPECS = {
   footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
   crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
   hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
-  rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 }
+  rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 },
+  splitshell: { color: SPLITSHELL_COLOR, radius: 0.48, height: 1.24, segments: 6 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -2196,6 +2199,9 @@ export class Enemy {
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
     if (type === 'hand') this.createHandArm();
     if (type === 'rootsucker') this.createDryCircle();
+    // 割れ殻の半分（makeSplitHalf）はもう割れず、割れた直後はバースト技を受けない
+    this.splitHalf = false;
+    this.burstImmuneTimer = 0;
   }
 
   get stats() {
@@ -2216,6 +2222,7 @@ export class Enemy {
       crier: 'spawnerEnemy',
       hand: 'chaserEnemy',
       rootsucker: 'guardianEnemy',
+      splitshell: 'chaserEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2227,6 +2234,7 @@ export class Enemy {
       if (type === 'crier') this.styleCrierModel(gameplayModel);
       if (type === 'hand') this.styleHandModel(gameplayModel);
       if (type === 'rootsucker') this.styleRootsuckerModel(gameplayModel);
+      if (type === 'splitshell') this.styleSplitshellModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2243,6 +2251,7 @@ export class Enemy {
       if (type === 'crier') this.styleCrierModel(model);
       if (type === 'hand') this.styleHandModel(model);
       if (type === 'rootsucker') this.styleRootsuckerModel(model);
+      if (type === 'splitshell') this.styleSplitshellModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2368,6 +2377,38 @@ export class Enemy {
         ? child.material.map(recolor)
         : recolor(child.material);
     });
+  }
+
+  // 割れ殻は追いかけ役の体を、白っぽい殻の色に塗る。縁がうっすら光る。
+  styleSplitshellModel(model) {
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(SPLITSHELL_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(SPLITSHELL_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.16;
+        material.needsUpdate = true;
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // バースト技で割れた割れ殻の片方。小さく、HP と経験値が halfScale 倍で、もう割れない。
+  makeSplitHalf() {
+    const cfg = Config.enemy.splitshell;
+    this.splitHalf = true;
+    this.maxHp = this.stats.hp * cfg.halfScale;
+    this.hp = this.maxHp;
+    this.burstImmuneTimer = cfg.halfBurstImmuneSeconds;
+    this.model.scale.multiplyScalar(0.72);
+    this.collisionRadius *= 0.78;
   }
 
   // 乾いた円。地面に貼る薄い土色の円と、縁の明るい輪。根を張ると現れて広がる。
@@ -2598,6 +2639,7 @@ export class Enemy {
     this.updateModelAnimation(dt);
     this.attackTimer = Math.max(0, this.attackTimer - dt);
     this.buildingImpactTimer = Math.max(0, this.buildingImpactTimer - dt);
+    this.burstImmuneTimer = Math.max(0, this.burstImmuneTimer - dt);
     this.fireTimer -= dt;
     this.lifeTimer -= dt;
     this.matureTimer -= dt;
@@ -3055,8 +3097,10 @@ export class Enemy {
     this.hpBar.lookAt(this.game.camera.position);
   }
 
+  // バースト技（アカメの爆発・ツキミのビーム・キイチゴの斬撃）は burstReward: false で呼ぶ
   takeDamage(amount, origin = null, strongKnock = false, burstReward = true) {
     if (this.dead) return;
+    if (!burstReward && this.burstImmuneTimer > 0) return;
     this.hp -= amount;
     this.game.spawnHitSpark(this.position, this.type === 'spawner' ? 0xffe36c : 0xffffff);
     if (origin) {
@@ -3076,8 +3120,9 @@ export class Enemy {
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
       if (burstReward) this.game.player.addBurst(this.type === 'spawner' ? Config.player.burstGainSpawner : Config.player.burstGainEnemy);
-      this.game.spawnXp(this.position, this.stats.xp);
+      this.game.spawnXp(this.position, this.stats.xp * (this.splitHalf ? Config.enemy.splitshell.halfScale : 1));
       this.game.spawnRandomPickup(this.position, this.type === 'spawner' ? 'spawner' : 'enemy');
+      if (this.type === 'splitshell' && !burstReward && !this.splitHalf) this.game.onSplitshellBurst?.(this);
       this.game.spawnEnemyDissolveEffect(this.position, this.type);
     }
   }

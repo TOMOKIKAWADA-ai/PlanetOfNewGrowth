@@ -68,6 +68,10 @@
   - 2026-10-28 の結果: 逆光と霧は手本に近づいた（10-21 の青空より良い）。ただし**黄色すぎ**、塔が**ゴシックの尖塔**になり花弁の形が出ない。次は `golden` を外して `pale cream light, cool teal shadows` にし、`gothic, spires` を否定に入れる。花弁の塔は `curved white petal-like structures, organic architecture` のように形を言い換える。
 - 敵: `dark fantasy concept art, giant crimson egg covered in thorny vines with glowing red seams, ...`（全文は `assets_src/illust/2026-10-28/jobs.json`）
   - 2026-10-28 の結果: **採用しない**。卵がつるっとした写真のような赤い卵になり、光る筋も細かい棘も出ない。juggernaut は写真寄りになりやすい。次は `intricate, organic, bramble texture, emissive red cracks, highly detailed digital painting, artstation` を足し、否定に `photo, smooth, plain, minimalist` を入れる。
+- 2026-11-04 の2回目（juggernaut と sd_xl_base、計10枚。Forge の起動 130 秒、1枚 29〜59 秒）:
+  - 世界: `curved white petal-like structures, organic architecture, towers shaped like half-open white flower buds` で**花弁の塔が出る**。`golden` を外し否定に `gothic, spires, golden, orange, yellow tint` で黄色と尖塔は消えた。ただ `ivy` だと緑が濃くなりすぎる。`sparse ivy, pale sage moss, low saturation` と否定 `saturated green` にすると今度は**白と灰色だけ**になり、空の暖色と細密さが消えた。次は両者の中間: `ivy` は残して `muted`、空に `soft warm glow on the horizon` を足し、`low saturation` は外す。
+  - 敵: `red light leaking from deep cracks, glowing red veins` で**割れ目が光る**ようになった。ただ卵が灰色の石になり、蔓が足元に寄る。次は `the egg's shell is crimson`、`crimson thorny vines covering the whole egg` のように卵の色と蔓の位置を言い切る。
+  - sd_xl_base（商用 ○）は世界の絵では平たいイラスト調になり、手本の細密さが出ない。世界・敵の一枚絵は juggernaut で詰め、商用に使う前にモデルの条件を確かめる（判断待ち）。
 - 人物: `softsketchIllustrious_v125`（Euler a、CFG 5.5）では**線画寄りの淡い塗り**になり、手本の艶のあるセル塗りと違う（採用しない）。キャラは手本の立ち絵（`assets/ui/characters`）を参照にした img2img か ControlNet で寄せる方が早い（B4-5）。
 
 判断の基準: 生成した絵は手本と並べて見比べ、(1) 光の向き（逆光か）、(2) 彩度の置き方（世界は低彩度、敵は赤だけ）、(3) 塗り（厚塗り・細密）の3点が合わなければ使わない。

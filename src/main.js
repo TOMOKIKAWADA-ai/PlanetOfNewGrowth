@@ -15,7 +15,7 @@ import {
 import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.js';
 import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
-import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
+import { angleToXZ, clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
 import { floodgateStreamPoints, getBossName, getBossType, linkSwarm, swarmPositions } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
@@ -103,6 +103,7 @@ const PLAYER_BURST_COLOR = 0xffdf70;
 const CRIER_RING_COLOR = 0xe7a6ff;
 const HAND_RING_COLOR = 0xff6a3d;
 const ROOTSUCKER_RING_COLOR = 0xf0c27a;
+const SPLITSHELL_SHARD_COLOR = 0xfff0b8;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
 // Sound effect files by name. Config.audio.normalizedSfx picks the loudness-matched copies in sfx-normalized/
 // (made by scripts/assets/normalize-sfx.mjs, 2026-11-01); false = the original files as before.
@@ -456,6 +457,10 @@ class Game {
     this.rootsuckerHintShown = false;
     this.dryGroundHintShown = false;
     this.rootsuckerStats = { spawned: 0, rooted: 0, drySeconds: 0, dryMpLost: 0 };
+    this.splitshellsActive = Config.enemy.splitshell.enabled && this.stageId >= Config.enemy.splitshell.fromChapter;
+    this.splitshellHintShown = false;
+    this.splitHintShown = false;
+    this.splitshellStats = { spawned: 0, splits: 0, halves: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1596,7 +1601,11 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     else if (this.shouldHatchCrier()) type = 'crier';
     else if (this.shouldHatchHand()) type = 'hand';
     else if (this.shouldHatchRootsucker()) type = 'rootsucker';
-    return this.spawnEnemy(type, egg.position, egg);
+    else if (this.shouldHatchSplitshell()) type = 'splitshell';
+    const enemy = this.spawnEnemy(type, egg.position, egg);
+    // 割れて出た半分は数えないので、卵から孵ったときだけ（spawnEnemy ではなくここで）
+    if (enemy?.type === 'splitshell') this.onSplitshellSpawned();
+    return enemy;
   }
 
   // ignoreCap: enemies a boss sends itself (the floodgate mother's tadpole lines) appear even when the field is full.
@@ -1739,6 +1748,41 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.rootsuckerHintShown) return;
     this.rootsuckerHintShown = true;
     this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6);
+  }
+
+  shouldHatchSplitshell() {
+    const cfg = Config.enemy.splitshell;
+    if (!this.splitshellsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'splitshell' && !enemy.splitHalf) alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onSplitshellSpawned() {
+    this.splitshellStats.spawned += 1;
+    if (this.splitshellHintShown) return;
+    this.splitshellHintShown = true;
+    this.showMessage('割れ殻が孵った。バースト技で倒すと二つに割れる\n普通の射撃で倒せば割れない', 3.6);
+  }
+
+  // バースト技で倒された割れ殻（割れる前のもの）が、左右に半分ずつ飛び散る。敵の上限を超えても出す。
+  onSplitshellBurst(shell) {
+    const cfg = Config.enemy.splitshell;
+    this.splitshellStats.splits += 1;
+    const away = angleToXZ(this.player.position, shell.position);
+    for (let i = 0; i < cfg.splitCount; i++) {
+      const half = this.spawnEnemy('splitshell', shell.position, null, { ignoreCap: true });
+      if (!half) continue;
+      half.makeSplitHalf();
+      const angle = away + (i - (cfg.splitCount - 1) / 2) * 1.4;
+      half.position.copy(shell.position);
+      half.knock.set(Math.sin(angle) * cfg.halfSpread * 6, 0, Math.cos(angle) * cfg.halfSpread * 6);
+      this.splitshellStats.halves += 1;
+    }
+    this.spawnParticleBurst(shell.position, 18, SPLITSHELL_SHARD_COLOR, 2.2, 0.4, 0.7);
+    if (this.splitHintShown) return;
+    this.splitHintShown = true;
+    this.showMessage('割れ殻が二つに割れた。割れたほうは普通の射撃で倒す', 2.6);
   }
 
   onRootsuckerRooted(rootsucker) {

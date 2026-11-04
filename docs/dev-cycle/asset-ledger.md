@@ -313,3 +313,17 @@
 | `assets/audio/sfx/root_dry.wav`（1.3 秒、-16.5 LUFS、操作） | root_dry2_s37（3 秒） | Dry earth cracking and crumbling, wooden roots creaking, ground splitting | 0.15〜1.45 秒、1.0 秒から 0.3 秒のフェードアウト | 採用: ひび割れの細かい粒が並ぶ。4本のうち出だしがいちばん強い |
 | — | crier_cry2_s11 / s37 / s51、hand_grab_s11 / s37 / s51、root_dry2_s11 / s23 / s51 | 同上 | — | 次点（候補として残す） |
 | — | crier_cry_s11〜s51、root_dry_s11〜s51（**2.5 秒**、長く説明的なプロンプト） | `A strange creature's eerie warbling call, ...`、`Roots burrowing into dry soil, ...` | — | 失敗: 8本とも最初から最後まで同じ大きさ（-30 dB 前後）の広い帯域の雑音。短いプロンプト・3 秒で作り直したら正常（asset-pipeline.md に記録） |
+
+## 2026-11-04 画風の基準づくりの試し描き 2回目（B4-1 の続き）
+
+すべて**不採用（比較用）**。設定とプロンプトの全文は `assets_src/illust/2026-11-04/jobs.json`（1巡目）・`jobs2.json`（2巡目）と各 PNG と同名の JSON。見比べ画像は `docs/devlog/img/2026-11-04-style-compare.jpg`・`-compare2.jpg`。
+ライセンスの注意: juggernautXL_ragnarokBy は商用の条件が「要確認」、sd_xl_base_1.0 は商用 ○。
+
+| ファイル | ツール・モデル | 内容 | シード | 判定 |
+|---|---|---|---|---|
+| `assets_src/illust/2026-11-04/world-jugg-a.png` / `-b.png` | Forge / juggernautXL_ragnarokBy（DPM++ 2M 28 steps CFG 5、1344×768） | 世界。`golden` を外し `pale cream light, cool teal shadows`、塔を `curved white petal-like structures` に言い換え、否定に `gothic, spires` | 110401 / 110402 | 不採用: 花弁の形は出た（a）。黄色と尖塔は消えた。ただ**蔦の緑が濃すぎ**、逆光と奥の霞が弱い |
+| `assets_src/illust/2026-11-04/world-base-a.png` / `-b.png` | Forge / sd_xl_base_1.0（DPM++ 2M 30 steps CFG 6） | 同上 | 110401 / 110402 | 不採用: 平たいイラスト調で緑一色。細密さがない |
+| `assets_src/illust/2026-11-04/enemy-jugg-a.png` | juggernautXL（1巡目と同じ設定） | 敵。`dense bramble of black thorny vines, emissive red cracks`、否定に `photo, smooth, plain` | 110411 | 不採用: 黒い棘の巣に包まれた赤い卵は近いが、筋が光らない。写真寄り |
+| `assets_src/illust/2026-11-04/enemy-base-a.png` | sd_xl_base_1.0 | 同上 | 110411 | 不採用: 木の根に絡んだ赤い卵。光る筋なし |
+| `assets_src/illust/2026-11-04/world2-a.png` / `-b.png` | juggernautXL | 世界。`sparse ivy, pale sage moss, bright hazy white sky, thick white mist, low saturation`、否定に `lush green jungle, saturated green` | 110421 / 110422 | 不採用: 色は手本の白・クリームに近づき、水の映り込みと霧も出た。ただ**白と灰色だけになり、空の暖色・奥行き・細密さが消えた**（3D の描画のよう） |
+| `assets_src/illust/2026-11-04/enemy2-a.png` / `-b.png` | juggernautXL | 敵。`crimson thorn vines, glowing red veins, red light leaking from deep cracks`、否定に `bare branches, tree` | 110431 / 110432 | 不採用: 割れ目から赤い光が漏れるようになった。ただ卵が**灰色の石**になり、赤い蔓は足元だけ。手本の「赤い棘の蔓に覆われた卵」とは違う |
