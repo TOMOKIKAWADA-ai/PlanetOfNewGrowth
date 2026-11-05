@@ -461,6 +461,11 @@ class Game {
     this.splitshellHintShown = false;
     this.splitHintShown = false;
     this.splitshellStats = { spawned: 0, splits: 0, halves: 0 };
+    this.swarmbirdsActive = Config.enemy.swarmbird.enabled && this.stageId >= Config.enemy.swarmbird.fromChapter;
+    this.swarmFlocks = [];
+    this.swarmbirdHintShown = false;
+    this.swarmbirdHuntHintShown = false;
+    this.swarmbirdStats = { flocks: 0, birds: 0, hunts: 0, hits: 0, damage: 0 };
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1383,6 +1388,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.player.update(dt, this.input);
       if (this.playerTrail) this.updatePlayerTrail(dt);
       if (this.rootsuckersActive) this.updateDryGround(dt);
+      if (this.swarmFlocks.length) this.updateSwarmFlocks(dt);
       for (const egg of this.eggs) egg.update(dt);
       for (const mother of this.bossEggs) mother.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
@@ -1602,6 +1608,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     else if (this.shouldHatchHand()) type = 'hand';
     else if (this.shouldHatchRootsucker()) type = 'rootsucker';
     else if (this.shouldHatchSplitshell()) type = 'splitshell';
+    else if (this.shouldHatchSwarmbirds()) return this.hatchSwarmFlock(egg);
     const enemy = this.spawnEnemy(type, egg.position, egg);
     // 割れて出た半分は数えないので、卵から孵ったときだけ（spawnEnemy ではなくここで）
     if (enemy?.type === 'splitshell') this.onSplitshellSpawned();
@@ -1763,6 +1770,60 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.splitshellHintShown) return;
     this.splitshellHintShown = true;
     this.showMessage('割れ殻が孵った。バースト技で倒すと二つに割れる\n普通の射撃で倒せば割れない', 3.6);
+  }
+
+  shouldHatchSwarmbirds() {
+    const cfg = Config.enemy.swarmbird;
+    if (!this.swarmbirdsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    return this.swarmFlocks.length < cfg.maxFlocks;
+  }
+
+  // 卵1つから群れ（flockSize 羽）が孵る。1羽目は普通に数え、残りは敵の上限を超えても出す（群れが欠けないように）。
+  // 群れの回る角度は、孵った位置の方角から始める。
+  hatchSwarmFlock(egg) {
+    const cfg = Config.enemy.swarmbird;
+    const flock = { angle: angleToXZ(this.player.position, egg.position), birds: [] };
+    for (let i = 0; i < cfg.flockSize; i++) {
+      const bird = this.spawnEnemy('swarmbird', egg.position, i === 0 ? egg : null, { ignoreCap: i > 0 });
+      if (!bird) break;
+      bird.swarm.flock = flock;
+      bird.swarm.slot = i;
+      bird.swarm.height = 1;
+      flock.birds.push(bird);
+    }
+    if (!flock.birds.length) return null;
+    this.swarmFlocks.push(flock);
+    this.swarmbirdStats.flocks += 1;
+    this.swarmbirdStats.birds += flock.birds.length;
+    if (!this.swarmbirdHintShown) {
+      this.swarmbirdHintShown = true;
+      this.showMessage('群れ鳥が孵った。鳥形態になると、群れで襲ってくる\n人間形態でいるうちに撃ち落とす', 3.6);
+    }
+    return flock.birds[0];
+  }
+
+  // 群れの角度を進め、全滅した群れを外す。
+  updateSwarmFlocks(dt) {
+    const turn = Config.enemy.swarmbird.orbitTurnSpeed * dt;
+    this.swarmFlocks = this.swarmFlocks.filter((flock) => {
+      flock.angle += turn;
+      return flock.birds.some((bird) => !bird.dead);
+    });
+  }
+
+  // 群れ鳥が鳥形態のプレイヤーに気づいた（1羽ごと、気づくたびに呼ばれる）
+  onSwarmbirdHunt() {
+    this.swarmbirdStats.hunts += 1;
+    if (this.swarmbirdHuntHintShown) return;
+    this.swarmbirdHuntHintShown = true;
+    this.showMessage('群れ鳥が気づいた。人間形態に戻れば離れていく', 2.6);
+  }
+
+  // 実際に減った HP（無敵時間や防護膜で防いだ分は数えない）
+  onSwarmbirdHit(damage) {
+    if (!(damage > 0)) return;
+    this.swarmbirdStats.hits += 1;
+    this.swarmbirdStats.damage += damage;
   }
 
   // バースト技で倒された割れ殻（割れる前のもの）が、左右に半分ずつ飛び散る。敵の上限を超えても出す。

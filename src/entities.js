@@ -175,6 +175,12 @@ const ROOTSUCKER_COLOR = 0x6b4a2b;
 const ROOTSUCKER_GLOW = 0xd99a4e;
 const SPLITSHELL_COLOR = 0xd8ccb0;
 const SPLITSHELL_GLOW = 0xfff0b8;
+const SWARMBIRD_COLOR = 0x3d4a66;
+const SWARMBIRD_GLOW = 0x9fdcff;
+const SWARMBIRD_ALERT = 0xff5a4a;
+const SWARMBIRD_BODY_GEOMETRY = new THREE.ConeGeometry(0.2, 0.72, 5).rotateX(Math.PI / 2);
+const SWARMBIRD_WING_GEOMETRY = new THREE.BoxGeometry(0.62, 0.035, 0.3).translate(0.31, 0, 0);
+const SWARMBIRD_EYE_GEOMETRY = new THREE.SphereGeometry(0.075, 6, 4);
 const DRY_CIRCLE_GEOMETRY = new THREE.CircleGeometry(1, 48);
 const DRY_EDGE_GEOMETRY = new THREE.RingGeometry(0.95, 1, 48);
 const DRY_CIRCLE_OPACITY = 0.42;
@@ -193,7 +199,8 @@ const ENEMY_LOD_SPECS = {
   crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
   hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
   rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 },
-  splitshell: { color: SPLITSHELL_COLOR, radius: 0.48, height: 1.24, segments: 6 }
+  splitshell: { color: SPLITSHELL_COLOR, radius: 0.48, height: 1.24, segments: 6 },
+  swarmbird: { color: SWARMBIRD_COLOR, radius: 0.32, height: 0.4, segments: 5 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -2199,6 +2206,7 @@ export class Enemy {
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
     if (type === 'hand') this.createHandArm();
     if (type === 'rootsucker') this.createDryCircle();
+    if (type === 'swarmbird') this.swarm = { flock: null, slot: 0, mode: 'orbit', notice: 0, height: Config.enemy.swarmbird.orbitHeight, angle: 0, phase: Math.random() * TAU };
     // 割れ殻の半分（makeSplitHalf）はもう割れず、割れた直後はバースト技を受けない
     this.splitHalf = false;
     this.burstImmuneTimer = 0;
@@ -2214,6 +2222,7 @@ export class Enemy {
 
   createModel(type) {
     if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
+    if (type === 'swarmbird') return this.createSwarmbirdModel();
     const gameplayModelKeys = {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
@@ -2398,6 +2407,75 @@ export class Enemy {
         ? child.material.map(recolor)
         : recolor(child.material);
     });
+  }
+
+  // 群れ鳥の体。細い円錐の胴、左右の羽（羽ばたく）、光る目。目は鳥形態に気づくと赤くなる。
+  createSwarmbirdModel() {
+    const model = new THREE.Group();
+    model.name = 'Enemy_swarmbird';
+    const body = new THREE.Mesh(SWARMBIRD_BODY_GEOMETRY, new THREE.MeshStandardMaterial({ color: SWARMBIRD_COLOR, emissive: SWARMBIRD_GLOW, emissiveIntensity: 0.12, roughness: 0.7 }));
+    model.add(body);
+    const wingMaterial = new THREE.MeshStandardMaterial({ color: SWARMBIRD_COLOR, emissive: SWARMBIRD_GLOW, emissiveIntensity: 0.22, roughness: 0.8 });
+    const wings = [-1, 1].map((side) => {
+      const wing = new THREE.Mesh(SWARMBIRD_WING_GEOMETRY, wingMaterial);
+      wing.scale.x = side;
+      wing.position.set(side * 0.08, 0.02, 0.02);
+      model.add(wing);
+      return wing;
+    });
+    const eyeMaterial = new THREE.MeshBasicMaterial({ color: SWARMBIRD_GLOW, toneMapped: false });
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(SWARMBIRD_EYE_GEOMETRY, eyeMaterial);
+      eye.position.set(side * 0.09, 0.07, 0.24);
+      model.add(eye);
+    }
+    model.scale.setScalar(1.6);
+    model.position.y = Config.enemy.swarmbird.orbitHeight;
+    model.userData.baseY = model.position.y;
+    model.userData.wings = wings;
+    model.userData.eyeMaterial = eyeMaterial;
+    return model;
+  }
+
+  // 群れ鳥。人間形態の間は群れごとプレイヤーの周りを遠巻きに回る。鳥形態になると少し遅れて気づき、
+  // 鳥の高さまで上がって追いかける。高さが近いときだけ当たる（updateContactDamage）。
+  updateSwarmbird(dt) {
+    const cfg = Config.enemy.swarmbird;
+    const player = this.game.player;
+    const swarm = this.swarm;
+    if (player.form === 'bird') swarm.notice = Math.min(cfg.noticeSeconds, swarm.notice + dt);
+    else swarm.notice = 0;
+    const hunting = player.form === 'bird' && swarm.notice >= cfg.noticeSeconds;
+    if (hunting && swarm.mode !== 'hunt') this.game.onSwarmbirdHunt?.(this);
+    swarm.mode = hunting ? 'hunt' : 'orbit';
+    let targetHeight = cfg.orbitHeight;
+    if (hunting) {
+      targetHeight = Math.max(cfg.orbitHeight, player.visualHeight ?? cfg.orbitHeight);
+      // 追いついたら重ならないよう、羽ごとにずらしてプレイヤーのすぐ周りを回る（当たる距離の内側）
+      const swirl = this.game.elapsed * 3.2 + swarm.slot * (TAU / 4) + swarm.phase * 0.2;
+      tempVec2.set(player.position.x + Math.sin(swirl) * 1.1, 0, player.position.z + Math.cos(swirl) * 1.1);
+      const distSq = horizontalDistanceSq(this.position, tempVec2);
+      if (distSq > 0.0025) this.moveToward(tempVec2, dt, Math.min(cfg.diveSpeed, Math.sqrt(distSq) / dt));
+    } else {
+      // 群れの角度（flock.angle）は main.js が毎フレーム進める。羽ごとに少しずらして固まって回る。
+      const base = swarm.flock ? swarm.flock.angle : (swarm.angle += cfg.orbitTurnSpeed * dt);
+      const angle = base + (swarm.slot - 1.5) * 0.32;
+      const radius = cfg.orbitRadius + Math.sin(this.game.elapsed * 1.3 + swarm.phase) * 0.8;
+      tempVec2.set(player.position.x + Math.sin(angle) * radius, 0, player.position.z + Math.cos(angle) * radius);
+      const distSq = horizontalDistanceSq(this.position, tempVec2);
+      if (distSq > 0.04) this.moveToward(tempVec2, dt, Math.min(this.speed * (distSq > 9 ? 1.6 : 1), Math.sqrt(distSq) / dt));
+    }
+    const step = cfg.climbSpeed * dt;
+    swarm.height += clamp(targetHeight - swarm.height, -step, step);
+    const flap = Math.sin(this.game.elapsed * (hunting ? 26 : 16) + swarm.phase) * 0.7;
+    const wings = this.model.userData.wings;
+    if (wings) { wings[0].rotation.z = -flap; wings[1].rotation.z = flap; }
+    const eye = this.model.userData.eyeMaterial;
+    if (eye) eye.color.setHex(swarm.notice > 0 ? SWARMBIRD_ALERT : SWARMBIRD_GLOW);
+    this.model.userData.baseY = swarm.height;
+    // 鳥形態のカメラは高く引くので、襲っている間は体を大きくして見えるようにする
+    const scale = this.model.scale.x + ((hunting ? 2.6 : 1.6) - this.model.scale.x) * Math.min(1, dt * 4);
+    this.model.scale.setScalar(scale);
   }
 
   // バースト技で割れた割れ殻の片方。小さく、HP と経験値が halfScale 倍で、もう割れない。
@@ -2672,6 +2750,7 @@ export class Enemy {
     else if (this.type === 'crier') this.updateCrier(dt);
     else if (this.type === 'hand') this.updateHand(dt);
     else if (this.type === 'rootsucker') this.updateRootsucker(dt);
+    else if (this.type === 'swarmbird') this.updateSwarmbird(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     // 根を張った吸水根は押されても動かない（乾いた円がずれないように）
@@ -2682,7 +2761,8 @@ export class Enemy {
       this.position.z += this.knock.z * dt;
       this.knock.multiplyScalar(Math.pow(0.05, dt));
     }
-    const blockedBuilding = this.game.resolveBuildingCollision(this.position, this.collisionRadius);
+    // 群れ鳥は空を飛ぶので建物に当たらない
+    const blockedBuilding = this.type === 'swarmbird' ? null : this.game.resolveBuildingCollision(this.position, this.collisionRadius);
     if (blockedBuilding && this.buildingImpactTimer <= 0) {
       this.buildingImpactTimer = 0.85;
       this.game.damageBuilding(blockedBuilding, Math.max(3, this.stats.damage * 0.25), this.position);
@@ -3079,12 +3159,18 @@ export class Enemy {
   updateContactDamage() {
     const player = this.game.player;
     if (player.phaseTimer > 0) return;
-    if (player.form === 'bird' && this.type !== 'dragonfly') return;
+    // 群れ鳥は鳥形態のときだけ、高さが近づいてから当たる（人間形態には当たらない）
+    if (this.type === 'swarmbird') {
+      if (player.form !== 'bird' || this.swarm.mode !== 'hunt') return;
+      if (Math.abs(this.swarm.height - (player.visualHeight ?? 0)) > 2.2) return;
+    } else if (player.form === 'bird' && this.type !== 'dragonfly') return;
     if (this.distanceSqToPlayer > 1.55) return;
     if (this.attackTimer > 0) return;
-    this.attackTimer = 0.75;
+    this.attackTimer = this.type === 'swarmbird' ? Config.enemy.swarmbird.contactCooldown : 0.75;
     const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
+    const hpBefore = player.hp;
     player.takeDamage((this.stream?.timer > 0 ? this.stream.damage : this.stats.damage) * multiplier);
+    if (this.type === 'swarmbird') this.game.onSwarmbirdHit?.(hpBefore - player.hp);
     if (this.type === 'footprint' && this.game.footprintStats) this.game.footprintStats.hits += 1;
     if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
   }

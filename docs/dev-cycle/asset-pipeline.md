@@ -40,6 +40,7 @@
   - 生成: `node scripts/assets/forge-txt2img.mjs <jobs.json> <出力先>`。jobs の書式はスクリプト先頭のコメント。PNG と同名の JSON（設定とシード）を保存する。
   - 所要時間（1344×768、VRAM に空きがあるとき）: softsketch 28 steps 52秒、bluePencil LCM 8 steps 40秒、juggernaut 28 steps 69秒（初回はモデル読み込みを含む）。
   - **他のプロセスが GPU を使っていると VRAM が尽き、1 step 100 秒まで遅くなる**（2026-10-21、別のチャットの TTS と重なった）。生成前に `nvidia-smi` で他の利用者がいないか確認する。Node の fetch は 5 分で `HeadersTimeoutError` になるので、遅いときは待たずに中止する。
+  - **空きメモリ（RAM）が少ないと、最初の生成のモデル読み込みで Forge が黙って落ちる**（2026-11-05。ログはモデル一覧の取得で止まり「続行するには何かキーを押してください」で終わる。呼び出し側は `ECONNRESET`）。そのとき空きは 31 GB 中 2.6 GB で、ユーザーの Photoshop が 15.5 GB 使っていた。起動前に `Get-CimInstance Win32_OperatingSystem` の `FreePhysicalMemory` を見て、空きが 10 GB を切っていたら生成を翌日に回す（ユーザーのアプリは閉じない）。
   - 終了: `Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like 'D:\AI\webui_forge_cu121_torch231\*' } | % { Stop-Process -Id $_.ProcessId -Force }`。
 - 背景の画風（2026-10-21 の比較）: `juggernautXL_ragnarokBy`（DPM++ 2M、28 steps、CFG 5）が `assets/promo/world-awakening.png` に最も近い。暖かい逆光・厚い霧・白い花弁状の塔を明示すると良さそう（未確認）。softsketch は線画寄りで余白が多く、bluePencil は平坦でぼやける。
 - モデルは `D:\AI\webui_forge_cu121_torch231\webui\models\Stable-diffusion`:

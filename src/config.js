@@ -536,6 +536,29 @@ export const Config = {
       halfScale: 0.5,
       halfBurstImmuneSeconds: 0.9,
       halfSpread: 1.6
+    },
+    // 群れ鳥（E14 のもう片方。出す章は判断待ちで、今は第2章から）。卵1つから flockSize 羽の小さな群れが孵る。
+    // プレイヤーが人間形態の間は、半径 orbitRadius・高さ orbitHeight で遠巻きに回るだけで襲わない（自動射撃で落とせる）。
+    // 鳥形態になると noticeSeconds で気づき、diveSpeed で鳥の高さまで上がって集中して襲う（鳥形態でも当たる）。
+    // 人間形態に戻ると、また遠巻きに戻る。卵から孵る敵の chance が群れになる。enabled: false で出なくなる。
+    swarmbird: {
+      enabled: true,
+      fromChapter: 2,
+      fromElapsed: 60,
+      chance: 0.08,
+      maxFlocks: 2,
+      flockSize: 4,
+      hp: 18,
+      speed: 5.2,
+      diveSpeed: 15.5,
+      climbSpeed: 7,
+      damage: 2,
+      contactCooldown: 1.2,
+      xp: 3,
+      orbitRadius: 9,
+      orbitHeight: 3.2,
+      orbitTurnSpeed: 0.45,
+      noticeSeconds: 0.6
     }
   },
   xp: {

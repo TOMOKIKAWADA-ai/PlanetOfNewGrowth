@@ -327,3 +327,7 @@
 | `assets_src/illust/2026-11-04/enemy-base-a.png` | sd_xl_base_1.0 | 同上 | 110411 | 不採用: 木の根に絡んだ赤い卵。光る筋なし |
 | `assets_src/illust/2026-11-04/world2-a.png` / `-b.png` | juggernautXL | 世界。`sparse ivy, pale sage moss, bright hazy white sky, thick white mist, low saturation`、否定に `lush green jungle, saturated green` | 110421 / 110422 | 不採用: 色は手本の白・クリームに近づき、水の映り込みと霧も出た。ただ**白と灰色だけになり、空の暖色・奥行き・細密さが消えた**（3D の描画のよう） |
 | `assets_src/illust/2026-11-04/enemy2-a.png` / `-b.png` | juggernautXL | 敵。`crimson thorn vines, glowing red veins, red light leaking from deep cracks`、否定に `bare branches, tree` | 110431 / 110432 | 不採用: 割れ目から赤い光が漏れるようになった。ただ卵が**灰色の石**になり、赤い蔓は足元だけ。手本の「赤い棘の蔓に覆われた卵」とは違う |
+
+## 2026-11-05 群れ鳥・割れ殻の Tripo 用の元絵（B1-8、失敗）
+
+生成できず、ファイルはない。ジョブ（sd_xl_base_1.0、DPM++ 2M 30 steps CFG 6、群れ鳥 1024×1024 シード 501〜503、割れ殻 832×1216 シード 511〜513、プロンプト全文つき）は `assets_src/3d/2026-11-05-swarmbird-splitshell/jobs.json`。Forge が最初のモデル読み込みで落ちた（空きメモリ 2.6 GB。asset-pipeline.md に記録）。
