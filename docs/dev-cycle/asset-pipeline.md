@@ -176,6 +176,8 @@
       4. 残った候補の画像を見て、声が2つに分かれている・途中に長い無音がある・語尾が伸びる・息だけ、などを落とし、1本を選ぶ。話者の近さと自然さは参考にとどめる（自然さが 1.5 未満なら落とす）。
       5. 選んだ理由（落とした候補と理由）を台帳か devlog に書く。
   - 聞いて確かめられないので、Whisper small で文字起こしして台本との一致率（句読点を除いた文字列の類似度）を見る。0.7 以上なら台詞どおり。同音の漢字違い（「ひと暴れ」→「人暴れ」）は問題なし。Python の出力は `PYTHONIOENCODING=utf-8` を付けないと文字化けする。
+    - 2026-11-06: Irodori の `.venv` には `whisper`（openai-whisper）パッケージが**入っていない**。`sys.path` に `D:\AI\Irodori-TTS-v4_1` を足して `local_runtime.configure()` を呼んでから、`transformers.pipeline("automatic-speech-recognition", model="openai/whisper-small", device=0)` を使う（`search_survive_promo\meibuki-intro\tools\asr_check.py` と同じ）。9 本の生成は読み込み込みで約 4 分、文字起こしは 1 分弱。
+    - 「割って」のような短い語は「終わって」と聞き取られやすい（3 シード中 2 本）。似た音の語がある台詞はシードを多めにする。
   - シェルの heredoc から Python に日本語を渡すと cp932 で化ける。日本語を含む置換は Edit ツールで行う。
 - ゲームに入れる後処理（FFmpeg）: 前後の無音を削り、既存の声に合わせて **-15 LUFS**（真のピーク -1.5 dB）にそろえて mp3 にする。
   `-af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-15:TP=-1.5:LRA=11,afade=t=in:d=0.01" -ar 44100 -ac 1 -codec:a libmp3lame -q:a 4`

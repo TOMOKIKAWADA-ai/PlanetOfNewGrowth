@@ -2033,6 +2033,7 @@ export class Egg {
       if (this.pursuit) this.updatePursuerShell(dt);
       if (this.swarm) this.updateSwarmBody();
       if (this.floodgate) this.updateFloodgateBody(dt);
+      if (this.lotus) this.updateLotusBody(dt);
     }
     if (this.isMother) return;
     this.updatePulse(dt);
@@ -2086,6 +2087,26 @@ export class Egg {
     this.ring.material.opacity = surfaced ? 0.5 + Math.sin(this.age * 9) * 0.2 : 0.3 + biteGlow * 0.4;
     this.ring.scale.setScalar(surfaced ? 1.15 : 1 + biteGlow * 0.25 + Math.sin(this.age * 2.2) * 0.04);
     this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
+  }
+
+  // 白蓮の核（src/bosses.js）: 花弁は白い輪でゆっくり揺れ、産む直前に輪が明るくなる。
+  // 核は閉じているあいだ小さく白い輪、開くと大きくなって金色の輪が脈打ち、吸い込みの間は輪が縮む。
+  updateLotusBody(dt) {
+    const lotus = this.lotus;
+    if (this.lotusRole === 'petal') {
+      const ready = clamp(1 - this.lotusSpawnTimer / 2, 0, 1);
+      this.ring.material.color.setHex(0xfff2f6);
+      this.ring.material.opacity = 0.3 + ready * 0.5;
+      this.model.rotation.z = Math.sin(this.age * 1.6 + this.position.x) * 0.1;
+      return;
+    }
+    const open = lotus.state === 'open';
+    this.lotusBloom = clamp((this.lotusBloom ?? 0) + (open ? dt * 1.5 : -dt), 0, 1);
+    this.model.scale.multiplyScalar(0.8 + this.lotusBloom * 0.3);
+    const inhaling = lotus.attack === 'inhale' || lotus.attack === 'inhaleWarning';
+    this.ring.material.color.setHex(!open ? 0xd8d2e6 : inhaling ? 0xfff2f6 : 0xffe066);
+    this.ring.material.opacity = !open ? 0.22 : 0.45 + Math.sin(this.age * (inhaling ? 14 : 6)) * 0.2;
+    this.ring.scale.setScalar(!open ? 0.9 : inhaling ? 1.25 - (this.age * 2 % 1) * 0.5 : 1.1);
   }
 
   // 群れの母（src/bosses.js）: 倒れている姉妹は縮んで輪が消え、起き上がりが近い（3 秒前から）と点滅する。

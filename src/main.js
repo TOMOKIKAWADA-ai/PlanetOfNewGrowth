@@ -16,7 +16,7 @@ import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.j
 import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
 import { angleToXZ, clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
-import { floodgateStreamPoints, getBossName, getBossType, linkSwarm, swarmPositions } from './bosses.js';
+import { floodgateStreamPoints, getBossName, getBossType, linkLotus, linkSwarm, lotusInhalePull, lotusTargetable, swarmPositions } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
@@ -152,7 +152,8 @@ const VOICE_URLS = {
     death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/tsukimi/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
-    lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href]
+    lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href],
+    bossDown: [new URL('../assets/audio/voice/tsukimi/boss_down_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -165,7 +166,8 @@ const VOICE_URLS = {
     death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/akame/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
-    lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href]
+    lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href],
+    bossDown: [new URL('../assets/audio/voice/akame/boss_down_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -178,7 +180,8 @@ const VOICE_URLS = {
     death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/kiichigo/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
-    lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href]
+    lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href],
+    bossDown: [new URL('../assets/audio/voice/kiichigo/boss_down_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -466,6 +469,7 @@ class Game {
     this.swarmbirdHintShown = false;
     this.swarmbirdHuntHintShown = false;
     this.swarmbirdStats = { flocks: 0, birds: 0, hunts: 0, hits: 0, damage: 0 };
+    this.lotusStats = null;
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -1575,16 +1579,20 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
     const bossType = getBossType(this.stage.boss);
-    if (bossType.spawnCount > 1) {
+    if (bossType.id === 'whiteLotusCore') {
+      this.spawnWhiteLotus(position);
+    } else if (bossType.spawnCount > 1) {
       this.spawnSwarmMother(position, bossType.spawnCount);
     } else {
       const mother = this.spawnEgg(position, true);
       mother.maxHp *= this.stage.motherHpScale;
       mother.hp = mother.maxHp;
     }
-    this.spawnBurstEffect(position, 7, 0xff8b52);
+    this.spawnBurstEffect(this.motherEgg?.position ?? position, 7, 0xff8b52);
     if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
-    if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6);
+    if (bossType.id === 'whiteLotusCore') this.showMessage(`白蓮の核が現れた。6枚の花弁が、これまでの新種を産む
+花弁を${Config.boss.whiteLotusCore.openAfterPetals}枚壊すと核が開く`, 3.8);
+    else if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6);
     else this.showMessage('\u30dc\u30b9\u51fa\u73fe');
   }
 
@@ -1983,7 +1991,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   // Boss bodies that can be hit and targeted: the swarm mother's fallen sisters are left out until they stand up.
   getBossTargets() {
-    return this.bossEggs.filter((mother) => !mother.dead && !mother.swarmDown);
+    return this.bossEggs.filter((mother) => !mother.dead && !mother.swarmDown && lotusTargetable(mother));
   }
 
   // The boss bar: the swarm mother's three sisters share one bar (a fallen sister counts as empty).
@@ -2001,6 +2009,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.scene.remove(egg.object);
     if (egg.isMother) {
       this.playSfx('eggBreak', { volume: 0.9 });
+      if (Config.audio.bossDownVoice) this.playVoice('bossDown', { volume: 0.95 });
       this.spawnBurstEffect(egg.position, 9, 0xffd56b);
       this.finish(true, 'Mother egg destroyed');
       return;
@@ -2675,6 +2684,132 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     });
     linkSwarm(members);
     this.spawnSwarmThreads(members);
+  }
+
+  // White lotus core (src/bosses.js, E15 phases 1-2): the core at the chosen spot and six smaller petals around it.
+  // Petals that would sit in the water or a building are pulled inward.
+  spawnWhiteLotus(center) {
+    const cfg = Config.boss.whiteLotusCore;
+    const limit = Config.map.radius - 3;
+    const blocked = (point) => Math.hypot(point.x, point.z) > limit || this.isBlockedByBuilding(point, 2)
+      || (this.isWaterStage && !this.isWaterStageLand(point, 1));
+    const rotation = Math.random() * TAU;
+    // On the flooded final map the player cannot take bird form in the water (it becomes fish), so the shockwave
+    // could not be dodged there: put the core on land where every petal also stands on land, as far from the player as possible.
+    if (this.isWaterStage) center = this.findLotusCenter(cfg, rotation, blocked) ?? center;
+    const core = this.spawnEgg(center.clone(), true);
+    core.maxHp *= this.stage.motherHpScale * cfg.coreHpShare;
+    core.hp = core.maxHp;
+    const points = swarmPositions(center, cfg.petalCount, cfg.petalSpread, rotation, blocked);
+    const petals = points.map((point) => {
+      const petal = this.spawnEgg(new THREE.Vector3(point.x, 0, point.z), true);
+      petal.maxHp *= this.stage.motherHpScale * cfg.petalHpShare;
+      petal.hp = petal.maxHp;
+      petal.baseModelScale.multiplyScalar(cfg.petalScale);
+      petal.ring.scale.setScalar(cfg.petalScale + 0.1);
+      return petal;
+    });
+    const lotus = linkLotus(core, petals, cfg.petalSpecies.map((type) => this.lotusSpeciesAvailable(type) ? type : 'chaser'));
+    this.lotusStats = lotus.stats;
+  }
+
+  findLotusCenter(cfg, rotation, blocked) {
+    let best = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < 60; i++) {
+      const point = this.randomWaterStageLandPoint(0.7);
+      if (blocked(point)) continue;
+      let onLand = 0;
+      for (let p = 0; p < cfg.petalCount; p++) {
+        const angle = rotation + p / cfg.petalCount * TAU;
+        if (!blocked({ x: point.x + Math.sin(angle) * cfg.petalSpread, z: point.z + Math.cos(angle) * cfg.petalSpread })) onLand++;
+      }
+      const score = onLand * 100000 + horizontalDistanceSq(point, this.player.position);
+      if (score > bestScore) { best = point; bestScore = score; }
+    }
+    return best;
+  }
+
+  // A petal's species only appears if that species is switched on (Config.enemy.<type>.enabled).
+  lotusSpeciesAvailable(type) {
+    return Config.enemy[type]?.enabled !== false;
+  }
+
+  // A petal hatches its species beside itself, even over the enemy cap. Returns the enemy (the flock's first bird).
+  spawnLotusBrood(petal, type) {
+    const position = petal.position.clone();
+    if (type === 'swarmbird') return this.hatchSwarmFlock({ position, dead: false });
+    const enemy = this.spawnEnemy(type, position, null, { ignoreCap: true });
+    if (enemy?.type === 'splitshell') this.onSplitshellSpawned();
+    if (enemy) this.spawnRingEffect(petal.position, 2.4, 0xfff2f6, 0.6, 0.45);
+    return enemy;
+  }
+
+  onLotusPetalBroken(petal, broken, opened) {
+    const cfg = Config.boss.whiteLotusCore;
+    this.scene.remove(petal.object);
+    this.playSfx('eggBreak', { volume: 0.8, cooldown: 0.1 });
+    this.spawnBurstEffect(petal.position, 5, 0xfff2f6);
+    if (opened) {
+      petal.lotus.stats.openedAt = Math.round(this.elapsed);
+      this.spawnBurstEffect(petal.lotus.core.position, 9, 0xffe066);
+      this.playSfx('motherCharge', { volume: 0.85, cooldown: 0.3 });
+      this.showMessage('白蓮の核が開いた！ 衝撃波と吸い込みが交互に来る\n衝撃波は鳥形態、吸い込みは人間形態でしのぐ', 3.6);
+    } else if (broken < cfg.openAfterPetals) {
+      this.showMessage(`花弁を壊した（${broken}/${cfg.openAfterPetals}）`, 1.6);
+    }
+  }
+
+  // The open core's attacks. The shockwave reuses the mother egg's ground wave; the inhale pulls (applyLotusInhale).
+  onLotusAttack(core, event) {
+    const egg = Config.egg;
+    const cfg = Config.boss.whiteLotusCore;
+    // shockwaveState mirrors the mother egg so the bot (scripts/bot-play.mjs) sees the warning too.
+    if (event === 'shockwaveWarning') {
+      core.shockwaveState = 'warning';
+      this.hud.showBossWarning(cfg.shockwaveWarning, this.player?.form);
+      this.spawnMotherShockwaveWarning(core.position, egg.motherShockwaveRange, cfg.shockwaveWarning);
+      this.playSfx('motherCharge', { volume: 0.92, cooldown: 0.4 });
+    } else if (event === 'shockwave') {
+      core.shockwaveState = 'idle';
+      this.spawnMotherShockwave(core.position, egg.motherShockwaveRange, egg.motherShockwaveDamage, egg.motherShockwaveDuration);
+      this.playSfx('motherRelease', { volume: 0.94, cooldown: 0.4 });
+    } else if (event === 'inhaleWarning') {
+      this.showMessage('WARNING\n白蓮の核が息を吸う\n鳥形態だと引き寄せられる。人間形態で踏みとどまれ', cfg.inhaleWarning + 0.4);
+      this.spawnRingEffect(core.position, cfg.inhaleRadius * 0.5, 0xfff2f6, 0.5, cfg.inhaleWarning);
+      this.playSfx('motherCharge', { volume: 0.8, cooldown: 0.4 });
+    } else if (event === 'inhaleStart') {
+      this.lotusInhaleRingTimer = 0;
+    }
+  }
+
+  // During the inhale: the player is drawn toward the core (strongly in bird form) and bitten when touching it.
+  applyLotusInhale(core, dt) {
+    const cfg = Config.boss.whiteLotusCore;
+    const lotus = core.lotus;
+    const player = this.player;
+    this.lotusInhaleRingTimer = (this.lotusInhaleRingTimer ?? 0) - dt;
+    if (this.lotusInhaleRingTimer <= 0) {
+      this.lotusInhaleRingTimer = 0.45;
+      this.spawnRingEffect(core.position, cfg.inhaleRadius * 0.35, 0xfff2f6, 0.35, 0.4);
+    }
+    const dx = core.position.x - player.position.x;
+    const dz = core.position.z - player.position.z;
+    const distance = Math.hypot(dx, dz);
+    const pull = lotusInhalePull(distance, player.form, dt, cfg);
+    if (pull > 0) {
+      const next = new THREE.Vector3(player.position.x + dx / distance * pull, player.position.y, player.position.z + dz / distance * pull);
+      if (!this.isBlockedByBuilding(next, 0.8)) {
+        player.position.x = next.x;
+        player.position.z = next.z;
+      }
+    }
+    lotus.inhaleBiteTimer -= dt;
+    if (distance <= cfg.inhaleBiteRadius && lotus.inhaleBiteTimer <= 0) {
+      lotus.inhaleBiteTimer = cfg.inhaleBiteInterval;
+      lotus.stats.bites += 1;
+      player.takeDamage(cfg.inhaleDamage);
+    }
   }
 
   // A sister fell: the threads to her turn red and a ring under her shrinks until she stands up again.

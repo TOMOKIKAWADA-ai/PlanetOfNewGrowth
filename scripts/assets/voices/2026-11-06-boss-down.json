@@ -1,0 +1,37 @@
+{
+  "speakers": {
+    "tsukimi": {
+      "caption": "",
+      "seed": 1601,
+      "refs": [
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_04_doubt-s1301.wav",
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_06_call-s1301.wav"
+      ]
+    },
+    "akame": {
+      "caption": "",
+      "seed": 2601,
+      "refs": [
+        "assets_src/voice/refs/akame/akame-ref_02_report-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_04_refuse-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_05_care-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_06_call-s2202.wav"
+      ]
+    },
+    "kiichigo": {
+      "caption": "",
+      "seed": 3601,
+      "refs": [
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_01_calm-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_04_cheer-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_06_call-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_07_tired-s3303.wav"
+      ]
+    }
+  },
+  "lines": [
+    { "id": "boss_down_01", "speaker": "tsukimi", "text": "……止まった。終わった、の？", "style": "巨大な敵が崩れ落ちたのを見て、息を整えながら、ほっとしつつも半信半疑に小さく問いかける。", "seeds": [1601, 1602, 1603] },
+    { "id": "boss_down_01", "speaker": "akame", "text": "片付いた。次。", "style": "巨大な敵を倒し終えて、息も乱さず淡々と短く言い切る。", "seeds": [2601, 2602, 2603] },
+    { "id": "boss_down_01", "speaker": "kiichigo", "text": "よっしゃ、割ってやった！", "style": "巨大な敵を倒して、得意げに弾んだ明るい声で。", "seeds": [3601, 3602, 3603] }
+  ]
+}

@@ -168,7 +168,7 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
     const nearbyEggs = game.eggs.filter(egg => !egg.dead
       && (egg.position.x - player.position.x) ** 2 + (egg.position.z - player.position.z) ** 2 < 225).length;
     const bosses = (game.bossEggs ?? []).filter(body => !body.dead);
-    const mother = bosses.find(body => body.shockwaveState === 'warning') ?? bosses.find(body => !body.swarmDown) ?? null;
+    const mother = bosses.find(body => body.shockwaveState === 'warning') ?? bosses.find(body => !body.swarmDown && (!game.getBossTargets || game.getBossTargets().includes(body))) ?? null;
     // Stay airborne until the released wave has finished travelling, not just through the warning.
     if (mother?.shockwaveState === 'warning') lastWarningAt = game.elapsed;
     const waveActive = mother?.shockwaveState === 'warning'
@@ -286,6 +286,7 @@ function summarize(game, stats) {
     splitshells: game.splitshellStats?.spawned ? { ...game.splitshellStats } : null,
     swarmbirds: game.swarmbirdStats?.flocks ? { ...game.swarmbirdStats, damage: Math.round(game.swarmbirdStats.damage) } : null,
     rootsuckers: game.rootsuckerStats?.spawned ? { ...game.rootsuckerStats, drySeconds: Math.round(game.rootsuckerStats.drySeconds * 10) / 10, dryMpLost: Math.round(game.rootsuckerStats.dryMpLost) } : null,
+    lotus: game.lotusStats ? { ...game.lotusStats, broken: game.motherEgg?.lotus?.broken ?? 0 } : null,
     swarm: game.motherEgg?.swarm ? { downs: game.motherEgg.swarm.downs, revives: game.motherEgg.swarm.revives } : null,
     floodgate: game.floodgateStats?.streams || game.floodgateStats?.bites ? { ...game.floodgateStats } : null,
     maxEggs: stats.maxEggs,

@@ -100,7 +100,9 @@ export const Config = {
     // One-liners added 2026-10-30 when the boss appears, on level-up and at one minute left (false = none, as before).
     cueVoices: true,
     // Level-ups come often; the line plays at most once per this many seconds of battle time.
-    levelUpVoiceCooldown: 25
+    levelUpVoiceCooldown: 25,
+    // One-liner when the chapter boss is destroyed (added 2026-11-06; false = none, as before).
+    bossDownVoice: true
   },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
@@ -323,6 +325,37 @@ export const Config = {
       reviveSeconds: 10,
       reviveHpRatio: 0.6,
       handoverDelay: 3
+    },
+    // Final chapter's white lotus core (E15, phases 1-2). Six petals ring the core (petalSpread away), each with
+    // petalHpShare of the stage's mother HP. Every petal keeps hatching one earlier chapter's new species
+    // (petalSpecies, in order; a disabled species falls back to a chaser) every petalSpawnSeconds, up to
+    // petalMaxAlive of its own at once. While closed the core cannot be targeted. Breaking openAfterPetals
+    // petals opens it (phase 2): it then alternates the ground shockwave (dodge in bird form) and an inhale
+    // that pulls the player in for inhaleSeconds (bird form is pulled at inhalePullBird, human form only at
+    // inhalePullHuman). Touching the core during the inhale (inhaleBiteRadius) costs inhaleDamage every
+    // inhaleBiteInterval. Set chapter 6's boss to 'motherEgg' to remove it.
+    whiteLotusCore: {
+      coreHpShare: 1,
+      petalCount: 6,
+      petalSpread: 8,
+      petalHpShare: 0.14,
+      petalScale: 0.5,
+      petalSpecies: ['footprint', 'swarmbird', 'splitshell', 'crier', 'hand', 'rootsucker'],
+      petalFirstSpawnSeconds: 3,
+      petalSpawnSeconds: 11,
+      petalMaxAlive: 2,
+      openAfterPetals: 4,
+      openRestSeconds: 2.5,
+      restSeconds: 4.5,
+      shockwaveWarning: 1.6,
+      inhaleWarning: 1.4,
+      inhaleSeconds: 3,
+      inhaleRadius: 30,
+      inhalePullBird: 7.5,
+      inhalePullHuman: 1.4,
+      inhaleBiteRadius: 4,
+      inhaleDamage: 8,
+      inhaleBiteInterval: 0.6
     }
   },
   egg: {

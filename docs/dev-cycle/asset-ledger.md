@@ -331,3 +331,13 @@
 ## 2026-11-05 群れ鳥・割れ殻の Tripo 用の元絵（B1-8、失敗）
 
 生成できず、ファイルはない。ジョブ（sd_xl_base_1.0、DPM++ 2M 30 steps CFG 6、群れ鳥 1024×1024 シード 501〜503、割れ殻 832×1216 シード 511〜513、プロンプト全文つき）は `assets_src/3d/2026-11-05-swarmbird-splitshell/jobs.json`。Forge が最初のモデル読み込みで落ちた（空きメモリ 2.6 GB。asset-pipeline.md に記録）。
+
+## 2026-11-06 ボスを倒したときの一言（B3-8）
+ツール: Irodori-TTS v4.1（`Aratako/Irodori-TTS-v4.1-Small`、bf16）、`scripts/assets/irodori-batch.py`、手本は `assets_src/voice/refs/<キャラ>/`（10-30 と同じ組み合わせ）。指定文は空、台詞ごとの演技の指定だけ。台詞ファイル `scripts/assets/voices/2026-11-06-boss-down.json`（演技の指定の全文）、候補は `assets_src/voice/2026-11-06/`（各3シード、9 本、git 対象外）。
+選び方: Whisper small（transformers の pipeline）の文字起こし → `voice-analyze.py` の声の高さと画像（`tmp/voice-analysis/2026-11-06/`）。後処理: 前後の無音カット → loudnorm -15 LUFS → mp3（結果 -15.0〜-16.9 LUFS）。置き場所 `assets/audio/voice/<キャラ>/boss_down_01.mp3`。`Config.audio.bossDownVoice: false` で鳴らなくなる。
+
+| キャラ | ファイル | 台詞 | 採用シード | 長さ（秒） | 選んだ理由・落とした候補 |
+|---|---|---|---|---|---|
+| ツキミ | `boss_down_01.mp3` | ……止まった。終わった、の？ | 1601 | 2.96 | 3本とも文字起こし一致。1601 だけ語尾が上がり「？」と聞き取られた（問いかけになっている）。「止まった」と「終わった」の間に約 1 秒の間（「……」の間として残した）。高さ 303Hz（手本 285〜347） |
+| アカメ | `boss_down_01.mp3` | 片付いた。次。 | 2602 | 1.50 | 3本とも一致。2602 は手本との近さ 0.966 で最も近く、高さ 215Hz（手本 189〜210 に近い）。2601 は 233Hz・有声 0.45 |
+| キイチゴ | `boss_down_01.mp3` | よっしゃ、割ってやった！ | 3603 | 2.35 | 3601・3602 は「割って」が「終わって」と聞き取られた。3603 は「わってやったー」。高さ 507Hz は叫び声の範囲（450〜520） |
