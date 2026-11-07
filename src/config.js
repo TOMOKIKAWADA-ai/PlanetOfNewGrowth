@@ -223,9 +223,12 @@ export const Config = {
     quickRetry: true // 倒れたあとの「この章をやり直す」で出撃前の会話を飛ばす（クリア後の「次の章へ」はそのまま）
   },
   story: {
-    // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
+    // 会話画面の立ち絵を動くアバターにする（false で静止画のみ）。
     avatarPortraits: true,
-    // 'normal': 通常の表情の台詞だけアバター、ほかの表情は描き分けた静止画。'all': すべてアバターで、表情は変形で付ける。
+    // 'rig': Anime2.5DRig（assets/avatars/rig/、2026-11-05〜）。'mesh': Mesh Avatar Studio（assets/avatars/*.mavatar）。
+    avatarEngine: 'rig',
+    // 'mesh' のときだけ使う。'normal': 通常の表情の台詞だけアバター、ほかの表情は描き分けた静止画。'all': すべてアバターで、表情は変形で付ける。
+    // 'rig' は通常の表情だけアバターで、ほかは描き分けた静止画（src/story-avatars.js）。
     avatarExpressions: 'all'
   },
   map: {

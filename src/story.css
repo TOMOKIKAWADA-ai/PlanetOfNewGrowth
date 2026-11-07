@@ -30,6 +30,9 @@ html[data-input-mode="gamepad"] .story-keyboard-help { display: none; }
 .story-actor-avatar { display: none; position: absolute; left: 0; top: 0; width: 100%; height: 71.62%; aspect-ratio: auto; }
 .has-avatar.uses-avatar .story-actor-avatar { display: block; }
 .has-avatar.uses-avatar .story-actor-image { clip-path: inset(71.5% 0 0 0); }
+/* Anime2.5DRig の立ち絵は全身ぶんなので、静止画全体に重ねて静止画は隠す。 */
+.story-actor-avatar.is-rig { height: 100%; }
+.has-avatar.avatar-rig.uses-avatar .story-actor-image { visibility: hidden; }
 .story-actor[data-side="left"] { left: -4%; }
 .story-actor[data-side="right"] { right: -4%; --portrait-flip: -1; }
 .story-actor:not(.is-visible) { visibility: hidden; }
