@@ -458,13 +458,14 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 手順（作業ファイルは `D:\0001_App_Dev\search_survive_promo\meibuki-intro\.work\rig-test\`、git 対象外）:
 1. See-through（ComfyUI-See-through をコマンドで実行。`seethrough_run.py`、seed 42、解像度 1280、30 steps、LayerDiff は group_offload）で立ち絵をパーツに分ける。1人 1〜2 時間。出力は `side/<キャラ>/`。
 2. 足りない絵（閉じた目・「あ」の口）を Codex の画像生成で描く（`codex exec --sandbox read-only`、元の絵とマスクを渡す）。依頼一式は `D:\0001_App_Dev\search_survive_promo\codex-requests-side\<キャラ>\`（source.png、mask.png、prompt.md、results/）。Codex はマスクの外もわずかに描き変えるので、マスクの範囲だけを元の絵に貼り込む（`check_codex.py`）。
-3. 目・口の差分と、See-through が拾い損ねた部分（アカメの肩の葉など）を元の絵から切り出して足す（`build_variants.py`）。腕・耳の左右は重なり順を保つため別レイヤーのまま（`make_psd.cjs`）。
+3. 目・口の差分を元の絵から切り出して足す（`build_variants.py`）。あわせて、重ねたパーツが元の絵と食い違うところを直す: 顔のパーツに塗り込まれた頭の地肌（ツキミの後頭部が灰色になっていた）を消し、拾い損ねた部分（アカメの肩の葉、ツキミの髪留め）を元の絵から切り出して足す。腕・耳の左右は重なり順を保つため別レイヤーのまま（`make_psd.cjs`）。
 4. PSD を `scripts/assets/bake-rig.mjs` で、ゲームが読む形（パーツの位置・アンカー・髪の束の JSON と、全パーツを詰めた1枚の PNG）に変換する。
 
 | ファイル | 内容 | 状態 |
 |---|---|---|
 | `assets/avatars/rig/akame.json`・`.png` | 17 パーツ、PNG 2.5MB。目閉じ・口開きは Codex（閉じ目は「まぶたに点を描かない」と頼み直した2回目） | 採用 |
-| `assets/avatars/rig/kiichigo.json`・`.png` | 22 パーツ、PNG 1.6MB。目閉じ・口開きは Codex | 採用 |
+| `assets/avatars/rig/kiichigo.json`・`.png` | 23 パーツ、PNG 1.6MB。目閉じ・口開きは Codex | 採用 |
+| `assets/avatars/rig/tsukimi.json`・`.png` | 22 パーツ、PNG 1.9MB。目閉じ・口開きは Codex（2026-11-08） | 採用 |
 
 表示: `src/vendor/anime25d-player.js`（Anime2.5DRig v2.0.0 の変形・髪の揺れ・まばたきを移植、MIT）。`Config.story.avatarEngine: 'mesh'` で前の Mesh Avatar Studio に、`avatarPortraits: false` で静止画に戻る。
 表情: アバターは通常の表情だけ。笑顔・怒り・悲しみ・驚きは描き分けた静止画を出す（眉は前髪に隠れ、目は元の絵のパーツが上にあるので、変形ではほとんど表情が変わらなかった）。
