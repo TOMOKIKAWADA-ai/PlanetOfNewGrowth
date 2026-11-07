@@ -224,6 +224,7 @@
   - 並べ画像: `python scripts/promo/weekly-grid.py promo/YYYY-MM-DD/weekly-grid.png "見出し" <画像> "名前|一言" ...`（devlog のスクリーンショットを 16:10 に切って2列に並べる。確認用に HP を 9999 にした画面は HUD に値が写るので注意）。
   - ボスの場面の録画: `bot-play.mjs --runs 1 --stage N --start 172 --seed 3 --record promo/YYYY-MM-DD/raw/chN`（ボスが出る 180 秒の少し前から実時間で録る。1章あたり約1分）。ボットは新種から逃げることが多いので、新種の場面は確認用の台本（敵と卵を置く）で録る方が早い。
   - 縦動画: `MONTAGE_TITLE="見出し" node scripts/promo/montage.mjs out.mp4 "録画.webm|開始秒|終了秒|一言" ...`。16:9 を縦の真ん中に置く形（中央を縦に切り取ると、画面の端にいるボスが切れる）。一言に半角の `:` と `'` は使えない（消される）。区切りは全角の空白で。場面を選ぶ前に `ffmpeg -ss 15 -i x.webm -t 24 -vf "fps=1,scale=320:200,tile=6x4" -frames:v 1 contact.png` でコマを並べて見る。
+  - ボットが近寄らない場面（2026-11-07 の影法師など）は、bot-play.mjs と同じく `**/src/main.js*` の応答に `window.__botTest` を足す台本を書き、`browser.newContext({ recordVideo })` で録る。動画の何秒目かは `newContext` 直後からの経過時間で印を付けておくと、montage の開始秒がすぐ決まる。プレイヤーの HP を上げると HUD に写るので、代わりに `player.damageTakenMultiplier = 0` にする。
 - 構成のある動画（トレーラー、紹介動画）は、HyperFrames のスキル（hyperframes、product-launch-video、general-video など）が使えれば使う。
 - **紹介動画の型「ゆるい3人の掛け合い」**（ユーザーが気に入った形）: HyperFrames レシピ `yurui-trio-howto` と、`D:\0001_App_Dev\search_survive_promo\_template-yurui-trio\README.md` の手順で作る。新しい紹介・SNS動画は、まずこのトーン（遊び方の説明中心、物語は一言だけ）で作る。
 - 投稿文の案は日本語で、短い本文、ハッシュタグ候補、添付する素材の一覧を書く。**投稿はしない。**

@@ -81,6 +81,10 @@ export const BOSS_TYPES = Object.freeze({
     },
     onLethal(egg) {
       return lotusOnLethal(egg);
+    },
+    // 第3段階（E16）: 影法師が生きているあいだ、核へのダメージは shadowCoreDamageScale 倍。
+    damageScale(egg) {
+      return lotusCoreDamageScale(egg);
     }
   })
 });
@@ -380,7 +384,8 @@ export function linkLotus(core, petals, species, cfg = Config.boss.whiteLotusCor
   const lotus = {
     core, petals, state: 'closed', broken: 0,
     attack: 'rest', attackTimer: 0, next: 'shockwave', inhaleBiteTimer: 0,
-    stats: { spawned: 0, shockwaves: 0, inhales: 0, bites: 0, openedAt: null }
+    shadow: null, shadowHatched: false,
+    stats: { spawned: 0, shockwaves: 0, inhales: 0, bites: 0, openedAt: null, shadowAt: null, shadowDownAt: null }
   };
   core.lotus = lotus;
   core.lotusRole = 'core';
@@ -485,7 +490,56 @@ export function updateLotusMember(egg, dt, cfg = Config.boss.whiteLotusCore) {
     }
     return;
   }
+  if (lotusShadowDue(lotus, game.elapsed, Config.map.playSeconds, cfg)) {
+    lotus.shadowHatched = true;
+    lotus.stats.shadowAt = Math.round(game.elapsed);
+    lotus.shadow = game.spawnLotusShadow?.(egg) ?? null;
+  }
   const event = lotusAttackStep(lotus, dt, cfg);
   if (event) game.onLotusAttack?.(egg, event);
   if (lotus.attack === 'inhale') game.applyLotusInhale?.(egg, dt);
+}
+
+// ---- 影法師（E16、白蓮の第3段階） ----
+// 残り時間が shadowAtRemaining 秒になったら、核から1度だけ孵る（花弁が残っていても、核が閉じていても）。
+export function lotusShadowDue(lotus, elapsed, playSeconds, cfg = Config.boss.whiteLotusCore) {
+  if (!lotus || lotus.shadowHatched || Config.enemy.shadow?.enabled === false) return false;
+  return elapsed >= playSeconds - cfg.shadowAtRemaining;
+}
+
+// 影法師が生きているあいだは核が守られる。
+export function lotusCoreDamageScale(egg, cfg = Config.boss.whiteLotusCore) {
+  if (egg.lotusRole !== 'core') return 1;
+  const shadow = egg.lotus?.shadow;
+  return shadow && !shadow.dead ? cfg.shadowCoreDamageScale : 1;
+}
+
+// 影法師の形態は「人間」か「鳥」の2つ。プレイヤーの魚形態は鳥と同じ側に数える。
+export function shadowFormOf(playerForm) {
+  return playerForm === 'human' ? 'human' : 'bird';
+}
+
+// プレイヤーの形態を delay 秒遅れで写す。mirror = { form, pending, timer }。形態が変わった瞬間に true を返す。
+export function shadowMirrorStep(mirror, playerForm, dt, delay = Config.enemy.shadow.mirrorDelay) {
+  const target = shadowFormOf(playerForm);
+  if (target === mirror.form) {
+    mirror.pending = null;
+    mirror.timer = 0;
+    return false;
+  }
+  if (mirror.pending !== target) {
+    mirror.pending = target;
+    mirror.timer = delay;
+  }
+  mirror.timer -= dt;
+  if (mirror.timer > 0) return false;
+  mirror.form = target;
+  mirror.pending = null;
+  mirror.timer = 0;
+  return true;
+}
+
+// 逆の形態のときだけ傷つく（同じ形態のときは、こちらを傷つけられる）。
+export function shadowVulnerable(shadowForm, playerForm) {
+  return shadowForm !== shadowFormOf(playerForm);
 }

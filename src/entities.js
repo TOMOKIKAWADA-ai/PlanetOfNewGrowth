@@ -13,7 +13,8 @@ import {
   smooth01
 } from './math.js';
 import { Config } from './config.js';
-import { getBossType } from './bosses.js';
+import { getBossType, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { advanceFootprint } from './footprints.js';
 
 // 狙えるボスの体（群れの母は倒れていない姉妹だけ）。ゲーム全体なしのテストでは motherEgg だけを見る。
@@ -1580,7 +1581,7 @@ export class Player {
       if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
       const motherTarget = this.findMotherForDive();
-      this.startDive(motherTarget ?? this.findCrierForDive() ?? target);
+      this.startDive(this.findShadowForDive() ?? motherTarget ?? this.findCrierForDive() ?? target);
     } else if (this.diveState === 'warning') {
       this.diveTimer -= dt;
       if (!this.diveTarget || this.diveTarget.dead) {
@@ -1641,6 +1642,8 @@ export class Player {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
+    } else if (this.diveTarget.type === 'shadow') {
+      this.diveTarget.takeDamage(this.birdDiveDamage * Config.enemy.shadow.diveDamageScale, this.position, true);
     } else if (this.diveTarget.type === 'crier') {
       this.diveTarget.takeDamage(this.diveTarget.hp + 10, this.position, true);
       if (this.game.crierStats) this.game.crierStats.diveKills += 1;
@@ -1698,6 +1701,15 @@ export class Player {
       if (distanceSq <= bestDistance) { best = mother; bestDistance = distanceSq; }
     }
     return best;
+  }
+
+  // 影法師（E16）が地面を走っている（こちらは鳥）あいだは、急降下で一番に狙う。
+  findShadowForDive() {
+    const shadow = this.game.lotusShadow;
+    if (!shadow || shadow.dead || shadow.claimed) return null;
+    if (!shadowVulnerable(shadow.shadow.mirror.form, this.form)) return null;
+    const range = Config.enemy.shadow.diveDetectRange;
+    return horizontalDistanceSq(this.position, shadow.position) <= range * range ? shadow : null;
   }
 
   // 鳴き（E10）は急降下で一撃。近くの卵より先に狙う。
@@ -2172,6 +2184,10 @@ export class Egg {
 
 }
 
+// 影法師の足元の輪と体のほのかな光。紫は「同じ形態（攻撃が通らない）」、金は「逆の形態（攻撃が通る）」。
+const SHADOW_GLOW = 0x5a2a8a;
+const SHADOW_OPEN_GLOW = 0xffc94a;
+
 export class Enemy {
   constructor(game, type, position, homeEgg = null) {
     this.game = game;
@@ -2227,6 +2243,7 @@ export class Enemy {
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
     if (type === 'hand') this.createHandArm();
     if (type === 'rootsucker') this.createDryCircle();
+    if (type === 'shadow') this.initShadow();
     if (type === 'swarmbird') this.swarm = { flock: null, slot: 0, mode: 'orbit', notice: 0, height: Config.enemy.swarmbird.orbitHeight, angle: 0, phase: Math.random() * TAU };
     // 割れ殻の半分（makeSplitHalf）はもう割れず、割れた直後はバースト技を受けない
     this.splitHalf = false;
@@ -2244,6 +2261,7 @@ export class Enemy {
   createModel(type) {
     if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
     if (type === 'swarmbird') return this.createSwarmbirdModel();
+    if (type === 'shadow') return this.createShadowModel();
     const gameplayModelKeys = {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
@@ -2497,6 +2515,131 @@ export class Enemy {
     // 鳥形態のカメラは高く引くので、襲っている間は体を大きくして見えるようにする
     const scale = this.model.scale.x + ((hunting ? 2.6 : 1.6) - this.model.scale.x) * Math.min(1, dt * 4);
     this.model.scale.setScalar(scale);
+  }
+
+  // ---- 影法師（E16） ----
+  // 選んだキャラの人間形態と鳥形態の体を写し、黒く塗る。足元の輪は、攻撃が通るときだけ金色になる。
+  createShadowModel() {
+    const player = this.game.player;
+    const root = new THREE.Group();
+    root.name = 'Enemy_shadow';
+    const material = new THREE.MeshStandardMaterial({ color: 0x07060a, emissive: SHADOW_GLOW, emissiveIntensity: 0.4, roughness: 0.92, metalness: 0 });
+    const paint = (object) => {
+      object.traverse((child) => {
+        if (!child.isMesh && !child.isSkinnedMesh) return;
+        child.material = material;
+        child.castShadow = Config.performance.enableShadows;
+        child.receiveShadow = false;
+      });
+      object.visible = true;
+      return object;
+    };
+    const humanSource = player?.model ?? player?.fallback;
+    const human = humanSource ? paint(cloneSkeleton(humanSource)) : paint(new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8)));
+    if (!humanSource) human.position.y = 0.9;
+    root.add(human);
+    let bird = null;
+    if (player?.birdModel) {
+      bird = paint(cloneSkeleton(player.birdModel));
+      bird.rotation.x = Config.visuals.birdModelPitch;
+      bird.rotation.y = Config.visuals.birdModelYaw;
+      bird.visible = false;
+      root.add(bird);
+    }
+    let mixer = null;
+    const runClip = player?.modelActions?.run?.getClip?.() ?? player?.modelActions?.idle?.getClip?.();
+    if (runClip && player?.model) {
+      try {
+        mixer = new THREE.AnimationMixer(human);
+        mixer.clipAction(runClip).play();
+      } catch {
+        mixer = null;
+      }
+    }
+    root.userData.baseY = 0;
+    root.userData.shadow = { human, bird, material, mixer, humanTiltX: human.rotation.x };
+    return root;
+  }
+
+  initShadow() {
+    const form = shadowFormOf(this.game.player?.form ?? 'human');
+    this.shadow = { mirror: { form, pending: null, timer: 0 }, height: form === 'bird' ? Config.player.birdHeight : 0, deflectTimer: 0, changed: 0 };
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.85, 1.15, 40),
+      new THREE.MeshBasicMaterial({ color: SHADOW_GLOW, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    this.object.add(ring);
+    this.shadow.ring = ring;
+  }
+
+  shadowCanBeHit() {
+    const player = this.game.player;
+    if (shadowVulnerable(this.shadow.mirror.form, player.form)) return true;
+    // 同じ形態のときは弾かれる（灰色の火花と、ときどき一言）
+    this.game.spawnHitSpark(this.position, 0x8a8f99);
+    if (this.shadow.deflectTimer <= 0) {
+      this.shadow.deflectTimer = 4;
+      this.game.onShadowDeflect?.(this);
+    }
+    return false;
+  }
+
+  // こちらの形態を mirrorDelay 秒遅れで写す。人間の間は地面を走って追い、鳥の間は鳥の高さを飛んで追う。
+  updateShadow(dt) {
+    const cfg = Config.enemy.shadow;
+    const player = this.game.player;
+    const shadow = this.shadow;
+    shadow.deflectTimer = Math.max(0, shadow.deflectTimer - dt);
+    if (shadowMirrorStep(shadow.mirror, player.form, dt, cfg.mirrorDelay)) {
+      shadow.changed += 1;
+      this.game.onShadowMirror?.(this, shadow.mirror.form);
+    }
+    const bird = shadow.mirror.form === 'bird';
+    const targetHeight = bird ? Config.player.birdHeight : 0;
+    const step = cfg.climbSpeed * dt;
+    shadow.height += clamp(targetHeight - shadow.height, -step, step);
+    this.moveToward(player.position, dt, bird ? cfg.birdSpeed : this.speed);
+    const view = this.model.userData.shadow;
+    const vulnerable = shadowVulnerable(shadow.mirror.form, player.form);
+    view.mixer?.update(dt);
+    if (view.bird) {
+      view.bird.visible = bird;
+      view.human.visible = !bird;
+    } else {
+      view.human.rotation.x = bird ? -0.34 : view.humanTiltX;
+    }
+    view.material.emissive.setHex(vulnerable ? SHADOW_OPEN_GLOW : SHADOW_GLOW);
+    // 鳥形態のカメラは高く引いて暗くなるので、飛んでいる間は体を大きく・明るくして見えるようにする
+    view.material.emissiveIntensity = (vulnerable ? 0.55 + Math.sin(this.game.elapsed * 14) * 0.2 : 0.4) + (bird ? 0.5 : 0);
+    const scale = this.model.scale.x + ((bird ? 1.7 : 1) - this.model.scale.x) * Math.min(1, dt * 4);
+    this.model.scale.setScalar(scale);
+    shadow.ring.material.color.setHex(vulnerable ? SHADOW_OPEN_GLOW : SHADOW_GLOW);
+    shadow.ring.scale.setScalar(vulnerable ? 1.35 : 1);
+    this.model.userData.baseY = shadow.height;
+  }
+
+  // 同じ形態のときだけ当たる。鳥どうしは高さが近いときだけ。
+  updateShadowContact(player) {
+    const cfg = Config.enemy.shadow;
+    if (shadowVulnerable(this.shadow.mirror.form, player.form)) return;
+    if (player.form === 'fish') return;
+    if (player.form === 'bird' && Math.abs(this.shadow.height - (player.visualHeight ?? 0)) > 2.2) return;
+    if (this.distanceSqToPlayer > 1.9) return;
+    if (this.attackTimer > 0) return;
+    this.attackTimer = cfg.contactCooldown;
+    const hpBefore = player.hp;
+    player.takeDamage(this.stats.damage);
+    this.game.onShadowHit?.(this, hpBefore - player.hp);
+  }
+
+  updateShadowHpBar() {
+    this.hpBar.visible = true;
+    this.hpBar.position.y = this.shadow.height + 2.3;
+    const fg = this.hpBar.getObjectByName('fg');
+    if (fg) fg.scale.x = clamp(this.hp / this.maxHp, 0, 1);
+    this.hpBar.lookAt(this.game.camera.position);
   }
 
   // バースト技で割れた割れ殻の片方。小さく、HP と経験値が halfScale 倍で、もう割れない。
@@ -2772,6 +2915,7 @@ export class Enemy {
     else if (this.type === 'hand') this.updateHand(dt);
     else if (this.type === 'rootsucker') this.updateRootsucker(dt);
     else if (this.type === 'swarmbird') this.updateSwarmbird(dt);
+    else if (this.type === 'shadow') this.updateShadow(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     // 根を張った吸水根は押されても動かない（乾いた円がずれないように）
@@ -2783,7 +2927,8 @@ export class Enemy {
       this.knock.multiplyScalar(Math.pow(0.05, dt));
     }
     // 群れ鳥は空を飛ぶので建物に当たらない
-    const blockedBuilding = this.type === 'swarmbird' ? null : this.game.resolveBuildingCollision(this.position, this.collisionRadius);
+    const flying = this.type === 'swarmbird' || (this.type === 'shadow' && this.shadow.height > 2);
+    const blockedBuilding = flying ? null : this.game.resolveBuildingCollision(this.position, this.collisionRadius);
     if (blockedBuilding && this.buildingImpactTimer <= 0) {
       this.buildingImpactTimer = 0.85;
       this.game.damageBuilding(blockedBuilding, Math.max(3, this.stats.damage * 0.25), this.position);
@@ -2795,6 +2940,7 @@ export class Enemy {
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();
     this.updateHpBar();
+    if (this.type === 'shadow') this.updateShadowHpBar();
   }
 
   getThrottledDt(dt) {
@@ -3180,6 +3326,10 @@ export class Enemy {
   updateContactDamage() {
     const player = this.game.player;
     if (player.phaseTimer > 0) return;
+    if (this.type === 'shadow') {
+      this.updateShadowContact(player);
+      return;
+    }
     // 群れ鳥は鳥形態のときだけ、高さが近づいてから当たる（人間形態には当たらない）
     if (this.type === 'swarmbird') {
       if (player.form !== 'bird' || this.swarm.mode !== 'hunt') return;
@@ -3208,6 +3358,7 @@ export class Enemy {
   takeDamage(amount, origin = null, strongKnock = false, burstReward = true) {
     if (this.dead) return;
     if (!burstReward && this.burstImmuneTimer > 0) return;
+    if (this.type === 'shadow' && !this.shadowCanBeHit()) return;
     this.hp -= amount;
     this.game.spawnHitSpark(this.position, this.type === 'spawner' ? 0xffe36c : 0xffffff);
     if (origin) {
@@ -3230,6 +3381,7 @@ export class Enemy {
       this.game.spawnXp(this.position, this.stats.xp * (this.splitHalf ? Config.enemy.splitshell.halfScale : 1));
       this.game.spawnRandomPickup(this.position, this.type === 'spawner' ? 'spawner' : 'enemy');
       if (this.type === 'splitshell' && !burstReward && !this.splitHalf) this.game.onSplitshellBurst?.(this);
+      if (this.type === 'shadow') this.game.onShadowDown?.(this);
       this.game.spawnEnemyDissolveEffect(this.position, this.type);
     }
   }

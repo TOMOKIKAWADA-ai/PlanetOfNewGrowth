@@ -470,6 +470,7 @@ class Game {
     this.swarmbirdHuntHintShown = false;
     this.swarmbirdStats = { flocks: 0, birds: 0, hunts: 0, hits: 0, damage: 0 };
     this.lotusStats = null;
+    this.lotusShadow = null;
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
@@ -2810,6 +2811,45 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       lotus.stats.bites += 1;
       player.takeDamage(cfg.inhaleDamage);
     }
+  }
+
+  // White lotus phase 3 (E16): the core hatches the shadow, a black copy of the chosen character (Enemy type 'shadow').
+  spawnLotusShadow(core) {
+    const enemy = this.spawnEnemy('shadow', core.position.clone(), null, { ignoreCap: true });
+    if (!enemy) return null;
+    this.lotusShadow = enemy;
+    if (this.lotusStats) this.lotusStats.shadow = { hits: 0, damageTaken: 0, deflected: 0, mirrored: 0, downAt: null };
+    this.spawnBurstEffect(core.position, 7, 0x5a2a8a);
+    this.playSfx('motherCharge', { volume: 0.9, cooldown: 0.3 });
+    this.showMessage('核から、黒い影法師が孵った\nこちらの形態を少し遅れて真似る。逆の形態のときだけ攻撃が通る', 4);
+    return enemy;
+  }
+
+  onShadowMirror(shadow) {
+    if (this.lotusStats?.shadow) this.lotusStats.shadow.mirrored += 1;
+  }
+
+  onShadowDeflect() {
+    if (this.lotusStats?.shadow) this.lotusStats.shadow.deflected += 1;
+    this.showMessage('同じ形態の影法師には効かない。形態を変えた直後を狙え', 1.6);
+  }
+
+  onShadowHit(shadow, damage) {
+    const stats = this.lotusStats?.shadow;
+    if (!stats || damage <= 0) return;
+    stats.hits += 1;
+    stats.damageTaken += Math.round(damage);
+  }
+
+  onShadowDown(shadow) {
+    const cfg = Config.enemy.shadow;
+    if (this.lotusStats?.shadow) this.lotusStats.shadow.downAt = Math.round(this.elapsed);
+    if (this.lotusStats) this.lotusStats.shadowDownAt = Math.round(this.elapsed);
+    const player = this.player;
+    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * cfg.healOnDefeatRatio);
+    this.spawnBurstEffect(shadow.position, 8, 0xffc94a);
+    this.playSfx('eggBreak', { volume: 0.9, cooldown: 0.1 });
+    this.showMessage('影法師がほどけた。核の守りが消えた', 2.4);
   }
 
   // A sister fell: the threads to her turn red and a ring under her shrinks until she stands up again.

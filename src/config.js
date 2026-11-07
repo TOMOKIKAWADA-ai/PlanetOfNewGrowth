@@ -326,7 +326,7 @@ export const Config = {
       reviveHpRatio: 0.6,
       handoverDelay: 3
     },
-    // Final chapter's white lotus core (E15, phases 1-2). Six petals ring the core (petalSpread away), each with
+    // Final chapter's white lotus core (E15 phases 1-2, E16 phase 3). Six petals ring the core (petalSpread away), each with
     // petalHpShare of the stage's mother HP. Every petal keeps hatching one earlier chapter's new species
     // (petalSpecies, in order; a disabled species falls back to a chaser) every petalSpawnSeconds, up to
     // petalMaxAlive of its own at once. While closed the core cannot be targeted. Breaking openAfterPetals
@@ -355,7 +355,11 @@ export const Config = {
       inhalePullHuman: 1.4,
       inhaleBiteRadius: 4,
       inhaleDamage: 8,
-      inhaleBiteInterval: 0.6
+      inhaleBiteInterval: 0.6,
+      // Phase 3 (E16): with shadowAtRemaining seconds left the core hatches the shadow (Config.enemy.shadow) once.
+      // While the shadow lives, the core takes shadowCoreDamageScale of the damage (1 = no guard).
+      shadowAtRemaining: 30,
+      shadowCoreDamageScale: 0.5
     }
   },
   egg: {
@@ -592,6 +596,25 @@ export const Config = {
       orbitHeight: 3.2,
       orbitTurnSpeed: 0.45,
       noticeSeconds: 0.6
+    },
+    // Shadow (E16, final chapter only): the white lotus core hatches a black copy of the chosen character when
+    // shadowAtRemaining seconds are left (Config.boss.whiteLotusCore). It copies the player's form mirrorDelay seconds
+    // late. Same form as the player: it can hit the player and takes no damage. Different form (just after the
+    // player switched): it cannot hit and takes damage (shots while it flies, a bird dive while it walks).
+    // Set enabled: false to remove it.
+    shadow: {
+      enabled: true,
+      hp: 260,
+      speed: 6.1,
+      birdSpeed: 12.4,
+      climbSpeed: 9,
+      mirrorDelay: 1.4,
+      damage: 14,
+      contactCooldown: 0.9,
+      diveDamageScale: 1,
+      diveDetectRange: 7,
+      xp: 40,
+      healOnDefeatRatio: 0.15
     }
   },
   xp: {
