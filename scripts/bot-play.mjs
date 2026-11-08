@@ -95,6 +95,65 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
     mark('mimicStun');
     return onPlayerStunned.apply(this, args);
   };
+  // A2 diagnosis: where the player's HP goes (by enemy type or attack), kills and XP over time.
+  // Enemy.update is wrapped lazily so damage dealt inside it is attributed to that enemy's type;
+  // anything else falls back to the calling function's name from the stack.
+  stats.kills = 0;
+  stats.killsByType = {};
+  stats.xpGained = 0;
+  stats.damageBySource = {};
+  stats.damageLog = [];
+  let damageSource = null;
+  const wrapEnemyPrototype = (enemy) => {
+    const proto = Object.getPrototypeOf(enemy);
+    if (!proto || proto.__botWrapped) return;
+    proto.__botWrapped = true;
+    const update = proto.update;
+    proto.update = function (...args) {
+      const previous = damageSource;
+      damageSource = this.type;
+      try { return update.apply(this, args); } finally { damageSource = previous; }
+    };
+    const die = proto.die;
+    proto.die = function (reward, ...rest) {
+      if (!this.dead && reward) {
+        stats.kills++;
+        stats.killsByType[this.type] = (stats.killsByType[this.type] ?? 0) + 1;
+      }
+      return die.call(this, reward, ...rest);
+    };
+  };
+  const stackSource = () => {
+    const frames = (new Error().stack ?? '').split('\n').slice(3);
+    for (const frame of frames) {
+      const name = frame.trim().match(/^at (?:async )?([\w$.<>]+) /)?.[1];
+      if (!name || name.includes('takeDamage')) continue;
+      if (name.includes('checkPlayerHit')) return 'projectile';
+      if (/Shockwave/i.test(name)) return 'motherShockwave';
+      if (/Inhale/i.test(name)) return 'lotusInhale';
+      // The shockwave hits from its effect's update(), an object literal in main.js.
+      if (name === 'Object.update' && frame.includes('/src/main.js')) return 'motherShockwave';
+      return name.replace(/^Game\./, '');
+    }
+    return 'unknown';
+  };
+  const playerTakeDamage = player.takeDamage;
+  player.takeDamage = function (...args) {
+    const before = this.hp;
+    const result = playerTakeDamage.apply(this, args);
+    const lost = before - this.hp;
+    if (lost > 0) {
+      const source = damageSource ?? stackSource();
+      stats.damageBySource[source] = (stats.damageBySource[source] ?? 0) + lost;
+      stats.damageLog.push({ t: Math.round(game.elapsed * 10) / 10, source, amount: Math.round(lost * 10) / 10 });
+    }
+    return result;
+  };
+  const addXp = player.addXp;
+  player.addXp = function (amount, ...rest) {
+    stats.xpGained += amount;
+    return addXp.call(this, amount, ...rest);
+  };
   let lastDiveState = player.diveState;
   let lastHp = player.hp;
   let nextSample = 0;
@@ -218,6 +277,7 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
       return;
     }
     if (game.state !== 'playing') return;
+    if (game.enemies.length) wrapEnemyPrototype(game.enemies[0]);
     steer();
     decide();
     if (player.form !== 'human') stats.birdSeconds += dt;
@@ -238,7 +298,8 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
       stats.samples.push({
         t: Math.round(game.elapsed), hp: Math.round(player.hp), level: player.level,
         eggs: game.eggs.length, enemies: game.enemies.length, form: player.form,
-        mother: game.motherEgg ? Math.round(Math.max(0, game.motherEgg.hp)) : null
+        mother: game.motherEgg ? Math.round(Math.max(0, game.motherEgg.hp)) : null,
+        kills: stats.kills, xp: Math.round(stats.xpGained), damage: Math.round(stats.damageTaken)
       });
       nextSample += 10;
     }
@@ -295,6 +356,11 @@ function summarize(game, stats) {
     transforms: stats.transforms,
     bursts: stats.bursts,
     upgrades: stats.upgrades,
+    kills: stats.kills,
+    killsByType: stats.killsByType,
+    xpGained: Math.round(stats.xpGained),
+    damageBySource: Object.fromEntries(Object.entries(stats.damageBySource).map(([key, value]) => [key, Math.round(value)])),
+    damageLog: stats.damageLog,
     realSeconds: Math.round(realSeconds),
     renderFps: Math.round(stats.frames / realSeconds * 10) / 10,
     samples: stats.samples

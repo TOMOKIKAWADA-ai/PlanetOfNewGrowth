@@ -207,6 +207,7 @@
   - 背景は単色なら `ffmpeg -f lavfi -i "color=c=0x2b3a33:s=768x826" -frames:v 1 bg.png` で作れる。
   - 確認は `fps=2.5,scale=320:-1,tile=5x2` のコマ一覧と、口元の切り出し（`crop=300:240:330:170`）を Read で見る。
   - 各キャラの `built/` は約 1MB（PNG 10 枚と layers.json）。
+- 会話画面のアバターの重さの計測（2026-11-08、B5-5）: 開発サーバー（5183）を起動したまま `PLAYWRIGHT_MODULE=<mesh-avatar-studio の node_modules/playwright> node scripts/check-avatar-weight.mjs --cpu 4`。390×844 のタッチ画面・CPU を 4 倍遅くして、プロローグを AUTO で進めながらフレームの間隔・長いタスク・メモリ・アバターが出そろうまでの時間を、アバターあり／なしで比べる。ビルド版は `npx vite preview --port 5184` のあと `STORY_TEST_URL=http://127.0.0.1:5184` と `--modes on,on`（ビルドでは config を書き換えられないので「なし」は測れない）。1 回 20〜40 秒。
 
 ## 動画・SNS素材
 
