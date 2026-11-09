@@ -57,6 +57,34 @@ export const Config = {
     floorTextureTint: 0xffffff,
     backgroundModelBrightness: 1.08
   },
+  // Game feel (A3, 2026-11-09): hit stop (the world slows for a few frames), small camera shakes and a red screen edge
+  // when hurt. enabled: false (or ?feel=0 in the URL) turns all three off and keeps the old shakes.
+  feel: {
+    enabled: true,
+    hitStop: {
+      timeScale: 0.05, // world speed while stopped
+      enemyKill: 0.025,
+      bigKill: 0.06, // spawner, shadow
+      eggBreak: 0.03,
+      playerHit: 0.07,
+      minGap: 0.12, // game seconds between kill/egg stops (a burst kills many at once)
+      maxSeconds: 0.09
+    },
+    shake: {
+      scale: 1, // multiplies the shakes below (0 = none)
+      enemyKill: 0.07,
+      bigKill: 0.16,
+      eggBreak: 0.1,
+      playerHit: 0.26 // the old fixed value was 0.18
+    },
+    damageEdge: {
+      enabled: true,
+      strength: 0.75, // opacity right after a hit
+      seconds: 0.5, // fade out
+      lowHpRatio: 0.3, // below this HP ratio the edge pulses faintly
+      lowHpStrength: 0.28
+    }
+  },
   performance: {
     maxPixelRatio: 1,
     renderScale: 0.9,

@@ -417,6 +417,9 @@ class Game {
     this.hint = '';
     this.hintTimer = 0;
     this.shake = 0;
+    this.hitStopTimer = 0;
+    this.lastHitStopAt = -Infinity;
+    this.damageEdgeTimer = 0;
     this.spawnPauseTimer = 0;
     this.eggSpawnPauseTimer = 0;
     this.enemySpawnPauseTimer = 0;
@@ -1378,10 +1381,15 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.touchControls.setEnabled(this.state === 'playing');
     this.updateBgmState();
     if (this.state === 'playing') {
+      const realDt = dt;
+      if (this.hitStopTimer > 0) {
+        this.hitStopTimer = Math.max(0, this.hitStopTimer - realDt);
+        dt *= Config.feel.hitStop.timeScale;
+      }
       this.elapsed += dt;
-      this.hintTimer = Math.max(0, this.hintTimer - dt);
+      this.hintTimer = Math.max(0, this.hintTimer - realDt);
       if (this.hintTimer <= 0) this.hint = '';
-      this.shake = Math.max(0, this.shake - dt * 1.7);
+      this.shake = Math.max(0, this.shake - realDt * 1.7);
       this.updateSpawnPause(dt);
       if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
       if (!this.lastMinuteCalled && this.elapsed >= Config.map.playSeconds - 60) {
@@ -2006,6 +2014,36 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return maxHp > 0 ? hp / maxHp : 0;
   }
 
+  get feelEnabled() {
+    if (this._feelEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('feel');
+      this._feelEnabled = fromUrl === null ? Boolean(Config.feel?.enabled) : fromUrl !== '0';
+    }
+    return this._feelEnabled;
+  }
+
+  // A3: a short hit stop and a small shake for kills, egg breaks and hits on the player (Config.feel).
+  feelHit(kind) {
+    if (!this.feelEnabled || this.state !== 'playing') return;
+    const feel = Config.feel;
+    const shake = (feel.shake[kind] ?? 0) * (feel.shake.scale ?? 1);
+    if (shake > 0) this.shake = Math.max(this.shake, shake);
+    const stop = feel.hitStop[kind] ?? 0;
+    if (stop <= 0) return;
+    if (kind !== 'playerHit' && this.elapsed - this.lastHitStopAt < feel.hitStop.minGap) return;
+    this.lastHitStopAt = this.elapsed;
+    this.hitStopTimer = Math.min(feel.hitStop.maxSeconds, Math.max(this.hitStopTimer, stop));
+  }
+
+  onPlayerHurt() {
+    if (!this.feelEnabled) {
+      this.shake = Math.max(this.shake, 0.18);
+      return;
+    }
+    if (Config.feel.damageEdge.enabled) this.damageEdgeTimer = Config.feel.damageEdge.seconds;
+    this.feelHit('playerHit');
+  }
+
   onEggDestroyed(egg, source) {
     this.scene.remove(egg.object);
     if (egg.isMother) {
@@ -2016,6 +2054,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       return;
     }
     this.eggsDestroyed += 1;
+    this.feelHit('eggBreak');
     this.playSfx('eggBreak', { volume: 0.68, cooldown: 0.05 });
     this.spawnXp(egg.position, Config.egg.xp);
     if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');

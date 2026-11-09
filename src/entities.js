@@ -1773,7 +1773,7 @@ export class Player {
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
     this.damageFlashTimer = 0.16;
     this.invincibleTimer = Math.max(this.invincibleTimer, 0.18);
-    this.game.shake = Math.max(this.game.shake, 0.18);
+    this.game.onPlayerHurt?.();
     if (this.hp <= 0) {
       this.startDeath();
       return;
@@ -3377,6 +3377,7 @@ export class Enemy {
     if (reward) this.spawnDeathCorpse();
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
+      this.game.feelHit?.(this.type === 'spawner' || this.type === 'shadow' ? 'bigKill' : 'enemyKill');
       if (burstReward) this.game.player.addBurst(this.type === 'spawner' ? Config.player.burstGainSpawner : Config.player.burstGainEnemy);
       this.game.spawnXp(this.position, this.stats.xp * (this.splitHalf ? Config.enemy.splitshell.halfScale : 1));
       this.game.spawnRandomPickup(this.position, this.type === 'spawner' ? 'spawner' : 'enemy');

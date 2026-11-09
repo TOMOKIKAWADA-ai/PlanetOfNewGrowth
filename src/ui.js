@@ -122,6 +122,7 @@ export class Hud {
     this.restartButton = document.getElementById('restartButton');
     this.replayStoryButton = document.getElementById('replayStoryButton');
     this.deathBlackout = document.getElementById('deathBlackout');
+    this.damageEdge = document.getElementById('damageEdge');
     this.pause = document.getElementById('pause');
     this.pauseResumeButton = document.getElementById('pauseResumeButton');
     this.motherPanel = document.getElementById('motherPanel');
@@ -147,6 +148,7 @@ export class Hud {
   update(dt) {
     const player = this.game.player;
     this.messageTimer = Math.max(0, this.messageTimer - dt);
+    this.updateDamageEdge(dt, player);
     if (this.messageTimer <= 0) this.centerMessage.classList.remove('show', 'boss-warning');
     this.setBar(this.hpBar, player.hp / player.maxHp);
     this.setBar(this.mpBar, player.mp / player.maxMp);
@@ -353,6 +355,23 @@ export class Hud {
       this.carryOver.appendChild(section);
     }
     this.nextChapterButton.disabled = groups.some(group => !options.choice[group.key]);
+  }
+
+  // A3: red screen edge right after a hit, and a faint pulse while HP is low (Config.feel.damageEdge).
+  updateDamageEdge(dt, player) {
+    if (!this.damageEdge) return;
+    const cfg = Config.feel?.damageEdge;
+    if (!cfg?.enabled || !this.game.feelEnabled || !player) {
+      this.damageEdge.style.opacity = '0';
+      return;
+    }
+    this.game.damageEdgeTimer = Math.max(0, (this.game.damageEdgeTimer ?? 0) - dt);
+    const hit = cfg.seconds > 0 ? this.game.damageEdgeTimer / cfg.seconds * cfg.strength : 0;
+    const ratio = player.hp / player.maxHp;
+    const low = !player.dead && ratio > 0 && ratio < cfg.lowHpRatio
+      ? cfg.lowHpStrength * (0.6 + 0.4 * Math.sin(performance.now() / 1000 * Math.PI * 2 * 0.9))
+      : 0;
+    this.damageEdge.style.opacity = Math.max(hit, low, 0).toFixed(3);
   }
 
   showDeathBlackout(show) {

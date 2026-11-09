@@ -180,6 +180,14 @@ body,
   pointer-events: none;
 }
 
+.damage-edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(190, 18, 24, 0.55) 82%, rgba(150, 0, 10, 0.9) 100%);
+}
+
 .top-row {
   position: absolute;
   top: 14px;
