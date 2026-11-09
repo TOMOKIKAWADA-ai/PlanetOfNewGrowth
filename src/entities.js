@@ -179,6 +179,16 @@ const SPLITSHELL_GLOW = 0xfff0b8;
 const SWARMBIRD_COLOR = 0x3d4a66;
 const SWARMBIRD_GLOW = 0x9fdcff;
 const SWARMBIRD_ALERT = 0xff5a4a;
+// Tripo で作った体（main.js の GAMEPLAY_MODELS、Config.visuals.tripoEnemyModels）。
+// 色は絵のまま残し、各種の光（膨らむ・腕を伸ばす・根を張る）は自発光の色と強さで出す。
+const TRIPO_ENEMY_MODELS = Object.freeze({
+  footprint: { key: 'footprintTripo', glow: 0x4f86c4, glowIntensity: 0.3 },
+  crier: { key: 'crierTripo', glow: CRIER_GLOW, glowIntensity: 0.2 },
+  swarmbird: { key: 'swarmbirdTripo', glow: SWARMBIRD_ALERT, glowIntensity: 0 },
+  splitshell: { key: 'splitshellTripo', glow: SPLITSHELL_GLOW, glowIntensity: 0.08 },
+  hand: { key: 'handTripo', glow: HAND_GLOW, glowIntensity: 0.08 },
+  rootsucker: { key: 'rootsuckerTripo', glow: ROOTSUCKER_GLOW, glowIntensity: 0.1 }
+});
 const SWARMBIRD_BODY_GEOMETRY = new THREE.ConeGeometry(0.2, 0.72, 5).rotateX(Math.PI / 2);
 const SWARMBIRD_WING_GEOMETRY = new THREE.BoxGeometry(0.62, 0.035, 0.3).translate(0.31, 0, 0);
 const SWARMBIRD_EYE_GEOMETRY = new THREE.SphereGeometry(0.075, 6, 4);
@@ -1991,6 +2001,50 @@ export class Egg {
     this.object.add(this.spore);
   }
 
+  // 卵ではなく生き物の体を持つボス（白蓮の核と花弁、Tripo の体）。回らずにプレイヤーを向き、idle を流し続ける。
+  // 置き換えたら true。体が読めていなければ元の卵のまま false。
+  useCreatureModel(model) {
+    if (!model) return false;
+    this.object.remove(this.model);
+    this.model = model;
+    this.object.add(model);
+    this.baseModelScale = model.scale.clone();
+    this.creatureModel = true;
+    const clips = model.animations ?? [];
+    if (!clips.length) return true;
+    this.creatureMixer = new THREE.AnimationMixer(model);
+    this.creatureActions = {};
+    for (const clip of clips) {
+      const action = this.creatureMixer.clipAction(clip);
+      const loops = clip.name === 'idle' || clip.name === 'walk';
+      action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+      this.creatureActions[clip.name] = action;
+    }
+    const idle = this.creatureActions.idle;
+    if (idle) {
+      idle.play();
+      idle.time = Math.random() * idle.getClip().duration;
+    }
+    // 一回きりの動き（attack など）が終わったら idle に戻す
+    this.creatureMixer.addEventListener('finished', () => {
+      const back = this.creatureActions.idle;
+      if (!back || back.isRunning()) return;
+      back.reset().play();
+      this.creatureOneShot?.crossFadeTo(back, 0.25, false);
+      this.creatureOneShot = null;
+    });
+    return true;
+  }
+
+  playCreatureOneShot(name) {
+    const action = this.creatureActions?.[name];
+    if (!action || this.creatureOneShot === action) return;
+    const idle = this.creatureActions.idle;
+    action.reset().play();
+    if (idle?.isRunning()) idle.crossFadeTo(action, 0.15, false);
+    this.creatureOneShot = action;
+  }
+
   createFallback() {
     return new THREE.Mesh(
       new THREE.DodecahedronGeometry(this.isMother ? 1.6 : 0.75, 1),
@@ -2033,7 +2087,12 @@ export class Egg {
     const showDetails = this.isMother || distanceSq <= Config.performance.eggDetailDistance ** 2;
     this.ring.visible = showDetails;
     this.spore.visible = showDetails;
-    this.model.rotation.y += dt * (this.isMother ? 0.18 : 0.35);
+    if (this.creatureModel) {
+      this.creatureMixer?.update(dt);
+      this.model.rotation.y = angleToXZ(this.position, this.game.player.position);
+    } else {
+      this.model.rotation.y += dt * (this.isMother ? 0.18 : 0.35);
+    }
     if (showDetails) {
       this.ring.rotation.z += dt * (this.isMother ? 0.18 : 0.32);
       this.spore.rotation.y -= dt * 0.22;
@@ -2109,9 +2168,15 @@ export class Egg {
       const ready = clamp(1 - this.lotusSpawnTimer / 2, 0, 1);
       this.ring.material.color.setHex(0xfff2f6);
       this.ring.material.opacity = 0.3 + ready * 0.5;
-      this.model.rotation.z = Math.sin(this.age * 1.6 + this.position.x) * 0.1;
+      // 産んだ直後（タイマーが巻き戻った）に体を振る。卵の体は代わりにゆっくり傾いて揺れる
+      if (this.creatureModel && this.lotusSpawnTimer > (this.lastLotusSpawnTimer ?? Infinity)) this.playCreatureOneShot('attack');
+      this.lastLotusSpawnTimer = this.lotusSpawnTimer;
+      if (!this.creatureModel) this.model.rotation.z = Math.sin(this.age * 1.6 + this.position.x) * 0.1;
       return;
     }
+    // 核は衝撃波と吸い込みの予告に入ったとき攻撃の動きをする
+    if (this.creatureModel && lotus.attack !== this.lastLotusAttack && lotus.attack?.endsWith('Warning')) this.playCreatureOneShot('attack');
+    this.lastLotusAttack = lotus.attack;
     const open = lotus.state === 'open';
     this.lotusBloom = clamp((this.lotusBloom ?? 0) + (open ? dt * 1.5 : -dt), 0, 1);
     this.model.scale.multiplyScalar(0.8 + this.lotusBloom * 0.3);
@@ -2260,6 +2325,9 @@ export class Enemy {
 
   createModel(type) {
     if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
+    const tripo = TRIPO_ENEMY_MODELS[type];
+    const tripoModel = tripo && this.game.tripoEnemyModelsEnabled ? this.game.cloneGameplayModel(tripo.key) : null;
+    if (tripoModel) return this.prepareTripoModel(tripoModel, type, tripo);
     if (type === 'swarmbird') return this.createSwarmbirdModel();
     if (type === 'shadow') return this.createShadowModel();
     const gameplayModelKeys = {
@@ -2309,6 +2377,43 @@ export class Enemy {
       return this.createLodModel(model, type);
     }
     return createEnemyLowModel(type);
+  }
+
+  // Tripo の体: テクスチャを残したまま材質を敵ごとに複製し、各種の update が光らせる材質の一覧に入れる。
+  prepareTripoModel(model, type, tripo) {
+    this.tripoModel = true;
+    model.userData.baseY = model.position.y;
+    const materials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const tint = (source) => {
+        const material = source.clone();
+        if (material.emissive?.isColor) material.emissive.setHex(tripo.glow);
+        if ('emissiveIntensity' in material) material.emissiveIntensity = tripo.glowIntensity;
+        // 足跡は追い手の写しなので、絵の色のまま少し透ける（見失うとさらに薄くなる: updateFootprint）
+        if (type === 'footprint') {
+          material.transparent = true;
+          material.opacity = 0.82;
+        }
+        material.needsUpdate = true;
+        materials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material) ? child.material.map(tint) : tint(child.material);
+    });
+    if (type === 'footprint') this.footprintMaterials = materials;
+    if (type === 'crier') this.crierMaterials = materials;
+    if (type === 'hand') this.handMaterials = materials;
+    if (type === 'rootsucker') this.rootsuckerMaterials = materials;
+    if (type === 'swarmbird') {
+      // 群れ鳥は空を飛び、襲うときに大きくなる（updateSwarmbird）。気づいたら体が赤く光る（仮の体の赤い目の代わり）
+      model.userData.alertMaterials = materials;
+      model.userData.swarmBaseScale = model.scale.x;
+      model.position.y = Config.enemy.swarmbird.orbitHeight;
+      model.userData.baseY = model.position.y;
+      return model;
+    }
+    return this.createLodModel(model, type);
   }
 
   styleSniperModel(model) {
@@ -2511,9 +2616,16 @@ export class Enemy {
     if (wings) { wings[0].rotation.z = -flap; wings[1].rotation.z = flap; }
     const eye = this.model.userData.eyeMaterial;
     if (eye) eye.color.setHex(swarm.notice > 0 ? SWARMBIRD_ALERT : SWARMBIRD_GLOW);
+    for (const material of this.model.userData.alertMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = swarm.notice > 0 ? 0.55 : 0;
+    }
     this.model.userData.baseY = swarm.height;
-    // 鳥形態のカメラは高く引くので、襲っている間は体を大きくして見えるようにする
-    const scale = this.model.scale.x + ((hunting ? 2.6 : 1.6) - this.model.scale.x) * Math.min(1, dt * 4);
+    // Tripo の体は羽ばたきのモーション（walk）を持つので、高さはここで直接合わせる
+    if (this.tripoModel) this.model.position.y = swarm.height;
+    // 鳥形態のカメラは高く引くので、襲っている間は体を大きくして見えるようにする（仮の体は 1.6 → 2.6）
+    const base = this.model.userData.swarmBaseScale ?? 1.6;
+    const target = base * (hunting ? 2.6 / 1.6 : 1);
+    const scale = this.model.scale.x + (target - this.model.scale.x) * Math.min(1, dt * 4);
     this.model.scale.setScalar(scale);
   }
 
@@ -2708,7 +2820,8 @@ export class Enemy {
 
   createHpBar() {
     const group = new THREE.Group();
-    group.position.y = this.type === 'guardian' ? 2.25 : 1.85;
+    const tripoHeight = this.tripoModel ? this.game.gameplayModelHeight(TRIPO_ENEMY_MODELS[this.type].key) : 0;
+    group.position.y = this.type === 'guardian' ? 2.25 : Math.max(1.85, tripoHeight + 0.3);
     const bg = new THREE.Mesh(
       new THREE.PlaneGeometry(1.15, 0.1),
       new THREE.MeshBasicMaterial({ color: 0x161616, transparent: true, opacity: 0.72, depthWrite: false })
@@ -2935,7 +3048,9 @@ export class Enemy {
     }
     clampToCircle(this.position, Config.map.radius - 1.2);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
-    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' || this.type === 'crier' ? Math.PI : 0);
+    // 産卵獣の体（と、それを使う仮の鳴き）は後ろ向きに作られている
+    const backwards = this.type === 'spawner' || (this.type === 'crier' && !this.tripoModel);
+    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (backwards ? Math.PI : 0);
     if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();

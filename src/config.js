@@ -23,6 +23,9 @@ export const Config = {
     birdModelPitch: Math.PI * 0.5,
     droneModelHeight: 0.28,
     motherEggModelHeight: 4.2,
+    // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と
+    // 白蓮の核・花弁を、色違いの仮の体から置き換える。false（または URL に ?tripoEnemies=0）で元の仮の体に戻る。
+    tripoEnemyModels: true,
     usePlayerFbxAnimations: true,
     useEmbeddedPlayerAnimation: false,
     useProceduralPlayerBones: false,

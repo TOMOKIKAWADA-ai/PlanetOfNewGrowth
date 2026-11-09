@@ -106,6 +106,7 @@
   - **確認画像のパスは絶対パスで渡す**。相対パス（`out/x.png`）だと Blender が `C:\out\` に書き出した（2026-10-29）。
   - 同じ種類の候補を比べるときは、候補ごとにフォルダを分けて1つずつ実行する（出力名が種類で決まるので上書きされる）。
   - 元絵の言葉: 「翼（wings）」を入れると、2回とも目のある鳥の顔が出た（10-26、10-29）。翼のある形は避けるか、`bird, eyes, face` を否定に入れる。馬蹄形（horseshoe）は正面向きの U がそのまま立体になり、上から見ても読める。
+- Tripo の体に骨を入れる（2026-11-09）: `blender -b --factory-startup -P scripts/blender/build_tripo_enemies.py -- <名前> <元.glb> <assets/enemies/tripo/名前_anim.glb>`。骨の位置と各クリップの姿勢は同じファイルの `SPECS` に体ごとに書く（Tripo の GLB は高さ 1・足元が原点・正面が -Y）。**Blender の自動の重み（ヒート）は Tripo の体ではすべて失敗した**（そのまま・ボクセルの代理・10 倍に拡大のどれも）ので、`enemy_anim_lib.rig_mesh_auto`（骨までの距離＋ならし）を使う。確認画像は `blender -b --factory-startup -P scripts/blender/render_anim_sheet.py -- <anim.glb> <出力.png>`（行がクリップ、列が正面と横のコマ）。1 体 20〜40 秒。
 - 単色で描く小物には、ゲーム側で陰影の出るマテリアル（`MeshStandardMaterial`、発光は弱め 0.16）を使う。光を受けないマテリアルだと形が影絵になる。
 
 ## 効果音（Stable Audio 3 Small-SFX）

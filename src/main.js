@@ -235,8 +235,27 @@ const GAMEPLAY_MODELS = {
     height: 2.0,
     centerXZ: true,
     forceOpaque: true
-  }
+  },
+  // Tripo の新種とボス（Config.visuals.tripoEnemyModels）。骨とモーションは scripts/blender/build_tripo_enemies.py
+  footprintTripo: tripoModel('footprint', 1.8),
+  crierTripo: tripoModel('crier', 1.75),
+  swarmbirdTripo: tripoModel('swarmbird', 0.75),
+  splitshellTripo: tripoModel('splitshell', 1.7),
+  handTripo: tripoModel('hand', 2.0),
+  rootsuckerTripo: tripoModel('rootsucker', 1.9),
+  lotusCoreTripo: tripoModel('lotus_core', 4.6),
+  lotusPetalTripo: tripoModel('lotus_petal', 5.6)
 };
+
+function tripoModel(name, height) {
+  return {
+    url: new URL(`../assets/enemies/tripo/${name}_anim.glb`, import.meta.url).href,
+    height,
+    centerXZ: true,
+    forceOpaque: true,
+    tripo: true
+  };
+}
 const BACKGROUND_OBJECTS = [
   { url: new URL('../assets/background/obj_001_rtp.glb', import.meta.url).href, height: 3.0, count: 1, minRadius: 28 },
   { url: new URL('../assets/background/obj_002_rtp.glb', import.meta.url).href, height: 3.2, count: 1, minRadius: 30 },
@@ -1020,7 +1039,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const loader = new GLTFLoader();
       const entries = Object.entries(GAMEPLAY_MODELS)
-        .filter(([key]) => !(key === 'xpCrystal' && Config.performance.usePrimitiveXp));
+        .filter(([key]) => !(key === 'xpCrystal' && Config.performance.usePrimitiveXp))
+        .filter(([, entry]) => !entry.tripo || this.tripoEnemyModelsEnabled);
       await Promise.all(entries.map(async ([key, entry]) => {
         try {
           const gltf = await loader.loadAsync(entry.url);
@@ -2014,6 +2034,19 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return maxHp > 0 ? hp / maxHp : 0;
   }
 
+  // Tripo の新種・ボスの体を使うか（Config.visuals.tripoEnemyModels、URL の ?tripoEnemies=0 で仮の体と比べられる）
+  get tripoEnemyModelsEnabled() {
+    if (this._tripoEnemyModels === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('tripoEnemies');
+      this._tripoEnemyModels = fromUrl === null ? Boolean(Config.visuals.tripoEnemyModels) : fromUrl !== '0';
+    }
+    return this._tripoEnemyModels;
+  }
+
+  gameplayModelHeight(key) {
+    return GAMEPLAY_MODELS[key]?.height ?? 0;
+  }
+
   get feelEnabled() {
     if (this._feelEnabled === undefined) {
       const fromUrl = new URLSearchParams(window.location.search).get('feel');
@@ -2749,6 +2782,12 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       petal.ring.scale.setScalar(cfg.petalScale + 0.1);
       return petal;
     });
+    if (this.tripoEnemyModelsEnabled) {
+      core.useCreatureModel(this.cloneGameplayModel('lotusCoreTripo'));
+      for (const petal of petals) {
+        if (petal.useCreatureModel(this.cloneGameplayModel('lotusPetalTripo'))) petal.baseModelScale.multiplyScalar(cfg.petalScale);
+      }
+    }
     const lotus = linkLotus(core, petals, cfg.petalSpecies.map((type) => this.lotusSpeciesAvailable(type) ? type : 'chaser'));
     this.lotusStats = lotus.stats;
   }

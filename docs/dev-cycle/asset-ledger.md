@@ -346,7 +346,7 @@
 ユーザーの指示「`enemy_draft` から作られていない敵の造形を選んで Tripo で作って」→ 候補を見せて「第一候補で作って」（2026-11-08）。
 ツール: Tripo Studio の Smart Mesh **P2.0**、**Multiview**（前・左・右・後ろ）、**Quad**、テクスチャ 2k、GLB で書き出し。費用は 1 体あたり生成 100＋テクスチャ 20 クレジット（8 体で 960）。書き出し後の残りは 1200。
 元絵: `enemy_draft/turnarounds/` の三面図（Forge 製、ユーザーが用意したもの）を、絵と絵のすき間で前・横・後ろに切り分け、正方形 1024 にした。左は右の左右反転。手は細い垂れ糸を消してから渡した（Tripo が糸を壁にするため）。切り分けた絵は `assets_src/tripo/2026-11-09-enemies/views/<名前>/`（手の消す前は `hand_raw/`）、一覧は `views/views_sheet.jpg`。
-GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git 対象外。骨・モーションはまだ）。
+GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git 対象外。Tripo から書き出したままの元）。
 
 | 敵（設定の名前） | GLB | 元絵 | 面数の指定 → 結果 | メモ |
 |---|---|---|---|---|
@@ -358,3 +358,10 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | 吸水根 `rootsucker`（第5章） | `rootsucker.glb` | `75_00177-4113397328_ivory_skull_thorn_tree_totem_3view.png` | 2000 → 2106 | 頭蓋骨の顔の幹、頭に赤い花と棘 |
 | 白蓮の核 `whiteLotusCore`（第6章ボス） | `lotus_core.glb` | `84_00206-4113397357_ivory_eye_flower_stilt_hunter_3view.png` | 8000 → 10000 | 目のある花の頭、細長い脚 4 本。いちばんきれいに出た |
 | 白蓮の花弁（核が産む） | `lotus_petal.glb` | `24_00038-4113397189_floating_flower_blades_3view.png` | 2000 → 1868 | 赤い花と刃の葉。下の細い根は少し崩れている |
+
+**骨とモーション（2026-11-09、受け取り用のチャット。ユーザー「ボーンとゲームへの組み込みをお願いします」）**
+- `scripts/blender/build_tripo_enemies.py <名前> <元.glb> <出力.glb>` で、体ごとの骨（`SPECS`）を入れ、idle・walk・attack・hit・die の 5 つを付けた。テクスチャは 2k → 1k に縮小。確認は `scripts/blender/render_anim_sheet.py`（クリップ×コマを正面と横から並べる）。
+- 骨の重みは Blender の自動（ヒート）が Tripo の体では 3 通り試してすべて失敗したので、`enemy_anim_lib.rig_mesh_auto`（骨の線分までの距離で重みを付け、辺に沿ってならし、小さな破片は 1 本の骨に固定）を使った。
+- 灰色の読み残しは目立たなかったので塗り直していない。花弁の崩れた根はそのまま揺らしている。白蓮の核は 1 万面のまま（1 体だけなので減らしていない）。
+- 出力: `assets/enemies/tripo/<名前>_anim.glb`（足跡 416 KB・鳴き 364 KB・群れ鳥 392 KB・割れ殻 404 KB・手 468 KB・吸水根 404 KB・白蓮の核 1.3 MB・白蓮の花弁 384 KB）。
+- ゲーム: `src/main.js` の `GAMEPLAY_MODELS`（`*Tripo`、高さは足跡 1.8・鳴き 1.75・群れ鳥 0.75・割れ殻 1.7・手 2.0・吸水根 1.9・核 4.6・花弁 5.6×0.5）。`Config.visuals.tripoEnemyModels: false` か URL の `?tripoEnemies=0` で元の仮の体（色違いの体・母卵）に戻る。各種の光（膨らむ・腕・根・群れ鳥が気づいたとき）は絵の色を残したまま自発光で出す。核と花弁は回らずにプレイヤーを向き、核は衝撃波・吸い込みの予告、花弁は産んだときに attack を流す。画面: `docs/devlog/img/2026-11-09-tripo-enemies.png`・`2026-11-09-tripo-lotus.png`。
