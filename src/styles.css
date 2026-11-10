@@ -286,6 +286,25 @@ body,
   box-shadow: 0 0 22px rgba(255, 235, 105, 0.96);
 }
 
+/* A4: 経験値バー（Config.feedbackFx.xpBar）。細い4段目。レベルアップ直前は光って「まもなく」と出る */
+.meter.xp { grid-column: 1; grid-row: 4; height: 34px; padding: 2px 14px; }
+.meter.xp.hidden { display: none; }
+.meter.xp span,
+.meter.xp b { font-size: 13px; line-height: 14px; }
+.meter.xp div { height: 6px; margin-top: 4px; }
+.xp i { background: linear-gradient(90deg, #3aa9e8, #8ff0ff); }
+.meter.xp.gain i { filter: brightness(1.6); }
+.meter.xp.near b { color: #bff6ff; text-shadow: 0 0 10px rgba(120, 230, 255, 0.85); }
+.meter.xp.near i { box-shadow: 0 0 14px rgba(140, 240, 255, 0.95); animation: xp-near-pulse 0.7s ease-in-out infinite; }
+
+/* 経験値バーの分だけ、下の文字の欄を下げる */
+#hud.xp-on .side-panel { top: 276px; }
+
+@keyframes xp-near-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.55); }
+}
+
 @keyframes burst-ready-glow {
   0%, 100% { filter: brightness(1); }
   50% { filter: brightness(1.32); }
@@ -1269,6 +1288,12 @@ button {
     height: 7px;
     margin-top: 3px;
   }
+
+  .meter.xp { height: 20px; padding: 0 5px; }
+  #hud.xp-on .side-panel { top: calc(140px + env(safe-area-inset-top)); }
+  .meter.xp span,
+  .meter.xp b { font-size: 10px; line-height: 11px; }
+  .meter.xp div { height: 4px; margin-top: 2px; }
 
   .clock {
     grid-column: 2;

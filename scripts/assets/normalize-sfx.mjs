@@ -29,6 +29,7 @@ const FILE_ROLES = {
   bird_feed: 'action', transform_bird: 'action', transform_human: 'action', egg_break: 'action',
   item_pickup: 'action', player_hit: 'action', thirst_drain: 'action',
   crier_cry: 'frequent', hand_grab: 'action', root_dry: 'action',
+  fish_bite: 'action', shell_crack: 'action', swarm_rise: 'big',
   burst_pre: 'big', burst_fire: 'big', burst_spread: 'big', tsukimi_burst: 'big', kiichigo_burst: 'big',
   level_up: 'big', mother_charge: 'big', mother_release: 'big', mother_impact: 'big'
 };

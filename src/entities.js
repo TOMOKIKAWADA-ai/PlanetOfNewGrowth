@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { xpOrbScale, xpPullSpeedScale, xpPullStep } from './reward-feedback.js';
 import {
   TAU,
   angleToXZ,
@@ -3790,6 +3791,8 @@ export class ExperienceOrb {
     this.glow.material.opacity = this.type === 'xp' ? 0.18 : 0.22;
     this.glow.scale.setScalar(this.type === 'magnet' ? 1.35 : 1);
     this.glow.scale.y *= 1.25;
+    this.pullSeconds = 0;
+    this.object.scale.setScalar(1);
     this.active = true;
     this.dead = false;
     this.object.visible = true;
@@ -3797,6 +3800,7 @@ export class ExperienceOrb {
 
   update(dt) {
     if (!this.active || this.game.player.dead) return;
+    const feedback = this.game.feedbackFxEnabled ? Config.feedbackFx.xpPull : null;
     const player = this.game.player;
     const distanceSq = horizontalDistanceSq(this.position, player.position);
     const showGlow = distanceSq <= Config.performance.xpGlowDistance ** 2;
@@ -3813,9 +3817,26 @@ export class ExperienceOrb {
     this.object.position.y = 0.45 + Math.sin(this.game.elapsed * 6 + this.position.x) * 0.08;
     if (distanceSq < magnetRange ** 2 && distanceSq > 0.0001) {
       normalizeXZ(tempVec, player.position.x - this.position.x, player.position.z - this.position.z);
-      const pullSpeed = player.getPickupMagnetSpeed() * (this.type === 'xp' ? 1 : 1.08);
-      this.position.x += tempVec.x * pullSpeed * dt;
-      this.position.z += tempVec.z * pullSpeed * dt;
+      let pullSpeed = player.getPickupMagnetSpeed() * (this.type === 'xp' ? 1 : 1.08);
+      if (feedback) {
+        // A4: the longer an orb is pulled, the faster it flies in, and it shrinks as it reaches the player.
+        this.pullSeconds += dt;
+        pullSpeed *= xpPullSpeedScale(this.pullSeconds, feedback);
+        const step = xpPullStep(Math.sqrt(distanceSq), pullSpeed, dt);
+        this.position.x += tempVec.x * step;
+        this.position.z += tempVec.z * step;
+      } else {
+        this.position.x += tempVec.x * pullSpeed * dt;
+        this.position.z += tempVec.z * pullSpeed * dt;
+      }
+    } else {
+      this.pullSeconds = 0;
+    }
+    if (feedback) {
+      const s = xpOrbScale(Math.sqrt(horizontalDistanceSq(this.position, player.position)), feedback);
+      this.object.scale.setScalar(s);
+    } else if (this.object.scale.x !== 1) {
+      this.object.scale.setScalar(1);
     }
     if (distanceSq < Config.pickups.pickupRange ** 2) {
       this.collect(player);

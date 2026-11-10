@@ -365,3 +365,13 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 - 灰色の読み残しは目立たなかったので塗り直していない。花弁の崩れた根はそのまま揺らしている。白蓮の核は 1 万面のまま（1 体だけなので減らしていない）。
 - 出力: `assets/enemies/tripo/<名前>_anim.glb`（足跡 416 KB・鳴き 364 KB・群れ鳥 392 KB・割れ殻 404 KB・手 468 KB・吸水根 404 KB・白蓮の核 1.3 MB・白蓮の花弁 384 KB）。
 - ゲーム: `src/main.js` の `GAMEPLAY_MODELS`（`*Tripo`、高さは足跡 1.8・鳴き 1.75・群れ鳥 0.75・割れ殻 1.7・手 2.0・吸水根 1.9・核 4.6・花弁 5.6×0.5）。`Config.visuals.tripoEnemyModels: false` か URL の `?tripoEnemies=0` で元の仮の体（色違いの体・母卵）に戻る。各種の光（膨らむ・腕・根・群れ鳥が気づいたとき）は絵の色を残したまま自発光で出す。核と花弁は回らずにプレイヤーを向き、核は衝撃波・吸い込みの予告、花弁は産んだときに attack を流す。画面: `docs/devlog/img/2026-11-09-tripo-enemies.png`・`2026-11-09-tripo-lotus.png`。
+
+## 2026-11-10 効果音: 魚の噛みつき・割れ殻の割れ・群れの母の起き上がり（B2-1 の続き）
+ツール: Stable Audio 3 Small-SFX（steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で 3 音 × 4 シード（11・23・37・51）。候補と jobs、周波数の見比べ画像 `grid.png`: `assets_src/sfx/2026-11-10/`（git 対象外。画像は `docs/devlog/img/2026-11-10-sfx-spectrum.png` にも置いた）。12 本とも振り切れ・一面の雑音はなかった。後処理は FFmpeg（先頭の無音を切る → 長さを切る → フェード）のあと `normalize-sfx.mjs`。`Config.audio.newSfx: false` で元の流用に戻る。耳での確認はまだ。
+
+| ファイル | 元（シード、長さ） | プロンプト | 後処理 | 採用 |
+|---|---|---|---|---|
+| `assets/audio/sfx/fish_bite.wav`（0.75 秒、そろえた後 -15.4 LUFS、操作） | fish_bite_s37（2 秒） | An underwater bite, a sharp wet chomp of teeth with a bubbly splash, creature biting under water | 先頭の無音を切り 0.75 秒、0.55 秒から 0.2 秒のフェードアウト | 採用: 水泡の細かい音が並ぶ。4 本のうち山がいちばん早く（0.3 秒）短い。水門の母を魚形態で噛んだとき（`onFloodgateBite`、元は `birdFeed`） |
+| `assets/audio/sfx/shell_crack.wav`（0.9 秒、-20.1 LUFS、操作） | shell_crack_s37（2 秒） | A hard eggshell cracking and splitting in two, sharp brittle crack with small fragments falling | 先頭の無音を切り 0.9 秒、0.65 秒から 0.25 秒のフェードアウト | 採用: 鋭い割れの音が数回続く（主な周波数が高い、重心 8.8 kHz）。4 本のうち最初の割れがいちばん強い。割れ殻がバーストで割れたとき（`onSplitshellBurst`、元は撃破音だけ）。尖った音なのでリミッターで目標（-15）に届かず -20 |
+| `assets/audio/sfx/swarm_rise.wav`（2.6 秒、-12.4 LUFS、大技・ボス） | swarm_rise_s11（3 秒） | A monster rising again, a low rumbling groan swelling up with a creaking shell and a short roar | 先頭の無音を切り 2.6 秒、2.1 秒から 0.5 秒のフェードアウト | 採用: 低いうなり（重心 317 Hz）が 1.3 秒にかけて膨らんで引く。4 本のうち膨らみの形がいちばんはっきり。群れの母の姉妹が起き上がったとき（`onSwarmMemberRevive`、元は `motherCharge`） |
+| — | fish_bite・shell_crack・swarm_rise の s11 / s23 / s51（採用以外） | 同上 | — | 次点（候補として残す） |

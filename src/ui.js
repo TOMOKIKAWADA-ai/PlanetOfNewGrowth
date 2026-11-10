@@ -2,6 +2,7 @@ import { Config, UpgradePool } from './config.js';
 import { clamp } from './math.js';
 import { isFinalChapter } from './campaign.js';
 import { getBossName } from './bosses.js';
+import { xpBarState } from './reward-feedback.js';
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -109,6 +110,12 @@ export class Hud {
     this.hpText = document.getElementById('hpText');
     this.mpText = document.getElementById('mpText');
     this.burstText = document.getElementById('burstText');
+    this.xpMeter = document.getElementById('xpMeter');
+    this.xpBar = document.getElementById('xpBar');
+    this.xpLevel = document.getElementById('xpLevel');
+    this.xpText = document.getElementById('xpText');
+    this.xpGainTimer = 0;
+    this.lastXpKey = '';
     this.clock = document.getElementById('clock');
     this.statsLine = document.getElementById('statsLine');
     this.hintLine = document.getElementById('hintLine');
@@ -161,6 +168,7 @@ export class Hud {
     this.mpText.textContent = `${Math.floor(player.mp)} / ${player.maxMp}`;
     const burstCooldownText = player.burstCooldownTimer > 0 ? `  CD ${player.burstCooldownTimer.toFixed(1)}s` : '';
     this.burstText.textContent = `${Math.floor(player.burst)} / ${Config.player.burstMax}${burstCooldownText}`;
+    this.updateXpBar(dt, player);
     const remain = Math.max(0, Config.map.playSeconds - this.game.elapsed);
     const minutes = Math.floor(remain / 60);
     const seconds = Math.floor(remain % 60).toString().padStart(2, '0');
@@ -190,6 +198,27 @@ export class Hud {
     this.hintLine.textContent = this.game.hint || pickupStatusText || visibleStatusText;
     this.updateMother();
     this.pause.classList.toggle('hidden', this.game.state !== 'paused');
+  }
+
+  // A4: 経験値バーとレベルアップ直前の予告（Config.feedbackFx.xpBar）
+  updateXpBar(dt, player) {
+    if (!this.xpMeter) return;
+    const enabled = Boolean(this.game.feedbackFxEnabled);
+    this.xpMeter.classList.toggle('hidden', !enabled);
+    this.xpMeter.parentElement?.parentElement?.classList.toggle('xp-on', enabled);
+    if (!enabled) return;
+    const state = xpBarState(player.xp, player.nextXp, Config.feedbackFx.xpBar.nearRatio);
+    const key = `${player.level}:${Math.floor(player.xp)}`;
+    if (key !== this.lastXpKey) {
+      if (this.lastXpKey) this.xpGainTimer = 0.12;
+      this.lastXpKey = key;
+      this.setBar(this.xpBar, state.ratio);
+      this.xpLevel.textContent = `Lv ${player.level}`;
+      this.xpText.textContent = state.near ? `まもなく Lv ${player.level + 1}` : `あと ${state.remain}`;
+      this.xpMeter.classList.toggle('near', state.near);
+    }
+    this.xpGainTimer = Math.max(0, this.xpGainTimer - dt);
+    this.xpMeter.classList.toggle('gain', this.xpGainTimer > 0);
   }
 
   setBar(element, ratio) {

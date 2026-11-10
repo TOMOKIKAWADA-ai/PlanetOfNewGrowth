@@ -19,6 +19,7 @@ import { angleToXZ, clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircl
 import { floodgateStreamPoints, getBossName, getBossType, linkLotus, linkSwarm, lotusInhalePull, lotusTargetable, swarmPositions } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
+import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
@@ -132,7 +133,10 @@ const SFX_FILES = {
   thirstDrain: 'thirst_drain',
   crierCry: 'crier_cry',
   handGrab: 'hand_grab',
-  rootDry: 'root_dry'
+  rootDry: 'root_dry',
+  fishBite: 'fish_bite',
+  shellCrack: 'shell_crack',
+  swarmRise: 'swarm_rise'
 };
 const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
 const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
@@ -1867,6 +1871,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   onSplitshellBurst(shell) {
     const cfg = Config.enemy.splitshell;
     this.splitshellStats.splits += 1;
+    if (Config.audio.newSfx) this.playSfx('shellCrack', { volume: 0.9, cooldown: 0.08 });
     const away = angleToXZ(this.player.position, shell.position);
     for (let i = 0; i < cfg.splitCount; i++) {
       const half = this.spawnEnemy('splitshell', shell.position, null, { ignoreCap: true });
@@ -2053,6 +2058,77 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this._feelEnabled = fromUrl === null ? Boolean(Config.feel?.enabled) : fromUrl !== '0';
     }
     return this._feelEnabled;
+  }
+
+  // A4: kill shards, XP pull and the XP bar (Config.feedbackFx, ?feedbackFx=0 turns them off).
+  get feedbackFxEnabled() {
+    if (this._feedbackFxEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('feedbackFx');
+      this._feedbackFxEnabled = fromUrl === null ? Boolean(Config.feedbackFx?.enabled) : fromUrl !== '0';
+    }
+    return this._feedbackFxEnabled;
+  }
+
+  // A4: a few dark shell chips (and one or two red ones) fly out and bounce when an enemy dies.
+  spawnKillShards(position, type) {
+    const cfg = Config.feedbackFx.shards;
+    let active = 0;
+    for (const effect of this.effects) if (effect.shards) active += 1;
+    if (active >= cfg.maxActive) return;
+    if (!this.shardGeometry) {
+      this.shardGeometry = new THREE.TetrahedronGeometry(1, 0);
+      this.shardMaterials = [
+        new THREE.MeshBasicMaterial({ color: 0x3a3536 }),
+        new THREE.MeshBasicMaterial({ color: 0x6b6262 }),
+        new THREE.MeshBasicMaterial({ color: 0xff5a46, toneMapped: false })
+      ];
+    }
+    const big = type === 'spawner' || type === 'shadow' || type === 'guardian';
+    const count = big ? cfg.bigCount : cfg.count;
+    const size = cfg.size * (big ? 1.35 : 1);
+    const group = new THREE.Group();
+    group.position.set(position.x, 0, position.z);
+    const pieces = [];
+    for (let i = 0; i < count; i++) {
+      const material = this.shardMaterials[i % 3 === 2 ? 2 : i % 2];
+      const mesh = new THREE.Mesh(this.shardGeometry, material);
+      const angle = (i / count) * TAU + randRange(-0.4, 0.4);
+      const out = randRange(0.45, 1) * cfg.speed;
+      mesh.position.set(0, randRange(0.5, 1.1), 0);
+      mesh.rotation.set(Math.random() * TAU, Math.random() * TAU, 0);
+      mesh.scale.setScalar(size * randRange(0.7, 1.2));
+      mesh.renderOrder = 7;
+      group.add(mesh);
+      pieces.push({ mesh, base: mesh.scale.x, vx: Math.sin(angle) * out, vz: Math.cos(angle) * out, vy: randRange(0.5, 1) * cfg.lift, spin: randRange(6, 14) });
+    }
+    this.scene.add(group);
+    this.effects.push({
+      object: group,
+      shards: true,
+      dispose: false, // geometry and materials are shared
+      life: cfg.life,
+      duration: cfg.life,
+      update(effect, dt) {
+        effect.life -= dt;
+        const scale = shardScale(clamp(1 - effect.life / effect.duration, 0, 1), cfg.fadeFrom);
+        for (const p of pieces) {
+          p.vy -= 16 * dt;
+          p.mesh.position.x += p.vx * dt;
+          p.mesh.position.y += p.vy * dt;
+          p.mesh.position.z += p.vz * dt;
+          if (p.mesh.position.y < 0.08) {
+            p.mesh.position.y = 0.08;
+            p.vy = Math.abs(p.vy) * 0.35;
+            p.vx *= 0.55;
+            p.vz *= 0.55;
+            p.spin *= 0.5;
+          }
+          p.mesh.rotation.x += p.spin * dt;
+          p.mesh.rotation.y += p.spin * 0.7 * dt;
+          p.mesh.scale.setScalar(Math.max(0.0001, p.base * scale));
+        }
+      }
+    });
   }
 
   // A3: a short hit stop and a small shake for kills, egg breaks and hits on the player (Config.feel).
@@ -2701,7 +2777,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   onFloodgateBite(mother, bites, needed) {
     this.floodgateStats.bites += 1;
     this.spawnRingEffect(mother.position, 3.4, 0x5fd0ff, 0.7, 0.4);
-    this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
+    if (Config.audio.newSfx) this.playSfx('fishBite', { volume: 0.85, cooldown: 0.1 });
+    else this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
     this.showMessage(`噛みついた ${bites}/${needed}`, 0.9);
   }
 
@@ -2938,7 +3015,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   onSwarmMemberRevive(mother) {
-    this.playSfx('motherCharge', { volume: 0.7, cooldown: 0.3 });
+    if (Config.audio.newSfx) this.playSfx('swarmRise', { volume: 0.8, cooldown: 0.3 });
+    else this.playSfx('motherCharge', { volume: 0.7, cooldown: 0.3 });
     this.spawnRingEffect(mother.position, 4.2, 0xff5a5a, 0.85, 0.6);
     this.showMessage('群れの母が起き上がった', 1.6);
   }
@@ -3173,6 +3251,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       });
     }
     this.spawnParticleBurst(position, type === 'spawner' ? 14 : 10, type === 'spawner' ? 0xffd6b3 : 0x93c5bb, 1.25, 0.38, 0.5);
+    if (showSprite && this.feedbackFxEnabled) this.spawnKillShards(position, type);
   }
 
   spawnDust(position, color) {

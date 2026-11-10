@@ -88,6 +88,30 @@ export const Config = {
       lowHpStrength: 0.28
     }
   },
+  // A4: 撃破の破片、経験値の吸い込み、経験値バーとレベルアップ直前の予告。
+  // enabled: false か URL の ?feedbackFx=0 で、すべて消えて元の見た目に戻る。
+  feedbackFx: {
+    enabled: true,
+    shards: {
+      count: 5, // 普通の敵
+      bigCount: 9, // 湧き手・影法師・守り手
+      size: 0.17,
+      speed: 4.2, // 横に飛ぶ速さの上限
+      lift: 4.5, // 上に飛ぶ速さの上限
+      life: 0.6,
+      fadeFrom: 0.55, // 寿命のこの割合から縮んで消える
+      maxActive: 16 // 同時に出す破片の組の上限（バーストで一度に倒しても重くしない）
+    },
+    xpPull: {
+      accel: 2.4, // 吸い寄せられて1秒ごとに速さ +240%
+      maxBoost: 2.2, // 速さは最大で 3.2 倍
+      shrinkFrom: 1.6, // この距離より近づくと小さくなる
+      minScale: 0.45
+    },
+    xpBar: {
+      nearRatio: 0.85 // 経験値がこの割合を超えたら、バーが光って「まもなく」と出る
+    }
+  },
   performance: {
     maxPixelRatio: 1,
     renderScale: 0.9,
