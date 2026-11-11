@@ -19,6 +19,7 @@ import { angleToXZ, clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircl
 import { floodgateStreamPoints, getBossName, getBossType, linkLotus, linkSwarm, lotusInhalePull, lotusTargetable, swarmPositions } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
+import { buildWaveTimes, pacingPhase } from './pacing.js';
 import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -501,6 +502,9 @@ class Game {
     this.takenUpgrades = new Map();
     this.carryChoice = null;
     this.nextStageBeat = 0;
+    this.nextRipple = 0;
+    this.waveTimes = buildWaveTimes(Config.map.stageBeats, Config.pacing);
+    this.pacingState = { phase: 'calm', hatchScale: 1 };
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
     this.scratchNeighbors = [];
@@ -1364,15 +1368,37 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const beats = Config.map.stageBeats;
     while (this.nextStageBeat < beats.length && this.elapsed >= beats[this.nextStageBeat].at) {
       const beat = beats[this.nextStageBeat++];
-      for (let i = 0; i < beat.eggs; i++) {
-        const point = this.findEggSpawnPosition(this.player.position, 13, 25);
-        if (point) this.spawnEgg(point);
-      }
-      for (const type of beat.enemies) {
-        const point = this.findEnemySpawnPosition(14, 24);
-        if (point) this.spawnEnemy(type, point);
-      }
+      this.spawnBeat(beat);
+      if (this.pacingEnabled && Config.pacing.announce && beat.at < Config.pacing.untilSeconds
+        && this.hud.messageTimer <= 0) this.showMessage(Config.pacing.announceText, 1.4);
     }
+    if (!this.pacingEnabled) return;
+    // A5: small extra waves in the quiet valleys, then a surge / lull in how fast eggs hatch.
+    const ripples = Config.pacing.ripples;
+    while (this.nextRipple < ripples.length && this.elapsed >= ripples[this.nextRipple].at) {
+      this.spawnBeat(ripples[this.nextRipple++]);
+    }
+    this.pacingState = pacingPhase(this.elapsed, this.waveTimes, Config.pacing);
+  }
+
+  spawnBeat(beat) {
+    for (let i = 0; i < beat.eggs; i++) {
+      const point = this.findEggSpawnPosition(this.player.position, 13, 25);
+      if (point) this.spawnEgg(point);
+    }
+    for (const type of beat.enemies) {
+      const point = this.findEnemySpawnPosition(14, 24);
+      if (point) this.spawnEnemy(type, point);
+    }
+  }
+
+  // A5: waves and lulls (Config.pacing, ?pacing=0 turns them off).
+  get pacingEnabled() {
+    if (this._pacingEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('pacing');
+      this._pacingEnabled = fromUrl === null ? Boolean(Config.pacing?.enabled) : fromUrl !== '0';
+    }
+    return this._pacingEnabled;
   }
 
   findEnemySpawnPosition(minDistance, maxDistance) {
@@ -2010,7 +2036,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const relief = clamp(this.eggsDestroyed / Config.map.hatchDestroyReliefEggs, 0, 1) * Config.map.hatchDestroyMaxSlow;
     const minimumScale = Config.map.hatchMinAccelerationScale
       + (Config.map.hatchLateMinAccelerationScale - Config.map.hatchMinAccelerationScale) * progress;
-    return Config.map.hatchRateMultiplier * Math.max(minimumScale, 1 + timeAcceleration + pressureAcceleration - relief);
+    return Config.map.hatchRateMultiplier * Math.max(minimumScale, 1 + timeAcceleration + pressureAcceleration - relief)
+      * this.pacingState.hatchScale;
   }
 
   findEggsInRadius(position, radius, includeMother = false) {

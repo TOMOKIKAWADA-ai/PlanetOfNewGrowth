@@ -16,7 +16,7 @@
 1. **再開**: `docs/devlog/` の最新の記録と `docs/dev-cycle/backlog.md` を読む。ユーザーのフィードバック（`docs/dev-cycle/feedback.md`）があれば最優先で反映する。
 2. **トラックA：面白さの基盤（毎日1件）**: backlog の A から、最上位の未着手項目を1つだけ実装する。
 3. **トラックB：素材づくり（毎日1件、小さく）**: backlog の B から1つ。3D・効果音・イラスト・音声・動くアバター・動画/SNS素材を曜日で交代して進める（下記のローテーション）。生成に失敗したら、失敗の記録だけ残して翌日に回してよい。
-4. **確認**: `npm test`、`npm run build`。開発サーバーを立ち上げ、ブラウザで実際に遊び、変更箇所のスクリーンショットを `docs/devlog/img/YYYY-MM-DD-*.png` に保存する。自動プレイボットで数値も取る（開発サーバーを起動したまま `PLAYWRIGHT_MODULE=D:/AI/Live2D_AI/mesh-avatar-studio/node_modules/playwright node scripts/bot-play.mjs --runs 5 --speed 6 --character tsukimi --stage 1`。結果は `tmp/bot/*.json`）。
+4. **確認**: `npm test`、`npm run build`。開発サーバーを立ち上げ、ブラウザで実際に遊び、変更箇所のスクリーンショットを `docs/devlog/img/YYYY-MM-DD-*.png` に保存する。自動プレイボットで数値も取る（開発サーバーを起動したまま `PLAYWRIGHT_MODULE=D:/AI/Live2D_AI/mesh-avatar-studio/node_modules/playwright node scripts/bot-play.mjs --runs 5 --speed 6 --character tsukimi --stage 1`。結果は `tmp/bot/*.json`）。**ボットが走っている間は `src/` を編集しない**（開発サーバーが再読み込みして、その回が落ちる。2026-11-11）。設定を切り替えた比較は `BOT_TEST_URL="http://127.0.0.1:5183/?pacing=0"` のように URL で渡す。
 5. **記録**: `docs/devlog/YYYY-MM-DD.md` を書く（テンプレートは下記）。backlog の状態を更新し、新しく見つけた課題を追加する。
 6. **コミットと push**: 自分が変えたファイルだけを `main` にコミットして push する。
 

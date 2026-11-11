@@ -299,7 +299,8 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
         t: Math.round(game.elapsed), hp: Math.round(player.hp), level: player.level,
         eggs: game.eggs.length, enemies: game.enemies.length, form: player.form,
         mother: game.motherEgg ? Math.round(Math.max(0, game.motherEgg.hp)) : null,
-        kills: stats.kills, xp: Math.round(stats.xpGained), damage: Math.round(stats.damageTaken)
+        kills: stats.kills, xp: Math.round(stats.xpGained), damage: Math.round(stats.damageTaken),
+        pacing: game.pacingState?.phase ?? null
       });
       nextSample += 10;
     }

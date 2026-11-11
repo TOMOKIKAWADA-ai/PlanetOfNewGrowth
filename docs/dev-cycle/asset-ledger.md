@@ -375,3 +375,16 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | `assets/audio/sfx/shell_crack.wav`（0.9 秒、-20.1 LUFS、操作） | shell_crack_s37（2 秒） | A hard eggshell cracking and splitting in two, sharp brittle crack with small fragments falling | 先頭の無音を切り 0.9 秒、0.65 秒から 0.25 秒のフェードアウト | 採用: 鋭い割れの音が数回続く（主な周波数が高い、重心 8.8 kHz）。4 本のうち最初の割れがいちばん強い。割れ殻がバーストで割れたとき（`onSplitshellBurst`、元は撃破音だけ）。尖った音なのでリミッターで目標（-15）に届かず -20 |
 | `assets/audio/sfx/swarm_rise.wav`（2.6 秒、-12.4 LUFS、大技・ボス） | swarm_rise_s11（3 秒） | A monster rising again, a low rumbling groan swelling up with a creaking shell and a short roar | 先頭の無音を切り 2.6 秒、2.1 秒から 0.5 秒のフェードアウト | 採用: 低いうなり（重心 317 Hz）が 1.3 秒にかけて膨らんで引く。4 本のうち膨らみの形がいちばんはっきり。群れの母の姉妹が起き上がったとき（`onSwarmMemberRevive`、元は `motherCharge`） |
 | — | fish_bite・shell_crack・swarm_rise の s11 / s23 / s51（採用以外） | 同上 | — | 次点（候補として残す） |
+
+## 2026-11-11 強化アイコンの見直し（B4-2、生成なし）
+空きメモリ 5.8 GB のため Forge は起動せず、今ある 12 個（`assets/ui/upgrade-icons/*.png`、512×512、白とシアンの平らな絵）を実際の表示の大きさ（68・58・32 px）で見比べた。見比べ画像: `docs/devlog/img/2026-11-11-upgrade-icons-review.png`。
+
+| ファイル | 元 | 処理 | 採用 |
+|---|---|---|---|
+| `assets/ui/upgrade-icons/seeds-clean.png` | `seeds.png`（最初からある絵。作ったツールの記録なし） | Pillow で右側の切り残しのかけら（x 418〜456、y 210〜286）を消し、種3つを中央に寄せて長辺 400 px に拡大。生成はしていない | 採用。`Config.visuals.cleanedUpgradeIcons: false` で元の `seeds.png` に戻る |
+
+見比べで分かったこと（直すのは次回以降、backlog B4-2）:
+- 画風は 12 個でそろっている（白い形＋シアンの差し色）。Forge の絵に替えるより、この型のまま足りない分を足すほうがそろう。
+- 細くて小さく見える: `speed`（絵が占める割合 10%）、`pierce`（9%）。58 px では線が 2〜3 px。
+- 意味が伝わりにくい: `damage` は剣（このゲームの攻撃は種の射撃）、`dive` は葉か矢印に見える、`speed`（攻撃速度）と `move`（移動速度）が言葉でも絵でも紛らわしい。
+- 絵が無い: 章をまたぐ引き継ぎ強化 15 個（`ChapterRewards`）は文字だけ。

@@ -26,6 +26,8 @@ export const Config = {
     // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と
     // 白蓮の核・花弁を、色違いの仮の体から置き換える。false（または URL に ?tripoEnemies=0）で元の仮の体に戻る。
     tripoEnemyModels: true,
+    // 強化アイコンの手直し版（2026-11-11。今は seeds の切り残しのかけらを消したものだけ）。false で元の絵に戻る。
+    cleanedUpgradeIcons: true,
     usePlayerFbxAnimations: true,
     useEmbeddedPlayerAnimation: false,
     useProceduralPlayerBones: false,
@@ -158,6 +160,24 @@ export const Config = {
     levelUpVoiceCooldown: 25,
     // One-liner when the chapter boss is destroyed (added 2026-11-06; false = none, as before).
     bossDownVoice: true
+  },
+  // A5: 敵の出現の緩急（波と小休止）。計算は src/pacing.js。
+  // enabled: false か URL の ?pacing=0 で、元の出方（stageBeats だけ、孵る速さは一定の伸び）に戻る。
+  pacing: {
+    enabled: true,
+    // 静かな谷を埋める小さな波（balance-report 2026-11-08: 最初の 60 秒、50–60 秒、140–150 秒）。上限は元のまま。
+    ripples: [
+      { at: 18, enemies: ['chaser', 'chaser'], eggs: 1 },
+      { at: 55, enemies: ['chaser', 'shooter'], eggs: 1 },
+      { at: 140, enemies: ['chaser', 'chaser', 'shooter'], eggs: 1 }
+    ],
+    surgeSeconds: 8, // 波の直後、卵が早く孵る時間
+    surgeHatchScale: 1.5,
+    lullSeconds: 7, // そのあとの小休止
+    lullHatchScale: 0.5,
+    untilSeconds: 180, // ボスが出たあとは緩急をつけない（ボス戦は元のまま）
+    announce: true, // 元からある大きな波（35・70・110・150 秒）で一言出す。ほかの説明が出ている間は出さない
+    announceText: '敵の波が来る'
   },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。

@@ -18,6 +18,10 @@ const UPGRADE_ICON_URLS = {
   pulse: new URL('../assets/ui/upgrade-icons/pulse.png', import.meta.url).href,
   pickupMagnet: new URL('../assets/ui/upgrade-icons/pickupMagnet.png', import.meta.url).href
 };
+// 切り残しのかけらを消して中央に寄せた版（2026-11-11）。Config.visuals.cleanedUpgradeIcons: false で元の絵に戻る。
+const CLEANED_UPGRADE_ICON_URLS = {
+  seeds: new URL('../assets/ui/upgrade-icons/seeds-clean.png', import.meta.url).href
+};
 
 const UPGRADE_CATEGORIES = {
   damage: '攻撃', speed: '攻撃', seeds: '攻撃', pierce: '攻撃',
@@ -283,7 +287,7 @@ export class Hud {
       button.className = 'upgrade';
       button.type = 'button';
       button.setAttribute('aria-label', `${index + 1}番 ${UPGRADE_CATEGORIES[upgrade.id] ?? '強化'}：${upgrade.title}。${upgrade.body}`);
-      const iconUrl = UPGRADE_ICON_URLS[upgrade.id];
+      const iconUrl = (Config.visuals.cleanedUpgradeIcons && CLEANED_UPGRADE_ICON_URLS[upgrade.id]) || UPGRADE_ICON_URLS[upgrade.id];
       if (iconUrl) {
         const icon = document.createElement('img');
         icon.className = 'upgrade-icon';
