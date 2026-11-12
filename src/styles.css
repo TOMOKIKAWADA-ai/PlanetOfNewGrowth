@@ -1050,6 +1050,25 @@ html[data-input-mode="gamepad"] .screen .controller-lock-note {
   line-height: 1.5;
 }
 
+.upgrade .upgrade-synergy {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(160, 232, 255, 0.82);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.upgrade .upgrade-synergy.completes {
+  color: #ffe778;
+  font-weight: 700;
+}
+
+.upgrade.synergy-ready {
+  border-color: rgba(255, 231, 120, 0.75);
+  box-shadow: 0 0 0 1px rgba(255, 231, 120, 0.35), 0 0 22px rgba(255, 231, 120, 0.18);
+}
+
 #resultBody { white-space: pre-line; }
 
 #pause {

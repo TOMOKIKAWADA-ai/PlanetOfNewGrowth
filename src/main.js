@@ -20,6 +20,7 @@ import { floodgateStreamPoints, getBossName, getBossType, linkLotus, linkSwarm, 
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { buildWaveTimes, pacingPhase } from './pacing.js';
+import { activeSynergies } from './synergies.js';
 import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -501,6 +502,9 @@ class Game {
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
+    // A6: いま働いている相乗効果の id。
+    this.synergies = new Set();
+    this.synergyStats = { activated: [], divePulses: 0 };
     this.nextStageBeat = 0;
     this.nextRipple = 0;
     this.waveTimes = buildWaveTimes(Config.map.stageBeats, Config.pacing);
@@ -585,6 +589,7 @@ class Game {
     this.scene.add(this.player.group);
     await this.player.loadVisuals();
     const carried = this.applyCarryOver();
+    this.refreshSynergies();
     this.cameraRig = new CameraRig(this.camera, this.player);
     this.spawnInitialEggs();
     this.spawnInitialEnemies();
@@ -3386,8 +3391,33 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       upgrade.apply(this);
       this.takenUpgrades.set(upgrade.id, (this.takenUpgrades.get(upgrade.id) ?? 0) + 1);
       this.state = 'playing';
-      this.showMessage(upgrade.title);
+      const gained = this.refreshSynergies();
+      if (gained.length) this.showMessage(`相乗効果「${gained.map(entry => entry.title).join('」「')}」`, 2.4);
+      else this.showMessage(upgrade.title);
     });
+  }
+
+  // A6: synergies between upgrades (Config.synergy, ?synergy=0 turns them off).
+  get synergyConfig() {
+    if (this._synergyConfig === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('synergy');
+      const enabled = fromUrl === null ? Boolean(Config.synergy?.enabled) : fromUrl !== '0';
+      this._synergyConfig = { ...Config.synergy, enabled };
+    }
+    return this._synergyConfig;
+  }
+
+  hasSynergy(id) {
+    return this.synergies.has(id);
+  }
+
+  // Recomputes the active synergies from the player's stats and returns the ones that just switched on.
+  refreshSynergies() {
+    const before = this.synergies;
+    this.synergies = new Set(activeSynergies(this.player, this.synergyConfig));
+    const gained = this.synergyConfig.list.filter(entry => this.synergies.has(entry.id) && !before.has(entry.id));
+    for (const entry of gained) this.synergyStats.activated.push({ id: entry.id, at: Math.round(this.elapsed ?? 0) });
+    return gained;
   }
 
   showMessage(text, seconds = 1.25) {

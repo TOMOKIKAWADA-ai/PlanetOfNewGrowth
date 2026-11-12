@@ -365,6 +365,7 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 - 灰色の読み残しは目立たなかったので塗り直していない。花弁の崩れた根はそのまま揺らしている。白蓮の核は 1 万面のまま（1 体だけなので減らしていない）。
 - 出力: `assets/enemies/tripo/<名前>_anim.glb`（足跡 416 KB・鳴き 364 KB・群れ鳥 392 KB・割れ殻 404 KB・手 468 KB・吸水根 404 KB・白蓮の核 1.3 MB・白蓮の花弁 384 KB）。
 - ゲーム: `src/main.js` の `GAMEPLAY_MODELS`（`*Tripo`、高さは足跡 1.8・鳴き 1.75・群れ鳥 0.75・割れ殻 1.7・手 2.0・吸水根 1.9・核 4.6・花弁 5.6×0.5）。`Config.visuals.tripoEnemyModels: false` か URL の `?tripoEnemies=0` で元の仮の体（色違いの体・母卵）に戻る。各種の光（膨らむ・腕・根・群れ鳥が気づいたとき）は絵の色を残したまま自発光で出す。核と花弁は回らずにプレイヤーを向き、核は衝撃波・吸い込みの予告、花弁は産んだときに attack を流す。画面: `docs/devlog/img/2026-11-09-tripo-enemies.png`・`2026-11-09-tripo-lotus.png`。
+- 2026-11-12 見直し: ゲームの中で 6 種を並べて見たところ、鳴きが一面の紫、割れ殻が薄茶に見えた（普段から乗せる自発光が黒い体を塗りつぶす）。普段の光を鳴き 0.2 → 0.04、割れ殻 0.08 → 0.02 に下げ、絵の色（黒に赤い筋・花）が出るようにした（`src/entities.js` の `TRIPO_ENEMY_MODELS`）。鳴きが膨らむときの紫はそのまま。GLB は変えていない。大きさと動きは直す所なし。比較: `docs/devlog/img/2026-11-12-tripo-glow-before-after.png`。
 
 ## 2026-11-10 効果音: 魚の噛みつき・割れ殻の割れ・群れの母の起き上がり（B2-1 の続き）
 ツール: Stable Audio 3 Small-SFX（steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で 3 音 × 4 シード（11・23・37・51）。候補と jobs、周波数の見比べ画像 `grid.png`: `assets_src/sfx/2026-11-10/`（git 対象外。画像は `docs/devlog/img/2026-11-10-sfx-spectrum.png` にも置いた）。12 本とも振り切れ・一面の雑音はなかった。後処理は FFmpeg（先頭の無音を切る → 長さを切る → フェード）のあと `normalize-sfx.mjs`。`Config.audio.newSfx: false` で元の流用に戻る。耳での確認はまだ。

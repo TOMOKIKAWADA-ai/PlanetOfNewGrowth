@@ -1,4 +1,5 @@
-import { Config, UpgradePool } from './config.js';
+import { Config, UpgradePool, getUpgrade } from './config.js';
+import { synergyHints } from './synergies.js';
 import { clamp } from './math.js';
 import { isFinalChapter } from './campaign.js';
 import { getBossName } from './bosses.js';
@@ -306,6 +307,21 @@ export class Hud {
       const body = document.createElement('span');
       body.textContent = upgrade.body;
       copy.append(kind, title, body);
+      // A6: 相乗効果のヒント（Config.synergy.hints）。そろうものを優先して 1 行だけ出す。
+      const synergy = this.game.synergyConfig;
+      const hint = synergy?.hints ? synergyHints(upgrade.id, this.game.player, synergy)[0] : null;
+      if (hint) {
+        const line = document.createElement('span');
+        line.className = `upgrade-synergy ${hint.state}`;
+        line.textContent = hint.state === 'completes'
+          ? `相乗効果「${hint.title}」がそろう：${hint.body}`
+          : hint.state === 'active'
+            ? `相乗効果「${hint.title}」が働いている`
+            : `「${getUpgrade(hint.partner)?.title ?? hint.partner}」と合わせると「${hint.title}」`;
+        copy.appendChild(line);
+        button.classList.toggle('synergy-ready', hint.state === 'completes');
+        button.setAttribute('aria-label', `${button.getAttribute('aria-label')} ${line.textContent}`);
+      }
       button.appendChild(copy);
       const number = document.createElement('span');
       number.className = 'upgrade-index';

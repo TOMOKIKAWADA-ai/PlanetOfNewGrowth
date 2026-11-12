@@ -179,6 +179,20 @@ export const Config = {
     announce: true, // 元からある大きな波（35・70・110・150 秒）で一言出す。ほかの説明が出ている間は出さない
     announceText: '敵の波が来る'
   },
+  // A6: 強化の相乗効果。2 つの強化を両方持つと働く。計算は src/synergies.js。
+  // enabled: false か URL の ?synergy=0 で、相乗効果もカードのヒントも出ない（元のまま）。
+  synergy: {
+    enabled: true,
+    hints: true, // 強化の選択肢に「◯◯と合わせると…」を出す
+    list: [
+      { id: 'piercingRain', title: '貫く雨', parts: ['seeds', 'pierce'], body: '弾が敵を貫くたびに威力＋25％' },
+      { id: 'fallingPulse', title: '落ちる鼓動', parts: ['dive', 'pulse'], body: '急降下の着地で範囲パルスが出る' },
+      { id: 'fullWater', title: '満ちる水', parts: ['mp', 'regen'], body: 'MPが8割以上のあいだ自動攻撃の威力＋20％' }
+    ],
+    piercingRain: { gain: 0.25 },
+    fallingPulse: { damageScale: 1, rangeScale: 1 }, // 着地のパルスの威力・範囲（普通のパルスに掛ける）
+    fullWater: { mpRatio: 0.8, damageScale: 1.2 }
+  },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
     avatarPortraits: true,

@@ -17,6 +17,7 @@ import { Config } from './config.js';
 import { getBossType, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { advanceFootprint } from './footprints.js';
+import { fullWaterScale } from './synergies.js';
 
 // 狙えるボスの体（群れの母は倒れていない姉妹だけ）。ゲーム全体なしのテストでは motherEgg だけを見る。
 function bossTargets(game) {
@@ -184,9 +185,10 @@ const SWARMBIRD_ALERT = 0xff5a4a;
 // 色は絵のまま残し、各種の光（膨らむ・腕を伸ばす・根を張る）は自発光の色と強さで出す。
 const TRIPO_ENEMY_MODELS = Object.freeze({
   footprint: { key: 'footprintTripo', glow: 0x4f86c4, glowIntensity: 0.3 },
-  crier: { key: 'crierTripo', glow: CRIER_GLOW, glowIntensity: 0.2 },
+  // 鳴き・割れ殻は黒い体なので、普段の光を弱くして絵の色（黒に赤い筋・花）を残す（2026-11-12）。鳴きは膨らむときだけ紫に光る。
+  crier: { key: 'crierTripo', glow: CRIER_GLOW, glowIntensity: 0.04 },
   swarmbird: { key: 'swarmbirdTripo', glow: SWARMBIRD_ALERT, glowIntensity: 0 },
-  splitshell: { key: 'splitshellTripo', glow: SPLITSHELL_GLOW, glowIntensity: 0.08 },
+  splitshell: { key: 'splitshellTripo', glow: SPLITSHELL_GLOW, glowIntensity: 0.02 },
   hand: { key: 'handTripo', glow: HAND_GLOW, glowIntensity: 0.08 },
   rootsucker: { key: 'rootsuckerTripo', glow: ROOTSUCKER_GLOW, glowIntensity: 0.1 }
 });
@@ -331,6 +333,9 @@ export class Player {
     this.damageTakenMultiplier = profile.damageTakenMultiplier ?? 1;
     this.radius = profile.radius ?? Config.player.radius;
     this.humanRegenMp = Config.player.humanRegenMp;
+    // A6: 相乗効果が「最大MP・MP回復を上げたか」を見るための元の値。
+    this.baseMaxMp = this.maxMp;
+    this.baseHumanRegenMp = this.humanRegenMp;
     this.birdMpCost = Config.player.birdMpCost;
     this.autoInterval = profile.autoInterval ?? Config.player.autoInterval;
     this.autoDamage = profile.autoDamage ?? Config.player.autoDamage;
@@ -1390,10 +1395,13 @@ export class Player {
     if (!target) return;
     this.fireFromSeeds(target.position, {
       kind: 'player',
-      damage: this.autoDamage,
+      // A6 満ちる水: MP が多いあいだ威力が上がる。
+      damage: this.autoDamage * (this.game.hasSynergy('fullWater') ? fullWaterScale(this.mp, this.maxMp, Config.synergy.fullWater) : 1),
       speed: Config.player.autoProjectileSpeed,
       radius: 0.35,
-      pierce: this.pierce
+      pierce: this.pierce,
+      // A6 貫く雨: 敵を貫くたびに威力が上がる。
+      pierceGain: this.game.hasSynergy('piercingRain') ? Config.synergy.piercingRain.gain : 0
     });
     this.autoTimer = this.autoInterval;
   }
@@ -1575,14 +1583,21 @@ export class Player {
     this.pulseTimer -= dt;
     if (this.pulseTimer > 0) return;
     this.pulseTimer = Math.max(2.2, Config.skill.pulseInterval - this.pulseLevel * 0.35);
-    this.game.spawnPulseEffect(this.position, this.pulseRange);
-    const enemies = this.game.enemyGrid.query(this.position, this.pulseRange, this.game.scratchEnemies);
-    for (const enemy of enemies) enemy.takeDamage(this.pulseDamage, this.position);
-    for (const egg of this.game.findEggsInRadius(this.position, this.pulseRange)) {
-      egg.takeDamage(Math.max(5, this.pulseDamage * 0.45), 'pulse');
+    this.firePulse();
+  }
+
+  // 範囲パルスを 1 回出す。A6 落ちる鼓動（急降下の着地）からも呼ぶ。
+  firePulse(damageScale = 1, rangeScale = 1) {
+    const range = this.pulseRange * rangeScale;
+    const damage = this.pulseDamage * damageScale;
+    this.game.spawnPulseEffect(this.position, range);
+    const enemies = this.game.enemyGrid.query(this.position, range, this.game.scratchEnemies);
+    for (const enemy of enemies) enemy.takeDamage(damage, this.position);
+    for (const egg of this.game.findEggsInRadius(this.position, range)) {
+      egg.takeDamage(Math.max(5, damage * 0.45), 'pulse');
     }
-    for (const building of this.game.findBuildingsInRadius(this.position, this.pulseRange)) {
-      this.game.damageBuilding(building, this.pulseDamage, this.position);
+    for (const building of this.game.findBuildingsInRadius(this.position, range)) {
+      this.game.damageBuilding(building, damage, this.position);
     }
   }
 
@@ -1668,6 +1683,11 @@ export class Player {
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
+    if (this.game.hasSynergy('fallingPulse')) {
+      const cfg = Config.synergy.fallingPulse;
+      this.firePulse(cfg.damageScale, cfg.rangeScale);
+      if (this.game.synergyStats) this.game.synergyStats.divePulses += 1;
+    }
   }
 
   // 手（E11）に掴まれる。人間形態のときだけ。変身すれば振りほどける（updateGrab）。
@@ -3127,7 +3147,7 @@ export class Enemy {
     const swell = crier.swelling ? clamp(1 - crier.timer / cfg.swellSeconds, 0, 1) : 0;
     this.model.scale.copy(crier.baseScale).multiplyScalar(1 + swell * swell * cfg.swellScale);
     for (const material of this.crierMaterials ?? []) {
-      if ('emissiveIntensity' in material) material.emissiveIntensity = 0.2 + swell * 1.3;
+      if ('emissiveIntensity' in material) material.emissiveIntensity = (this.tripoModel ? TRIPO_ENEMY_MODELS.crier.glowIntensity : 0.2) + swell * 1.3;
     }
     if (crier.timer > 0) return;
     crier.timer = cfg.cryInterval;
@@ -3579,6 +3599,7 @@ export class Projectile {
     this.damage = spec.damage;
     this.radius = spec.radius ?? this.radius;
     this.pierce = spec.pierce ?? 0;
+    this.pierceGain = spec.pierceGain ?? 0;
     this.hitSet.clear();
     this.spriteFrames = spec.spriteFrames ?? [];
     this.spriteFrameRate = spec.spriteFrameRate ?? 24;
@@ -3714,6 +3735,8 @@ export class Projectile {
         this.game.releaseProjectile(this);
         return;
       }
+      // A6 貫く雨: 貫いた先の敵ほど強く当たる。
+      if (this.pierceGain > 0) this.damage *= 1 + this.pierceGain;
     }
   }
 

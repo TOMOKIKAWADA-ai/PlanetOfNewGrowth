@@ -348,6 +348,7 @@ function summarize(game, stats) {
     splitshells: game.splitshellStats?.spawned ? { ...game.splitshellStats } : null,
     swarmbirds: game.swarmbirdStats?.flocks ? { ...game.swarmbirdStats, damage: Math.round(game.swarmbirdStats.damage) } : null,
     rootsuckers: game.rootsuckerStats?.spawned ? { ...game.rootsuckerStats, drySeconds: Math.round(game.rootsuckerStats.drySeconds * 10) / 10, dryMpLost: Math.round(game.rootsuckerStats.dryMpLost) } : null,
+    synergies: game.synergyStats?.activated.length ? { ...game.synergyStats } : null,
     lotus: game.lotusStats ? { ...game.lotusStats, broken: game.motherEgg?.lotus?.broken ?? 0 } : null,
     swarm: game.motherEgg?.swarm ? { downs: game.motherEgg.swarm.downs, revives: game.motherEgg.swarm.revives } : null,
     floodgate: game.floodgateStats?.streams || game.floodgateStats?.bites ? { ...game.floodgateStats } : null,

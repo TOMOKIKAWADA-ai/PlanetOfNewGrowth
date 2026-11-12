@@ -109,6 +109,7 @@
   - 同じ種類の候補を比べるときは、候補ごとにフォルダを分けて1つずつ実行する（出力名が種類で決まるので上書きされる）。
   - 元絵の言葉: 「翼（wings）」を入れると、2回とも目のある鳥の顔が出た（10-26、10-29）。翼のある形は避けるか、`bird, eyes, face` を否定に入れる。馬蹄形（horseshoe）は正面向きの U がそのまま立体になり、上から見ても読める。
 - Tripo の体に骨を入れる（2026-11-09）: `blender -b --factory-startup -P scripts/blender/build_tripo_enemies.py -- <名前> <元.glb> <assets/enemies/tripo/名前_anim.glb>`。骨の位置と各クリップの姿勢は同じファイルの `SPECS` に体ごとに書く（Tripo の GLB は高さ 1・足元が原点・正面が -Y）。**Blender の自動の重み（ヒート）は Tripo の体ではすべて失敗した**（そのまま・ボクセルの代理・10 倍に拡大のどれも）ので、`enemy_anim_lib.rig_mesh_auto`（骨までの距離＋ならし）を使う。確認画像は `blender -b --factory-startup -P scripts/blender/render_anim_sheet.py -- <anim.glb> <出力.png>`（行がクリップ、列が正面と横のコマ）。1 体 20〜40 秒。
+- Tripo の体をゲームに入れたあとの見直し（2026-11-12）: **黒っぽい体に自発光（emissive）を普段から乗せると、体全体がその色に塗りつぶされる**（鳴きは 0.2 で一面の紫、割れ殻は 0.08 で薄茶になった）。黒い体の普段の光は 0.02〜0.04 までにし、光は予兆のときだけ強くする。白っぽい体（手・吸水根）は 0.08〜0.1 でも絵の色が残る。確かめ方: 開発サーバーを起動し、Playwright で `game.spawnEnemy(種類, 位置, null, { ignoreCap: true })` を追いかけ役と並べて撮る（`scripts/bot-play.mjs` と同じやり方で `main.js` の末尾に `window` への出口を足す）。鳥形態の高いカメラではどの敵も 10 px ほどの点になるので、色や模様より輪郭と大きさで見分けられるかを見る。
 - 単色で描く小物には、ゲーム側で陰影の出るマテリアル（`MeshStandardMaterial`、発光は弱め 0.16）を使う。光を受けないマテリアルだと形が影絵になる。
 
 ## 効果音（Stable Audio 3 Small-SFX）
