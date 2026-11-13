@@ -1680,3 +1680,61 @@ button:focus-visible {
   .forecast-block li { font-size: 16px; }
   .forecast-block li strong { font-size: 19px; }
 }
+
+/* A7: result-screen stats (Config.results). */
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  width: min(640px, calc(100vw - 32px));
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.result-stats > div {
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(10, 16, 22, 0.55);
+  text-align: center;
+}
+
+.result-stats dt {
+  font-size: 12px;
+  color: rgba(235, 240, 245, 0.72);
+}
+
+.result-stats dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+#result.victory .result-stats dd {
+  color: #ffe778;
+}
+
+#retryButton .retry-key {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+@media (max-width: 560px) {
+  .result-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .result-stats dd { font-size: 18px; }
+}
+
+html[data-input-mode="gamepad"] #retryButton .retry-key {
+  display: none;
+}
+
+@media (hover: none) {
+  #retryButton .retry-key { display: none; }
+}

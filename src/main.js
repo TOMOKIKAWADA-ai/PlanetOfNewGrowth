@@ -21,6 +21,7 @@ import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { buildWaveTimes, pacingPhase } from './pacing.js';
 import { activeSynergies } from './synergies.js';
+import { createRunStats, recordEggBreak, recordKill } from './run-stats.js';
 import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
@@ -159,7 +160,8 @@ const VOICE_URLS = {
     bossAppear: [new URL('../assets/audio/voice/tsukimi/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href],
-    bossDown: [new URL('../assets/audio/voice/tsukimi/boss_down_01.mp3', import.meta.url).href]
+    bossDown: [new URL('../assets/audio/voice/tsukimi/boss_down_01.mp3', import.meta.url).href],
+    lowHp: [new URL('../assets/audio/voice/tsukimi/low_hp_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -173,7 +175,8 @@ const VOICE_URLS = {
     bossAppear: [new URL('../assets/audio/voice/akame/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href],
-    bossDown: [new URL('../assets/audio/voice/akame/boss_down_01.mp3', import.meta.url).href]
+    bossDown: [new URL('../assets/audio/voice/akame/boss_down_01.mp3', import.meta.url).href],
+    lowHp: [new URL('../assets/audio/voice/akame/low_hp_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -187,7 +190,8 @@ const VOICE_URLS = {
     bossAppear: [new URL('../assets/audio/voice/kiichigo/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href],
-    bossDown: [new URL('../assets/audio/voice/kiichigo/boss_down_01.mp3', import.meta.url).href]
+    bossDown: [new URL('../assets/audio/voice/kiichigo/boss_down_01.mp3', import.meta.url).href],
+    lowHp: [new URL('../assets/audio/voice/kiichigo/low_hp_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -451,6 +455,7 @@ class Game {
     this.eggOverCapSpawnBudget = 0;
     this.enemyOverCapSpawnBudget = 0;
     this.eggsDestroyed = 0;
+    this.runStats = createRunStats();
     this.eggs = [];
     this.enemies = [];
     this.projectiles = [];
@@ -2195,6 +2200,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       return;
     }
     this.eggsDestroyed += 1;
+    recordEggBreak(this.runStats);
     this.feelHit('eggBreak');
     this.playSfx('eggBreak', { volume: 0.68, cooldown: 0.05 });
     this.spawnXp(egg.position, Config.egg.xp);
@@ -3407,6 +3413,30 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return this._synergyConfig;
   }
 
+  // A7: result-screen stats and the quick retry (Config.results, ?results=0 turns them off).
+  get resultsConfig() {
+    if (this._resultsConfig === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('results');
+      const enabled = fromUrl === null ? Boolean(Config.results?.enabled) : fromUrl !== '0';
+      this._resultsConfig = { ...Config.results, enabled };
+    }
+    return this._resultsConfig;
+  }
+
+  // B3-9: one line when HP first drops below Config.audio.lowHpVoiceRatio (at most once per lowHpVoiceCooldown seconds).
+  tryLowHpVoice(ratioBefore, ratioAfter) {
+    const { lowHpVoice, lowHpVoiceRatio, lowHpVoiceCooldown } = Config.audio;
+    if (!lowHpVoice || !(ratioBefore >= lowHpVoiceRatio && ratioAfter < lowHpVoiceRatio)) return false;
+    if (this.elapsed - (this.lastLowHpVoiceAt ?? -Infinity) < lowHpVoiceCooldown) return false;
+    this.lastLowHpVoiceAt = this.elapsed;
+    this.playVoice('lowHp', { volume: 0.95 });
+    return true;
+  }
+
+  onEnemyKilled() {
+    recordKill(this.runStats, this.elapsed, this.resultsConfig.streakWindow);
+  }
+
   hasSynergy(id) {
     return this.synergies.has(id);
   }
@@ -3458,6 +3488,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   startPlayerDeath(duration) {
     if (this.outcome) return;
     this.state = 'dying';
+    this.runStats.endedAt ??= this.elapsed;
     this.deathWorldActive = true;
     this.deathElapsed = 0;
     this.deathBlackoutStarted = false;
@@ -3471,6 +3502,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   finish(victory, body) {
     if (this.outcome || (victory && this.player?.dead)) return;
     this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
+    this.runStats.endedAt ??= this.elapsed;
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
@@ -3486,8 +3518,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   // ゲームは再読み込みで作り直すため、次に始める章を渡してからページを読み直す。
+  // A retry after a defeat skips the pre-sortie dialogue (Config.results.quickRetry).
   launchChapter(stageId) {
-    requestLaunch(stageId, this.characterId);
+    const retry = stageId === this.stageId && !this.outcome?.victory && this.resultsConfig.enabled && this.resultsConfig.quickRetry;
+    requestLaunch(stageId, this.characterId, undefined, { retry });
     window.location.reload();
   }
 
@@ -3817,6 +3851,13 @@ function setupTitleScreen() {
   if (!titleScreen || !characterSelect || !startButton) return;
   const launch = takeLaunchRequest();
   if (launch) {
+    if (launch.retry) {
+      selectedStageId = launch.chapter;
+      titleScreen.classList.add('hidden');
+      characterSelect.classList.add('hidden');
+      startGameWithCharacter(launch.characterId);
+      return;
+    }
     beginChapter(launch.characterId, launch.chapter);
     return;
   }

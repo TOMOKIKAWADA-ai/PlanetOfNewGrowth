@@ -1,0 +1,67 @@
+{
+  "speakers": {
+    "tsukimi": {
+      "caption": "",
+      "seed": 1701,
+      "refs": [
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_04_doubt-s1301.wav",
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_06_call-s1301.wav"
+      ]
+    },
+    "akame": {
+      "caption": "",
+      "seed": 2701,
+      "refs": [
+        "assets_src/voice/refs/akame/akame-ref_02_report-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_04_refuse-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_05_care-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_06_call-s2202.wav"
+      ]
+    },
+    "kiichigo": {
+      "caption": "",
+      "seed": 3701,
+      "refs": [
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_01_calm-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_04_cheer-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_06_call-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_07_tired-s3303.wav"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "id": "low_hp_01",
+      "speaker": "tsukimi",
+      "text": "まだ……倒れません。",
+      "style": "深い傷を負って息が上がりながらも、自分に言い聞かせるように、静かに踏みとどまる。",
+      "seeds": [
+        1701,
+        1702,
+        1703
+      ]
+    },
+    {
+      "id": "low_hp_01",
+      "speaker": "akame",
+      "text": "……かすり傷だ。",
+      "style": "深手を負っているのに、痛みをこらえて、短く低い声で強がる。",
+      "seeds": [
+        2701,
+        2702,
+        2703
+      ]
+    },
+    {
+      "id": "low_hp_01",
+      "speaker": "kiichigo",
+      "text": "いったた……まだまだ！",
+      "style": "痛がりながらも、すぐに気持ちを立て直して、明るく強がる。",
+      "seeds": [
+        3701,
+        3702,
+        3703
+      ]
+    }
+  ]
+}

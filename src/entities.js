@@ -1800,6 +1800,7 @@ export class Player {
       return;
     }
     amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1);
+    const hpBefore = this.hp;
     this.hp = Math.max(0, this.hp - amount);
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
     this.damageFlashTimer = 0.16;
@@ -1809,7 +1810,7 @@ export class Player {
       this.startDeath();
       return;
     }
-    this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
+    if (!this.game.tryLowHpVoice?.(hpBefore / this.maxHp, this.hp / this.maxHp)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
     this.playOneShotAnimation('react');
     if (this.hp <= 0) this.game.finish(false, 'HPが尽きました');
   }
@@ -3514,6 +3515,7 @@ export class Enemy {
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
       this.game.feelHit?.(this.type === 'spawner' || this.type === 'shadow' ? 'bigKill' : 'enemyKill');
+      this.game.onEnemyKilled?.(this);
       if (burstReward) this.game.player.addBurst(this.type === 'spawner' ? Config.player.burstGainSpawner : Config.player.burstGainEnemy);
       this.game.spawnXp(this.position, this.stats.xp * (this.splitHalf ? Config.enemy.splitshell.halfScale : 1));
       this.game.spawnRandomPickup(this.position, this.type === 'spawner' ? 'spawner' : 'enemy');

@@ -92,14 +92,22 @@ export function clearProgress(storage = localStore()) {
 }
 
 // 再読み込み直後に、タイトルを飛ばして始める章。
-export function requestLaunch(chapter, characterId, storage = sessionStore()) {
-  write(storage, LAUNCH_KEY, validEntry({ chapter, characterId }));
+// retry: true の起動は、倒れたあとのやり直し（出撃前の会話を飛ばす。A7）。
+export function requestLaunch(chapter, characterId, storage = sessionStore(), { retry = false } = {}) {
+  const entry = validEntry({ chapter, characterId });
+  write(storage, LAUNCH_KEY, entry && retry ? { ...entry, retry: true } : entry);
 }
 
 export function takeLaunchRequest(storage = sessionStore()) {
   const launch = read(storage, LAUNCH_KEY);
+  let retry = false;
+  try {
+    retry = JSON.parse(storage?.getItem(LAUNCH_KEY) ?? 'null')?.retry === true;
+  } catch {
+    retry = false;
+  }
   write(storage, LAUNCH_KEY, null);
-  return launch;
+  return launch && retry ? { ...launch, retry } : launch;
 }
 
 // 章をクリアしたときに選んだ引き継ぎ強化。{ characterId, entries: { [クリアした章]: { upgradeId, rewardId } } }

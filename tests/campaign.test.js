@@ -44,6 +44,9 @@ test('a launch request is consumed once', () => {
   requestLaunch(2, 'tsukimi', storage);
   assert.deepEqual(takeLaunchRequest(storage), { chapter: 2, characterId: 'tsukimi' });
   assert.equal(takeLaunchRequest(storage), null);
+  requestLaunch(3, 'akame', storage, { retry: true });
+  assert.deepEqual(takeLaunchRequest(storage), { chapter: 3, characterId: 'akame', retry: true });
+  assert.equal(takeLaunchRequest(storage), null);
 });
 
 test('storage failures do not throw', () => {

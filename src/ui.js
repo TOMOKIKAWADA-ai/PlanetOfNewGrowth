@@ -4,6 +4,7 @@ import { clamp } from './math.js';
 import { isFinalChapter } from './campaign.js';
 import { getBossName } from './bosses.js';
 import { xpBarState } from './reward-feedback.js';
+import { resultRows } from './run-stats.js';
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -130,6 +131,7 @@ export class Hud {
     this.result = document.getElementById('result');
     this.resultTitle = document.getElementById('resultTitle');
     this.resultBody = document.getElementById('resultBody');
+    this.resultStats = document.getElementById('resultStats');
     this.carryOver = document.getElementById('carryOver');
     this.restartButton = document.getElementById('restartButton');
     this.replayStoryButton = document.getElementById('replayStoryButton');
@@ -150,6 +152,14 @@ export class Hud {
     this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
     this.nextChapterButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId + 1));
     this.retryButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId));
+    // A7: R retries from the defeat screen without reaching for the button.
+    window.addEventListener('keydown', event => {
+      if (event.code !== 'KeyR' || event.repeat || this.game.state !== 'result') return;
+      if (!this.game.resultsConfig.enabled || this.retryButton.classList.contains('hidden')) return;
+      if (this.result.classList.contains('hidden')) return;
+      event.preventDefault();
+      this.retryButton.click();
+    });
     this.pauseResumeButton.addEventListener('click', () => {
       if (this.game.state !== 'paused') return;
       this.game.state = 'playing';
@@ -351,10 +361,30 @@ export class Hud {
     this.nextChapterButton.classList.toggle('hidden', !victory || finale);
     this.retryButton.classList.toggle('hidden', victory);
     this.resultBody.textContent = body;
+    this.renderResultStats(victory);
     this.result.classList.remove('hidden');
     this.renderCarryOver();
     const firstChoice = this.carryOver.querySelector('button:not(.selected)');
     (firstChoice ?? (victory && !finale ? this.nextChapterButton : victory ? this.restartButton : this.retryButton)).focus();
+  }
+
+  // A7: kills, eggs, time, best streak and level under the result text.
+  renderResultStats(victory) {
+    const { resultsConfig, runStats, elapsed, player } = this.game;
+    this.resultStats.replaceChildren();
+    const show = Boolean(resultsConfig.enabled && runStats);
+    this.resultStats.classList.toggle('hidden', !show);
+    this.retryButton.querySelector('.retry-key')?.classList.toggle('hidden', !show);
+    if (!show) return;
+    for (const row of resultRows(runStats, { elapsed: runStats.endedAt ?? elapsed, level: player?.level ?? 1, victory })) {
+      const item = document.createElement('div');
+      const label = document.createElement('dt');
+      const value = document.createElement('dd');
+      label.textContent = row.label;
+      value.textContent = row.value;
+      item.append(label, value);
+      this.resultStats.append(item);
+    }
   }
 
   // After a cleared chapter: pick one upgrade taken this chapter and one of the chapter's rewards to carry on.

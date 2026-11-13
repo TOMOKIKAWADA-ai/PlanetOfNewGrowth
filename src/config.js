@@ -159,7 +159,11 @@ export const Config = {
     // Level-ups come often; the line plays at most once per this many seconds of battle time.
     levelUpVoiceCooldown: 25,
     // One-liner when the chapter boss is destroyed (added 2026-11-06; false = none, as before).
-    bossDownVoice: true
+    bossDownVoice: true,
+    // One-liner when HP first drops below lowHpVoiceRatio, instead of the hit cry (added 2026-11-13; false = none, as before).
+    lowHpVoice: true,
+    lowHpVoiceRatio: 0.3,
+    lowHpVoiceCooldown: 40
   },
   // A5: 敵の出現の緩急（波と小休止）。計算は src/pacing.js。
   // enabled: false か URL の ?pacing=0 で、元の出方（stageBeats だけ、孵る速さは一定の伸び）に戻る。
@@ -192,6 +196,13 @@ export const Config = {
     piercingRain: { gain: 0.25 },
     fallingPulse: { damageScale: 1, rangeScale: 1 }, // 着地のパルスの威力・範囲（普通のパルスに掛ける）
     fullWater: { mpRatio: 0.8, damageScale: 1.2 }
+  },
+  // A7: 結果画面の成績と、やり直しを短くする。計算は src/run-stats.js。
+  // enabled: false か URL の ?results=0 で、成績の表も R キーも出撃前会話の省略も無い（元のまま）。
+  results: {
+    enabled: true,
+    streakWindow: 1.5, // 前の撃破からこの秒数以内なら「連続」
+    quickRetry: true // 倒れたあとの「この章をやり直す」で出撃前の会話を飛ばす（クリア後の「次の章へ」はそのまま）
   },
   story: {
     // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
