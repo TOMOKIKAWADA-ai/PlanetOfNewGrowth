@@ -4,6 +4,11 @@
 //   npm run dev -- --port 5183
 //   node scripts/bot-play.mjs --runs 3 --character tsukimi --stage 1 --speed 4
 //   node scripts/bot-play.mjs --runs 1 --stage 3 --start 170 --record promo/YYYY-MM-DD/raw
+//   node scripts/bot-play.mjs --runs 3 --stage 2 --carry 1:pumpGuard
+//
+// --carry (backlog A17) starts the chapter with carry-over picks from earlier chapters, as if they had been chosen
+// on the result screen: "<chapter>:<rewardId>[+<upgradeId>]" separated by commas, e.g. "1:waterLine+multishot,2:sharpSeeds".
+// "1:+multishot" carries only the upgrade. The picks are written to localStorage before the page loads.
 //
 // --record <dir> (backlog B6-1) plays in real time, saves a WebM per run to <dir> and an events JSON
 // (mother egg, bursts, dives, shockwave dodges, mimic stuns, crier cries, hand grabs) with offsets into the video, for scripts/promo/cut-highlights.mjs.
@@ -29,6 +34,12 @@ const shake = args.shake !== '0';
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
+const carrySpec = args.carry ?? '';
+const carryEntries = Object.fromEntries(carrySpec.split(',').filter(Boolean).map(part => {
+  const [chapter, picks = ''] = part.split(':');
+  const [rewardId, upgradeId] = picks.split('+');
+  return [chapter, { ...(rewardId ? { rewardId } : {}), ...(upgradeId ? { upgradeId } : {}) }];
+}));
 const baseURL = process.env.BOT_TEST_URL || 'http://127.0.0.1:5183';
 
 const require = createRequire(import.meta.url);
@@ -50,6 +61,11 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
     transforms: 0, bursts: 0, frames: 0, realStart: performance.now(), motherSpawnedAt: null
   };
   stats.eggKills = {};
+  // Player stats at the start, to confirm carry-over picks (--carry) took effect.
+  stats.startStats = {
+    maxHp: player.maxHp, maxMp: player.maxMp, shieldCharges: player.shieldCharges,
+    humanSpeed: Math.round(player.humanSpeed * 100) / 100, autoDamage: Math.round(player.autoDamage * 100) / 100
+  };
   stats.damageAfterMother = 0;
   stats.shockwaves = { fired: 0, reached: 0, dodged: 0, dodgeAttempts: 0 };
   const spawnMotherShockwave = game.spawnMotherShockwave;
@@ -338,6 +354,7 @@ function summarize(game, stats) {
     damageAfterMother: Math.round(stats.damageAfterMother),
     shockwaves: stats.shockwaves,
     eggKills: stats.eggKills,
+    startStats: stats.startStats,
     events: stats.events,
     mimicStuns: game.mimicStuns ?? 0,
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed) } : null,
@@ -381,6 +398,11 @@ try {
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    if (carrySpec) {
+      await page.addInitScript(value => {
+        try { localStorage.setItem('searchSurvive.carryOver', value); } catch { /* ignore */ }
+      }, JSON.stringify({ characterId, entries: carryEntries }));
+    }
     await page.route('**/src/main.js*', async route => {
       const response = await route.fetch();
       await route.fulfill({ response, body: await response.text() + '\nwindow.__botTest = { get game() { return activeGame; }, input: appInput, Config };' });
@@ -403,6 +425,7 @@ try {
     result.run = run + 1;
     result.seed = seedBase + run;
     result.errors = errors;
+    result.carry = carrySpec || null;
     results.push(result);
     console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
@@ -421,7 +444,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, startAt,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),
@@ -429,7 +452,7 @@ const report = {
   deaths: results.filter(result => result.diedAt !== null).map(result => result.diedAt),
   results
 };
-const file = `tmp/bot/bot-${characterId}-stage${stageId}-${Date.now()}.json`;
+const file = `tmp/bot/bot-${characterId}-stage${stageId}${carrySpec ? `-carry-${carrySpec.replace(/[^\w]+/g, '_')}` : ''}-${Date.now()}.json`;
 await writeFile(file, JSON.stringify(report, null, 2));
 console.log(`winRate ${report.winRate}, avgKill ${report.averageKillTime ?? "-"}s, avgDamage ${report.averageDamage}, avgLevel ${report.averageLevel}, deaths ${JSON.stringify(report.deaths)}`);
 console.log(`saved ${file}`);

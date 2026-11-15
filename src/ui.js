@@ -20,9 +20,12 @@ const UPGRADE_ICON_URLS = {
   pulse: new URL('../assets/ui/upgrade-icons/pulse.png', import.meta.url).href,
   pickupMagnet: new URL('../assets/ui/upgrade-icons/pickupMagnet.png', import.meta.url).href
 };
-// 切り残しのかけらを消して中央に寄せた版（2026-11-11）。Config.visuals.cleanedUpgradeIcons: false で元の絵に戻る。
+// 切り残しのかけらを消して中央に寄せた版（2026-11-11）と、細かった絵を太く描き直した版（2026-11-15、
+// scripts/assets/redraw-upgrade-icons.py）。Config.visuals.cleanedUpgradeIcons: false で元の絵に戻る。
 const CLEANED_UPGRADE_ICON_URLS = {
-  seeds: new URL('../assets/ui/upgrade-icons/seeds-clean.png', import.meta.url).href
+  seeds: new URL('../assets/ui/upgrade-icons/seeds-clean.png', import.meta.url).href,
+  speed: new URL('../assets/ui/upgrade-icons/speed-bold.png', import.meta.url).href,
+  pierce: new URL('../assets/ui/upgrade-icons/pierce-bold.png', import.meta.url).href
 };
 
 const UPGRADE_CATEGORIES = {

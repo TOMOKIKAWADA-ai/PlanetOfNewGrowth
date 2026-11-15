@@ -390,6 +390,14 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 - 意味が伝わりにくい: `damage` は剣（このゲームの攻撃は種の射撃）、`dive` は葉か矢印に見える、`speed`（攻撃速度）と `move`（移動速度）が言葉でも絵でも紛らわしい。
 - 絵が無い: 章をまたぐ引き継ぎ強化 15 個（`ChapterRewards`）は文字だけ。
 
+## 2026-11-15 強化アイコン `speed`・`pierce` の描き直し（B4-2 の続き、生成なし）
+11-11 の見比べで「細くて小さい」（絵の占める割合 9〜10%、58 px で線が 2〜3 px）とした 2 つを、今の型（白い形＋シアンの差し色、透明背景 512×512）のまま Pillow で描き直した。生成ツールは使っていない。スクリプト: `scripts/assets/redraw-upgrade-icons.py`（4 倍の大きさで描いて縮める）。
+
+| ファイル | 元 | 中身 | 採用 |
+|---|---|---|---|
+| `assets/ui/upgrade-icons/speed-bold.png` | `speed.png` | 種（尾に V の切れ込み）を高さ約 1.5 倍に。後ろの速さの線 3 本をシアンで太さ 28 px | 採用。`Config.visuals.cleanedUpgradeIcons: false` で元の `speed.png` に戻る |
+| `assets/ui/upgrade-icons/pierce-bold.png` | `pierce.png` | 矢の軸を 32 px に、貫かれる 2 体の楕円を高さ 176 px に、矢じりをシアンの大きな三角に。楕円と軸の境に透明の細い隙間 | 採用。同上で元の `pierce.png` に戻る |
+
 ## 2026-11-13 HP が 3 割を切ったときの一言（B3-9）
 ツール: Irodori-TTS v4.1（`Aratako/Irodori-TTS-v4.1-Small`、bf16）、`scripts/assets/irodori-batch.py`、手本は `assets_src/voice/refs/<キャラ>/`（11-06 と同じ組み合わせ）。指定文は空、台詞ごとの演技の指定だけ。台詞ファイル `scripts/assets/voices/2026-11-13-low-hp.json`（演技の指定の全文）、候補は `assets_src/voice/2026-11-13/`（各 3 シード、9 本、git 対象外）。生成は読み込み込みで 2 分 8 秒。
 選び方: Whisper small（transformers の pipeline）の文字起こし → `voice-analyze.py` の声の高さと画像（`tmp/voice-analysis/2026-11-13/`）。後処理: 前後の無音カット → loudnorm -15 LUFS → mp3。置き場所 `assets/audio/voice/<キャラ>/low_hp_01.mp3`。`Config.audio.lowHpVoice: false` で鳴らなくなる（その被弾では普段の被弾の声）。

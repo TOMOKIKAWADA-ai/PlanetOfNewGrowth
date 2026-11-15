@@ -26,7 +26,7 @@ export const Config = {
     // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と
     // 白蓮の核・花弁を、色違いの仮の体から置き換える。false（または URL に ?tripoEnemies=0）で元の仮の体に戻る。
     tripoEnemyModels: true,
-    // 強化アイコンの手直し版（2026-11-11。今は seeds の切り残しのかけらを消したものだけ）。false で元の絵に戻る。
+    // 強化アイコンの手直し版（2026-11-11 seeds の切り残しを消した版、2026-11-15 speed・pierce を太く描き直した版）。false で元の絵に戻る。
     cleanedUpgradeIcons: true,
     usePlayerFbxAnimations: true,
     useEmbeddedPlayerAnimation: false,
