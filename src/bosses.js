@@ -59,7 +59,7 @@ export const BOSS_TYPES = Object.freeze({
   swarmMother: Object.freeze({
     id: 'swarmMother',
     name: '群れの母',
-    forecast: '光の糸でつながった三つ子。1体だけ倒しても、10秒以内に残りを倒さないと起き上がる',
+    forecast: `光の糸でつながった三つ子。1体だけ倒しても、${Config.boss.swarmMother.reviveSeconds}秒以内に残りを倒さないと起き上がる`,
     spawnCount: Config.boss.swarmMother.count,
     update(egg, dt) {
       updateSwarmMember(egg, dt);

@@ -1646,10 +1646,14 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const wantsWater = this.isWaterStage && getBossType(this.stage.boss).prefersWater;
     let best = null;
     let bestDistance = -Infinity;
-    for (let i = 0; i < (wantsWater ? 80 : 20); i++) {
+    // 2026-11-16: on a water map, a boss that does not live in the water (chapter 5's thirst mother) stands on land, so that the
+    // player can step out of the water and dodge its shockwave in bird form (in the water a transform gives fish form).
+    const wantsLand = this.isWaterStage && !wantsWater;
+    for (let i = 0; i < (wantsWater || wantsLand ? 80 : 20); i++) {
       const point = randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
       if (this.isBlockedByBuilding(point, 3)) continue;
       if (wantsWater && this.isWaterStageLand(point, Config.boss.floodgateMother.shoreMargin)) continue;
+      if (wantsLand && !this.isWaterStageLand(point, 0.6)) continue;
       const distance = horizontalDistanceSq(point, this.player.position);
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }

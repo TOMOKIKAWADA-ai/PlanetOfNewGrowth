@@ -205,7 +205,10 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }
     // The swarm mother (chapter 4) has three bodies: go for the nearest one still standing.
     let mother = null;
     let motherBest = Infinity;
-    for (const body of game.getBossTargets ? game.getBossTargets() : []) {
+    // The white lotus (chapter 6): once the core has opened, go for the core rather than the petals left.
+    const bossTargets = game.getBossTargets ? game.getBossTargets() : [];
+    const openCore = bossTargets.find(body => body.lotusRole === 'core');
+    for (const body of openCore ? [openCore] : bossTargets) {
       const d2 = (body.position.x - p.x) ** 2 + (body.position.z - p.z) ** 2;
       if (d2 < motherBest) { motherBest = d2; mother = body; }
     }
@@ -238,10 +241,22 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }
       // Humans shoot from range, so hold distance from the mother egg; birds dive onto targets.
       // The floodgate mother: swim right up to it while submerged (fish bites), stand within shot range while stunned.
       const flood = mother?.floodgate;
-      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? 9 : 0;
+      // On a water map a boss that lives on land is hugged closely: the ground there is land, where a transform gives bird form for the shockwave.
+      const landHug = game.isWaterStage && mother && !flood;
+      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? (landHug ? 2.5 : 9) : 0;
       const pull = (d > desired ? 1 : -0.6) * (flood?.state === 'submerged' ? 3 : 1);
       mx += (dx / d) * pull;
       mz += (dz / d) * pull;
+    }
+    // A shockwave is coming while in the water: a transform there gives fish form, which cannot dodge, so head for the
+    // boss (it stands on land on water maps) to get out of the water first.
+    const warner = (game.bossEggs ?? []).find(body => !body.dead && body.shockwaveState === 'warning');
+    if (dodge && warner && game.isWaterStage && game.isWaterPosition(p)) {
+      const dx = warner.position.x - p.x;
+      const dz = warner.position.z - p.z;
+      const d = Math.hypot(dx, dz) || 1;
+      mx += (dx / d) * 8;
+      mz += (dz / d) * 8;
     }
     const radius = Math.hypot(p.x, p.z);
     const limit = Config.map.radius;
@@ -288,7 +303,11 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }
         stats.transforms++;
         stats.shockwaves.dodgeAttempts++;
         press('transform');
-      } else if (player.burst >= 100 && player.burstCooldownTimer <= 0) {
+      } else if (player.burst >= 100 && player.burstCooldownTimer <= 0
+        && !((mother?.pursuit || mother?.floodgate) && (mother.bossType?.damageScale?.(mother) ?? 1) < 1)
+        && !bosses.some(body => body.lotusRole === 'core' && body.lotus?.state === 'closed')) {
+        // Keep the burst while the boss shrugs hits off (the pursuer's closed shell, the floodgate mother under water),
+        // and for the white lotus core until it opens.
         stats.bursts++;
         mark('burst');
         press('burst');

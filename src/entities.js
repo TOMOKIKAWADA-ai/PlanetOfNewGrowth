@@ -1799,7 +1799,7 @@ export class Player {
       this.game.showMessage(this.shieldCharges > 0 ? `防護膜 ${this.shieldCharges}` : '防護膜');
       return;
     }
-    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1);
+    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1) * (this.game.stage?.damageTakenScale ?? 1);
     const hpBefore = this.hp;
     this.hp = Math.max(0, this.hp - amount);
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
@@ -2250,6 +2250,7 @@ export class Egg {
     }
     if (this.dead || this.swarmDown) return;
     if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
+    if (this.isMother && source === 'burst') amount *= Config.player.burstBossDamageScale ?? 1;
     const bossScale = this.isMother ? this.bossType.damageScale?.(this) ?? 1 : 1;
     amount *= bossScale;
     this.hp -= amount;

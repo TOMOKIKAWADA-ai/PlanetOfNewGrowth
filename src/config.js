@@ -288,6 +288,8 @@ export const Config = {
     burstEnemyDamage: 100,
     burstEggDamage: 50,
     burstMotherDamageCap: 28,
+    // 2026-11-16 ユーザー「バーストはもっとボスに対してダメージはいってもいい」: バーストがボス（母卵・各章のボスの体）に与えるダメージの倍率。1 で元どおり
+    burstBossDamageScale: 2,
     burstRange: 12,
     burstInvincible: 1,
     burstCooldown: 8,
@@ -388,10 +390,11 @@ export const Config = {
       bodyRadius: 2.2,
       mapMargin: 6,
       firstLayDelay: 5,
-      layInterval: 6.5,
-      layDuration: 2.8,
+      layInterval: 5, // 2026-11-16 6.5 → 5（殻が開く回数を増やす）
+      // 2026-11-16 ユーザー「bot がクリアできるくらいまで」: 開いている時間 2.8 → 3.5 秒、閉じているときの効き 0.3 → 0.5
+      layDuration: 3.5,
       openDamageScale: 1.8,
-      closedDamageScale: 0.3,
+      closedDamageScale: 0.5,
       contactRadius: 3.1,
       contactDamage: 20,
       contactCooldown: 1.1
@@ -425,9 +428,10 @@ export const Config = {
     swarmMother: {
       count: 3,
       spread: 6.5,
-      hpShare: 0.45,
-      reviveSeconds: 10,
-      reviveHpRatio: 0.6,
+      hpShare: 0.3, // 2026-11-16 0.45 → 0.3
+      // 2026-11-16 ユーザー「bot がクリアできるくらいまで」: 起き上がりまで 10 → 25 秒、起き上がりの HP 0.6 → 0.3
+      reviveSeconds: 25,
+      reviveHpRatio: 0.3,
       handoverDelay: 3
     },
     // Final chapter's white lotus core (E15 phases 1-2, E16 phase 3). Six petals ring the core (petalSpread away), each with
@@ -439,16 +443,16 @@ export const Config = {
     // inhalePullHuman). Touching the core during the inhale (inhaleBiteRadius) costs inhaleDamage every
     // inhaleBiteInterval. Set chapter 6's boss to 'motherEgg' to remove it.
     whiteLotusCore: {
-      coreHpShare: 1,
+      coreHpShare: 0.45, // 2026-11-16 1 → 0.45
       petalCount: 6,
       petalSpread: 8,
-      petalHpShare: 0.14,
+      petalHpShare: 0.08, // 2026-11-16 0.14 → 0.08
       petalScale: 0.5,
       petalSpecies: ['footprint', 'swarmbird', 'splitshell', 'crier', 'hand', 'rootsucker'],
       petalFirstSpawnSeconds: 3,
       petalSpawnSeconds: 11,
       petalMaxAlive: 2,
-      openAfterPetals: 4,
+      openAfterPetals: 2, // 2026-11-16 4 → 2（核を開くのに要る花弁）
       openRestSeconds: 2.5,
       restSeconds: 4.5,
       shockwaveWarning: 1.6,
