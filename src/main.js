@@ -275,6 +275,11 @@ const BACKGROUND_OBJECTS = [
   { url: new URL('../assets/background/obj_007_rtp.glb', import.meta.url).href, height: 1.25, count: 16, minRadius: 12 },
   { url: new URL('../assets/background/obj_008_rtp.glb', import.meta.url).href, height: 2.2, count: 2, minRadius: 24 }
 ];
+// 第1章の給水ポンプ（B1-7）。プレイヤーの出発点の北東、最初の画面の端に見える位置。PumpRotor（はずみ車）をゲーム側で回す。
+const CHAPTER_PUMP = {
+  url: new URL('../assets/background/chapter1_pump.glb', import.meta.url).href,
+  x: 6.5, z: -5.5, rotation: -0.6, scale: 1.2, rotorSpeed: 5, glowPulseHz: 0.9
+};
 const WATER_STAGE_LAND_PATCHES = [
   { x: 0, z: 0, radius: 25, scaleX: 1.2, scaleZ: 0.8, rotation: 0.18, seed: 0.4 },
   { x: -36, z: -12, radius: 18, scaleX: 1.0, scaleZ: 0.72, rotation: -0.65, seed: 1.7 },
@@ -697,6 +702,7 @@ class Game {
       if (this.isWaterStage) this.loadWaterStageProps();
       else this.loadBackgroundObjects();
     }
+    if (this.stageId === 1 && this.chapterPumpEnabled) this.loadChapterPump();
   }
 
   createWaterStageEnvironment(ground) {
@@ -1440,6 +1446,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.handleGlobalInput();
     this.touchControls.setEnabled(this.state === 'playing');
     this.updateBgmState();
+    this.updateChapterPump(dt);
     if (this.state === 'playing') {
       const realDt = dt;
       if (this.hitStopTimer > 0) {
@@ -2074,6 +2081,46 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       if (!mother.dead) hp += Math.max(0, mother.hp);
     }
     return maxHp > 0 ? hp / maxHp : 0;
+  }
+
+  // 第1章のポンプを置くか（Config.visuals.chapterPump、URL の ?pump=0 で置かない）
+  get chapterPumpEnabled() {
+    const fromUrl = new URLSearchParams(window.location.search).get('pump');
+    return fromUrl === null ? Boolean(Config.visuals.chapterPump) : fromUrl !== '0';
+  }
+
+  async loadChapterPump() {
+    try {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const gltf = await new GLTFLoader().loadAsync(CHAPTER_PUMP.url);
+      const pump = gltf.scene;
+      pump.name = 'ChapterPump';
+      pump.position.set(CHAPTER_PUMP.x, 0, CHAPTER_PUMP.z);
+      pump.rotation.y = CHAPTER_PUMP.rotation;
+      pump.scale.setScalar(CHAPTER_PUMP.scale);
+      pump.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = Config.performance.enableShadows;
+        child.receiveShadow = true;
+      });
+      this.pumpRotor = pump.getObjectByName('PumpRotor') ?? null;
+      const glow = pump.getObjectByName('PumpGlow');
+      this.pumpGlowMaterial = glow?.material ?? null;
+      this.scene.add(pump);
+      this.chapterPump = pump;
+    } catch (error) {
+      console.warn('Failed to load the chapter 1 pump.', error);
+    }
+  }
+
+  // ポンプは回り続けている（はずみ車と水の窓の光）。戦闘中でなくても回す。
+  updateChapterPump(dt) {
+    if (!this.chapterPump) return;
+    if (this.pumpRotor) this.pumpRotor.rotation.x += dt * CHAPTER_PUMP.rotorSpeed;
+    if (this.pumpGlowMaterial) {
+      this.pumpPhase = (this.pumpPhase ?? 0) + dt * CHAPTER_PUMP.glowPulseHz * Math.PI * 2;
+      this.pumpGlowMaterial.emissiveIntensity = 1.6 + Math.sin(this.pumpPhase) * 0.6;
+    }
   }
 
   // Tripo の新種・ボスの体を使うか（Config.visuals.tripoEnemyModels、URL の ?tripoEnemies=0 で仮の体と比べられる）

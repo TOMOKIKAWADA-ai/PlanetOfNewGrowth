@@ -390,6 +390,14 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 - 意味が伝わりにくい: `damage` は剣（このゲームの攻撃は種の射撃）、`dive` は葉か矢印に見える、`speed`（攻撃速度）と `move`（移動速度）が言葉でも絵でも紛らわしい。
 - 絵が無い: 章をまたぐ引き継ぎ強化 15 個（`ChapterRewards`）は文字だけ。
 
+## 2026-11-16 第1章の給水ポンプ（B1-7、Blender で手作り、生成なし）
+生成ツールは使っていない。Blender 5.1 のスクリプトで基本の形（箱・円柱・輪）を組み合わせて作った。元絵も外部サービスも無いので、商用の条件の心配はない。
+作り方: `"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" -b --factory-startup -P scripts/blender/build_chapter1_pump.py -- <出力.glb> [<確認画像.png>]`（約 15 秒。確認画像は斜めと真上の 2 枚）。
+
+| ファイル | 中身 | 採用 |
+|---|---|---|
+| `assets/background/chapter1_pump.glb`（135 KB、3848 三角形） | コンクリートの台（苔の板 4 枚）、青緑の塗装が剥げたポンプの胴、黒いモーター（冷却のひだ）、灰色の送水管（上に立ち上がって奥の地面へ）、地面沿いの取水管、上から見える赤い弁ハンドル、シアンに光る水の窓。ノードは `PumpBody`・`PumpRotor`（はずみ車。ゲームが X 軸で回す）・`PumpGlow`（光を 1.0〜2.2 で脈打たせる） | 採用。第1章だけ、出発点の北東（x 6.5、z -5.5）に 1.2 倍で置く。見た目だけで当たり判定・耐久値は無い。`Config.visuals.chapterPump: false` か URL の `?pump=0` で置かない |
+
 ## 2026-11-15 強化アイコン `speed`・`pierce` の描き直し（B4-2 の続き、生成なし）
 11-11 の見比べで「細くて小さい」（絵の占める割合 9〜10%、58 px で線が 2〜3 px）とした 2 つを、今の型（白い形＋シアンの差し色、透明背景 512×512）のまま Pillow で描き直した。生成ツールは使っていない。スクリプト: `scripts/assets/redraw-upgrade-icons.py`（4 倍の大きさで描いて縮める）。
 

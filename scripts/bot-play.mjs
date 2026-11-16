@@ -31,6 +31,8 @@ const seedBase = Number(args.seed ?? 1);
 const dodge = args.dodge !== '0';
 // --shake 0 keeps the bot from transforming to shake off a hand's grab (E11), to compare.
 const shake = args.shake !== '0';
+// --mimic 0 keeps the bot blind to mimic eggs (A15): it then dives onto them like any other egg, as before 2026-11-16.
+const mimicAware = args.mimic !== '0';
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
@@ -47,7 +49,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
+function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -68,6 +70,10 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
   };
   stats.damageAfterMother = 0;
   stats.shockwaves = { fired: 0, reached: 0, dodged: 0, dodgeAttempts: 0 };
+  // A15: mimic eggs seen (by their fast pulse, read as isMimic), dives called off during the warning, and mimics shot in human form.
+  stats.mimic = { seen: 0, diveAborts: 0, shot: 0 };
+  const seenMimics = new WeakSet();
+  let lastMimicAbortAt = -Infinity;
   const spawnMotherShockwave = game.spawnMotherShockwave;
   game.spawnMotherShockwave = function (...args) {
     stats.shockwaves.fired++;
@@ -89,6 +95,7 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
   const onEggDestroyed = game.onEggDestroyed;
   game.onEggDestroyed = function (egg, source) {
     if (!egg.isMother) stats.eggKills[source ?? 'other'] = (stats.eggKills[source ?? 'other'] ?? 0) + 1;
+    if (egg.isMimic && source !== 'mimicBurst' && stats.mimic) stats.mimic.shot++;
     return onEggDestroyed.call(this, egg, source);
   };
   // Offsets are from navigation start, which is close to where Playwright's video begins.
@@ -208,6 +215,19 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
       for (const egg of game.eggs) {
         if (egg.dead) continue;
         const d2 = (egg.position.x - p.x) ** 2 + (egg.position.z - p.z) ** 2;
+        if (mimicAware && egg.isMimic) {
+          if (d2 < 225 && !seenMimics.has(egg)) { seenMimics.add(egg); stats.mimic.seen++; }
+          // A bird must not drift over a mimic (the dive picks the nearest egg on its own); a human can shoot it safely.
+          if (player.form !== 'human') {
+            const range = Config.player.birdEggDetectRange + 1.5;
+            if (d2 < range * range && d2 > 1e-4) {
+              const d = Math.sqrt(d2);
+              mx += ((p.x - egg.position.x) / d) * 2.5;
+              mz += ((p.z - egg.position.z) / d) * 2.5;
+            }
+            continue;
+          }
+        }
         if (d2 < best) { best = d2; target = egg; }
       }
     }
@@ -240,7 +260,7 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
       pendingRelease = null;
       return;
     }
-    const nearbyEggs = game.eggs.filter(egg => !egg.dead
+    const nearbyEggs = game.eggs.filter(egg => !egg.dead && !(mimicAware && egg.isMimic)
       && (egg.position.x - player.position.x) ** 2 + (egg.position.z - player.position.z) ** 2 < 225).length;
     const bosses = (game.bossEggs ?? []).filter(body => !body.dead);
     const mother = bosses.find(body => body.shockwaveState === 'warning') ?? bosses.find(body => !body.swarmDown && (!game.getBossTargets || game.getBossTargets().includes(body))) ?? null;
@@ -251,6 +271,9 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
     const shockwaveComing = dodge && waveActive
       && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2
         < (Config.egg.motherShockwaveRange + 2) ** 2;
+    // Right after calling off a mimic dive, stay human for a moment (and shoot it) instead of taking off onto it again.
+    // A stricter rule (never take off with a mimic within 5.5) cut bird time from ~70 s to ~25 s and the bot fell to bullets.
+    const mimicClose = mimicAware && game.elapsed - lastMimicAbortAt < 2.5;
     const flood = mother?.floodgate;
     const nearMother = mother && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2 < 49;
     if (player.form === 'human') {
@@ -269,10 +292,16 @@ function installBot({ speed, seed, dodge, shake, realtime, startAt }) {
         stats.bursts++;
         mark('burst');
         press('burst');
-      } else if (player.mp > player.maxMp * 0.7 && nearbyEggs >= 3) {
+      } else if (player.mp > player.maxMp * 0.7 && nearbyEggs >= 3 && !mimicClose) {
         stats.transforms++;
         press('transform');
       }
+    } else if (mimicAware && player.form === 'bird' && player.diveState === 'warning' && player.diveTarget?.isMimic) {
+      // The target pulses fast: call the dive off by turning back to human (the dive warning is 0.55 s).
+      stats.mimic.diveAborts++;
+      lastMimicAbortAt = game.elapsed;
+      mark('mimicAbort');
+      press('transform');
     } else if (player.form === 'fish' && flood?.state === 'surfaced') {
       press('transform');
     } else if (player.form === 'bird' && flood?.state === 'submerged' && nearMother && player.diveState === 'ready') {
@@ -357,6 +386,7 @@ function summarize(game, stats) {
     startStats: stats.startStats,
     events: stats.events,
     mimicStuns: game.mimicStuns ?? 0,
+    mimic: stats.mimic.seen || stats.mimic.shot ? { ...stats.mimic } : null,
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed) } : null,
     pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
@@ -419,7 +449,7 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, realtime: Boolean(recordDir), startAt });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
@@ -427,7 +457,7 @@ try {
     result.errors = errors;
     result.carry = carrySpec || null;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     const video = page.video();
     await context.close();
@@ -444,7 +474,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, startAt, carry: carrySpec || null,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

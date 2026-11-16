@@ -28,6 +28,9 @@ export const Config = {
     tripoEnemyModels: true,
     // 強化アイコンの手直し版（2026-11-11 seeds の切り残しを消した版、2026-11-15 speed・pierce を太く描き直した版）。false で元の絵に戻る。
     cleanedUpgradeIcons: true,
+    // 第1章の戦場に置く給水ポンプ（B1-7、2026-11-16。Blender で手作り、scripts/blender/build_chapter1_pump.py）。
+    // 見た目だけの目印で、当たり判定も耐久値も無い（ポンプの耐久は A9 で保留中）。false（または URL に ?pump=0）で置かない。
+    chapterPump: true,
     usePlayerFbxAnimations: true,
     useEmbeddedPlayerAnimation: false,
     useProceduralPlayerBones: false,
