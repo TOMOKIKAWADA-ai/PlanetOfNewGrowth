@@ -1699,6 +1699,18 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return enemy;
   }
 
+  // A35: ボスが出ている間は、同時に予告・発射する狙撃手を Config.enemy.sniper.maxFiringDuringBoss 体までにする。
+  // 撃てなかった狙撃手は fireTimer が 0 のまま待ち、前の 1 体が撃ち終わると次が撃つ。
+  sniperMayFire(sniper) {
+    const limit = Config.enemy.sniper.maxFiringDuringBoss;
+    if (!limit || !this.motherSpawned || !this.bossEggs.some((egg) => !egg.dead)) return true;
+    let firing = 0;
+    for (const enemy of this.enemies) {
+      if (enemy !== sniper && !enemy.dead && enemy.type === 'sniper' && enemy.beamState !== 'idle') firing++;
+    }
+    return firing < limit;
+  }
+
   // ignoreCap: enemies a boss sends itself (the floodgate mother's tadpole lines) appear even when the field is full.
   spawnEnemy(type, position, homeEgg = null, { ignoreCap = false } = {}) {
     if (!ignoreCap && !this.canSpawnEnemy()) return null;

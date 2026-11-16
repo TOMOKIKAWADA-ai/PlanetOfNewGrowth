@@ -3319,7 +3319,7 @@ export class Enemy {
     if (distance < stats.range * 0.55) this.moveAway(player.position, dt, this.speed);
     else if (distance > stats.range * 0.9) this.moveToward(player.position, dt, this.speed);
 
-    if (this.beamState === 'idle' && distance <= stats.range && this.fireTimer <= 0) {
+    if (this.beamState === 'idle' && distance <= stats.range && this.fireTimer <= 0 && this.game.sniperMayFire?.(this) !== false) {
       this.beamState = 'warning';
       this.beamTimer = stats.warningSeconds;
       this.beamAim = angleToXZ(this.position, player.position);

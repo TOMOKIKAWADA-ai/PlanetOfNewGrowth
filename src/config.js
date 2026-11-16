@@ -254,7 +254,8 @@ export const Config = {
   },
   player: {
     // 全キャラ共通の被ダメージ倍率。1 で調整前（2026-10-21 以前）と同じ。
-    damageTakenScale: 0.9,
+    // 2026-11-16 ユーザー「難易度は bot がクリアできるくらいまで下げましょう」で 0.9 → 0.8
+    damageTakenScale: 0.8,
     maxHp: 120,
     maxMp: 100,
     humanSpeed: 6.72,
@@ -467,7 +468,8 @@ export const Config = {
   },
   egg: {
     hp: 38,
-    motherHp: 300,
+    // 2026-11-16 ユーザー「難易度は bot がクリアできるくらいまで」で 300 → 150（各章の motherHpScale がこれに掛かる）
+    motherHp: 150,
     motherShockwaveFirstDelay: 4.5,
     motherShockwaveInterval: 10,
     motherShockwaveWarning: 1.6,
@@ -540,8 +542,11 @@ export const Config = {
       hitInterval: 0.42,
       humanHitRadius: 0.85,
       birdHitRadius: 1.8,
-      maxAliveBeforeRush: 2,
-      maxAliveDuringRush: 6
+      // 2026-11-16 ユーザー「狙撃タイプは一体まで」: 同時にいる狙撃手は 1 体まで（元は 2 と、210 秒からは 6）
+      maxAliveBeforeRush: 1,
+      maxAliveDuringRush: 1,
+      // A35（2026-11-16 ユーザー「狙撃タイプは一体まで」）: ボスが出ている間、同時に予告・発射できる狙撃手の数。0 で制限なし（元の動き）
+      maxFiringDuringBoss: 1
     },
     guardian: { hp: 72, speed: 2.14, damage: 15, xp: 10, walkAnimationSpeed: 1.8, corpseSinkDepth: 0.9 },
     spawner: {
