@@ -139,7 +139,10 @@ const SFX_FILES = {
   rootDry: 'root_dry',
   fishBite: 'fish_bite',
   shellCrack: 'shell_crack',
-  swarmRise: 'swarm_rise'
+  swarmRise: 'swarm_rise',
+  eggHatch: 'egg_hatch',
+  bossWarning: 'boss_warning',
+  timeWarning: 'time_warning'
 };
 const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
 const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
@@ -1463,6 +1466,12 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
         this.lastMinuteCalled = true;
         if (Config.audio.cueVoices) this.playVoice('lastMinute', { volume: 0.9 });
       }
+      // B2-1: ticks and a gong when little time is left and the boss still stands (the one-minute mark is taken by the boss's horn).
+      if (!this.timeWarningCalled && Config.audio.newSfx && Config.audio.timeWarningSeconds > 0
+        && this.elapsed >= Config.map.playSeconds - Config.audio.timeWarningSeconds) {
+        this.timeWarningCalled = true;
+        if (this.bossEggs.some((egg) => !egg.dead)) this.playSfx('timeWarning', { volume: 0.7 });
+      }
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
@@ -1669,6 +1678,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       mother.hp = mother.maxHp;
     }
     this.spawnBurstEffect(this.motherEgg?.position ?? position, 7, 0xff8b52);
+    if (Config.audio.newSfx) this.playSfx('bossWarning', { volume: 0.9 });
     if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
     if (bossType.id === 'whiteLotusCore') this.showMessage(`白蓮の核が現れた。6枚の花弁が、これまでの新種を産む
 花弁を${Config.boss.whiteLotusCore.openAfterPetals}枚壊すと核が開く`, 3.8);
@@ -1678,6 +1688,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   spawnEnemyFromEgg(egg) {
     if (!this.canSpawnEnemy()) return null;
+    // B2-1: a soft crack when an egg hatches close enough to be on screen (not for the many eggs far away).
+    if (Config.audio.newSfx && horizontalDistanceSq(egg.position, this.player.position) < Config.audio.eggHatchSfxRange ** 2) {
+      this.playSfx('eggHatch', { volume: 0.5, cooldown: 0.6 });
+    }
     if (egg.aquatic) return this.spawnEnemy(Math.random() < 0.5 ? 'dragonflyLarva' : 'tadpole', egg.position, egg);
     const roll = Math.random();
     let type = 'chaser';

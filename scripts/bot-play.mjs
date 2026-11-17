@@ -33,6 +33,12 @@ const dodge = args.dodge !== '0';
 const shake = args.shake !== '0';
 // --mimic 0 keeps the bot blind to mimic eggs (A15): it then dives onto them like any other egg, as before 2026-11-16.
 const mimicAware = args.mimic !== '0';
+// --bossRange <distance> is how far a human-form bot stands from the boss (A18, 2026-11-17). The egg shot only reaches
+// Config.player.specialEggRange (6), so the old 9 left the boss untouched between bursts; --bossRange 9 gives the old behaviour.
+const bossRange = Number(args.bossRange ?? 5);
+// --chase 0 turns off the stronger pull back to a far-away boss (A18): without it the crowd pushes the bot 40-90 away
+// from the boss for 20-30 s at a time and the boss's HP stands still.
+const chase = args.chase !== '0';
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
@@ -49,7 +55,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }) {
+function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -243,8 +249,10 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }
       const flood = mother?.floodgate;
       // On a water map a boss that lives on land is hugged closely: the ground there is land, where a transform gives bird form for the shockwave.
       const landHug = game.isWaterStage && mother && !flood;
-      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? (landHug ? 2.5 : 9) : 0;
-      const pull = (d > desired ? 1 : -0.6) * (flood?.state === 'submerged' ? 3 : 1);
+      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? (landHug ? 2.5 : bossRange) : 0;
+      // The further the boss, the harder the bot heads back (up to 6x), so the crowd's push cannot carry it away.
+      const chasePull = chase && mother ? Math.min(6, Math.max(1, (d - desired) / 6)) : 1;
+      const pull = (d > desired ? chasePull : -0.6) * (flood?.state === 'submerged' ? 3 : 1);
       mx += (dx / d) * pull;
       mz += (dz / d) * pull;
     }
@@ -363,6 +371,8 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt }
         t: Math.round(game.elapsed), hp: Math.round(player.hp), level: player.level,
         eggs: game.eggs.length, enemies: game.enemies.length, form: player.form,
         mother: game.motherEgg ? Math.round(Math.max(0, game.motherEgg.hp)) : null,
+        // Distance to the boss, to see whether the bot is inside the egg shot's reach (A18).
+        bossDist: game.motherEgg ? Math.round(Math.hypot(game.motherEgg.position.x - player.position.x, game.motherEgg.position.z - player.position.z) * 10) / 10 : null,
         kills: stats.kills, xp: Math.round(stats.xpGained), damage: Math.round(stats.damageTaken),
         pacing: game.pacingState?.phase ?? null
       });
@@ -468,7 +478,7 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
@@ -493,7 +503,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, startAt, carry: carrySpec || null,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

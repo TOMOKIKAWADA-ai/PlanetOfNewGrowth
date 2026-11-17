@@ -415,3 +415,14 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | ツキミ | `low_hp_01.mp3`（-14.9 LUFS） | まだ……倒れません。 | 1703 | 2.43 | 3 本とも文字起こし一致。1701・1702 は「まだ」のあとに 0.2 秒ほどの息の音が残る。1703 だけきれい。高さ 302Hz（手本 285〜347）。「まだ」と「倒れません」の間に約 1.1 秒の間（「……」として残した） |
 | アカメ | `low_hp_01.mp3`（-15.0 LUFS） | ……かすり傷だ。 | 2701 | 0.78 | 2701 だけ「かすりキズだ」と聞き取られた（2702「かすりキズナー」、2703「かすりキスだ」）。高さ 216Hz（手本 189〜210 に近い） |
 | キイチゴ | `low_hp_01.mp3`（-13.5 LUFS） | いったた……まだまだ！ | 3703 | 3.33 | 一致率 0.94 で最も高い（3701「いっと、まだまだ」、3702「いっとっと」で「いったた」が崩れた）。高さ 347Hz（手本 287〜417） |
+
+## 2026-11-17 効果音: 卵の孵化・ボス出現の警告・残り1分の警告（B2-1 の続き）
+ツール: Stable Audio 3 Small-SFX（steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で 3 音 × 4 シード（11・23・37・51）、残り1分だけ作り直して計 20 本。候補・jobs（`jobs.json`、`jobs-retry.json`）・周波数の見比べ画像: `assets_src/sfx/2026-11-17/`（git 対象外。画像は `docs/devlog/img/2026-11-17-sfx-spectrum.png`）。後処理は FFmpeg（前後の無音を切る → 0.04 秒のフェードアウト）のあと `normalize-sfx.mjs`。`Config.audio.newSfx: false` で鳴らない（3 つとも元は無音）。耳での確認はまだ。
+
+| ファイル | 元（シード、長さ） | プロンプト | 採用 |
+|---|---|---|---|
+| `assets/audio/sfx/egg_hatch.wav`（0.9 秒、そろえた後 -18.3 LUFS、よく鳴る音） | egg_hatch_s23（2 秒） | A small egg hatching, a soft wet shell crack followed by a short slimy squelch, small creature emerging | 採用: 割れの音（0.3 秒ぶん）のあとに湿った音が 0.3 秒続き、4 本のうち後半がいちばん残る。重心 7.9 kHz の軽い音。プレイヤーから 24 以内の卵が孵ったとき（`spawnEnemyFromEgg`、0.6 秒に 1 回まで、音量 0.5、距離は `Config.audio.eggHatchSfxRange`） |
+| `assets/audio/sfx/boss_warning.wav`（2.6 秒、-12.2 LUFS、大技・ボス） | boss_warning_s23（3 秒） | A deep ominous warning horn, one long low alarm blast with a heavy sub rumble, giant monster approaching | 採用: 低い響き（重心 198 Hz、200 Hz 未満が 88%）が 0.3 秒で山になり 1.1 秒まで保ってから引く。4 本のうち保つ時間がいちばん長い。ボスが出たとき（`spawnMotherEgg`、声の `bossAppear` と同時） |
+| `assets/audio/sfx/time_warning.wav`（2.2 秒、-15.8 LUFS、操作） | last_minute_c_s37（3 秒） | A clock ticking fast four times then a single low gong hit | 採用: 鐘のような打音が 5 回（0・0.3・0.9・1.3・1.6 秒）鳴って引く。4 本のうち打音の間隔がそろい、頭に無音がない。**残り 30 秒**でボスがまだ立っているとき（`Config.audio.timeWarningSeconds`、0 で鳴らない。音量 0.7）。残り 1 分はボスの出現（180 秒）と同じ瞬間で、角笛と声 2 本に重なるので 30 秒に移した |
+| — | last_minute_s11〜51・last_minute_b_s11〜51（どちらも 2.5 秒） | An urgent alert signal, three quick tense metallic ticks then a short rising warning tone, countdown alarm ／ Three quick warning bell strikes, a small metal alarm bell ringing three times | **不採用: 8 本とも最初から最後まで同じ大きさの雑音**（0.1 秒ごとの音量が -20〜-27 dB で平ら）。プロンプトを短くしても直らず、長さを 3 秒にしたら直った |
+| — | ほかの候補（egg_hatch・boss_warning・last_minute_c の採用以外） | 同上 | 次点（候補として残す） |
