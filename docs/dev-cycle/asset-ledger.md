@@ -9,6 +9,8 @@
 | Irodori-TTS 4.1（コード・モデル） | MIT | ○ | モデルカードの禁止事項: 本人の同意なく実在の人の声を複製しない、人を欺く音声に使わない。出力には Sony silentcipher の透かしが入る（MIT） |
 | Semantic-DACVAE-Japanese（Irodori の音声コーデック） | MIT | ○ | 元の facebook/dacvae-watermarked は SAM License（使用料なし、商用の禁止なし。軍事・諜報用途の禁止、輸出規制の順守、再配布時はライセンス同梱） |
 | Mesh Avatar Studio（エディタ・ランタイム） | MIT | ○ | 同梱のサンプル絵（Miko）は対象外。今回のアバターは自前の立ち絵から作成 |
+| Anime2.5DRig（2.5D アバターツール。表示部分をゲームに移植） | MIT（Copyright (c) 2026 hakoniwa） | ○ | 同梱のサンプル PSD は使っていない。移植したコードのライセンス文は `src/vendor/anime25d-player.LICENSE` |
+| See-through（立ち絵のパーツ分け。ComfyUI-See-through、重み layerdifforg/seethroughv0.0.2_layerdiff3d・24yearsold/seethroughv0.0.1_marigold） | 重みは商用可（Open RAIL 系の利用制限つき） | ○ | 制作用の道具。有害用途の禁止などの利用制限を守る。分けたパーツは自前の立ち絵の画素そのもの |
 | HyperFrames（CLI・core） | Apache-2.0 | ○ | — |
 | GSAP（動画のアニメーション） | GSAP Standard License（無料） | ○ | Webflow と競合するノーコードのアニメーション制作ツールへの組み込みは不可 |
 | しっぽり明朝／Zen角ゴシック New | SIL OFL 1.1 | ○ | 動画への使用は自由。フォント単体の販売は不可 |
@@ -522,3 +524,23 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 
 ゲームへの組み込み（2026-10-31 ユーザー「キイチゴとツキミのドローンを作ってほしい。今は言っているものはアカメ用」）: `GAMEPLAY_MODELS` に `tsukimiDrone`・`kiichigoDrone` を足し、`PLAYER_VISUALS` の各キャラの `droneModel` で選ぶ。アカメは `droneModel` を持たないので、これまでの `drone`（`drone3dmodel.glb`）のまま。
 ライセンス: Tripo の利用規約。
+
+## 2026-11-06 会話画面の動く立ち絵を Anime2.5DRig に（ユーザーの指示「ゲームに実装している横向きのキャラクターも作ってほしい」「それをゲームにも実装してほしい」）
+
+紹介動画の口パクを Anime2.5DRig に作り直したところ Mesh Avatar Studio より出来がよかったので、会話画面の斜め向きの立ち絵（`assets/ui/characters/faces/<キャラ>/normal.png`）も同じ方法で作った。
+
+手順（作業ファイルは `D:\0001_App_Dev\search_survive_promo\meibuki-intro\.work\rig-test\`、git 対象外）:
+1. See-through（ComfyUI-See-through をコマンドで実行。`seethrough_run.py`、seed 42、解像度 1280、30 steps、LayerDiff は group_offload）で立ち絵をパーツに分ける。1人 1〜2 時間。出力は `side/<キャラ>/`。
+2. 足りない絵（閉じた目・「あ」の口）を Codex の画像生成で描く（`codex exec --sandbox read-only`、元の絵とマスクを渡す）。依頼一式は `D:\0001_App_Dev\search_survive_promo\codex-requests-side\<キャラ>\`（source.png、mask.png、prompt.md、results/）。Codex はマスクの外もわずかに描き変えるので、マスクの範囲だけを元の絵に貼り込む（`check_codex.py`）。
+3. 目・口の差分を元の絵から切り出して足す（`build_variants.py`）。あわせて、重ねたパーツが元の絵と食い違うところを直す: 顔のパーツに塗り込まれた頭の地肌（ツキミの後頭部が灰色になっていた）を消し、拾い損ねた部分（アカメの肩の葉、ツキミの髪留め）を元の絵から切り出して足す。腕・耳の左右は重なり順を保つため別レイヤーのまま（`make_psd.cjs`）。
+4. PSD を `scripts/assets/bake-rig.mjs` で、ゲームが読む形（パーツの位置・アンカー・髪の束の JSON と、全パーツを詰めた1枚の PNG）に変換する。
+
+| ファイル | 内容 | 状態 |
+|---|---|---|
+| `assets/avatars/rig/akame.json`・`.png` | 17 パーツ、PNG 2.5MB。目閉じ・口開きは Codex（閉じ目は「まぶたに点を描かない」と頼み直した2回目） | 採用 |
+| `assets/avatars/rig/kiichigo.json`・`.png` | 23 パーツ、PNG 1.6MB。目閉じ・口開きは Codex | 採用 |
+| `assets/avatars/rig/tsukimi.json`・`.png` | 22 パーツ、PNG 1.9MB。目閉じ・口開きは Codex（2026-11-08） | 採用 |
+
+表示: `src/vendor/anime25d-player.js`（Anime2.5DRig v2.0.0 の変形・髪の揺れ・まばたきを移植、MIT）。`Config.story.avatarEngine: 'mesh'` で前の Mesh Avatar Studio に、`avatarPortraits: false` で静止画に戻る。
+表情: アバターは通常の表情だけ。笑顔・怒り・悲しみ・驚きは描き分けた静止画を出す（眉は前髪に隠れ、目は元の絵のパーツが上にあるので、変形ではほとんど表情が変わらなかった）。
+ライセンス: 上の表の Anime2.5DRig・See-through・GPT Image（Codex）。
