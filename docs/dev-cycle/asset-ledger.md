@@ -478,3 +478,47 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | `assets/mother/jellyfish_stalk_rtp.glb` → `jellyfish_stalk_anim.glb` | 06 茎の生えたクラゲ | 第3章のボス「水門の母」（`floodgateMotherBody`） | 3247 | 採用。最初は垂れ糸が円柱の壁になったので、糸を消した絵（`scripts/assets/strip-hanging-strings.py`）で作り直した（2回で 220 クレジット、残り 2260）。モーション6種（surface は浮上、stun は気絶のループ）。根は動かさない |
 
 元に戻すには `GAMEPLAY_MODELS` の `pursuerBody`・`swarmMotherBody`・`floodgateMotherBody` を消す。水の敵と水中の卵は `tadpoleEnemy`・`larvaEnemy`・`aquaticEgg` を消すと元の円錐と黒い種の卵に戻る（3体で 340 クレジット、残り 1920）（母卵の見た目に戻る。動きは第2章・第4章の `boss` を `motherEgg` にすると母卵に戻る）。
+
+## 2026-10-29 鳥形態の3Dモデル（キャラごと3体）
+ツール: Tripo Studio の Smart Mesh、AI Model P2.0、Multiview（前・左・右・後ろ）、Topology Quad 3000 面、テクスチャ 2k、GLB で書き出し。1体 100＋テクスチャ 20 クレジット、3体で 360（残り 1920 → 1560）。
+元絵: ユーザーがくれた三面図3枚（後ろ・右横・前）を切り分けたもの（`enemy_draft/tripo_views/<名前>/`、左は右の左右反転）。キャラとの対応は人型モデルの色から判断し、キャラ選択画面の立ち絵の色で確かめた。
+生の書き出し: `assets_src/tripo/2026-10-29-birds/`（git 対象外。リポジトリのものと同じファイル）。
+形: 3体とも立った姿で前が glTF の +Z、足元が y=0。幅 1 : 高さ 0.75 : 厚み 0.21（旧 `tsukimi_bird.glb` は幅 1.49 : 高さ 1.90 で、翼の比率がずっと小さい）。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/player/birds/kiichigo_bird.glb`（1.26MB） | 赤（キイチゴ） | 6,496 | 採用: キイチゴの鳥形態 |
+| `assets/player/birds/tsukimi_bird.glb`（1.24MB） | 紺に桜（ツキミ） | 6,564 | 採用: ツキミの鳥形態。旧 `assets/player/tsukimi_bird.glb`（197,320 三角形・9MB、生成元の記録なし）は置換済みで、リポジトリから外した（git の履歴にはある） |
+| `assets/player/birds/akame_bird.glb`（1.32MB） | 白と緑（アカメ） | 6,562 | 採用: アカメの鳥形態 |
+
+ゲームへの組み込み（2026-10-29 ユーザー「差し替える」）: `PLAYER_VISUALS` の各キャラに `birdUrl` を持たせ、`loadBirdVisual` が選んだキャラの鳥を読む。`Config.visuals.birdModelHeight` を 3.44 → 2.05 にして、翼の幅を旧モデルと同じ約 2.7 にそろえた。
+ライセンス: Tripo の利用規約（上の表。公開前に商用の条件を再確認）。
+
+## 2026-10-31 魚形態の3Dモデル（キャラごと3体、水中潜航形態・オヒルギ型）
+ツール: 鳥形態と同じ（Tripo Studio の Smart Mesh、P2.0、Multiview、Quad 3000 面、テクスチャ 2k、GLB）。1体 120 クレジット、3体で 360（残り 2560 → 2200。10-29 の 1560 から、生成前にクレジットが足されていた）。
+元絵: ユーザーがくれた三面図3枚（正面・側面・背面、1536×1024）。側面は顔が右を向くので右横とし、左横はその左右反転。題字とラベルを消し、3枚を同じ縮尺で 1024 四方に切り出した（切り出しの道具はスクラッチパッドのみ）。
+生の書き出し: `assets_src/tripo/2026-10-31-fish/`（git 対象外）。
+形: 3体とも立った姿で前が glTF の +Z、足元が y=0。幅 0.16 : 高さ 1 : 厚み 0.15 の細長い形。ゲームでは前へ倒し（`fishModelPitch` π/2）、頭を進む向きに、長さ 2.4（`fishModelLength`）にする。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/player/fish/kiichigo_fish.glb`（0.84MB） | 赤に白い花（キイチゴ） | 6,143 | 採用: キイチゴの魚形態。背面の白い花は一部しか出ていない |
+| `assets/player/fish/tsukimi_fish.glb`（0.97MB） | 紺に桜（ツキミ） | 6,399 | 採用: ツキミの魚形態。背面の桜は出ていない |
+| `assets/player/fish/akame_fish.glb`（1.02MB） | 白と緑（アカメ） | 6,260 | 採用: アカメの魚形態 |
+
+ゲームへの組み込み（2026-10-31 ユーザー「魚形態のグラフィックとしてほしい。tripoで作って、実装して」）: `PLAYER_VISUALS` の各キャラに `fishUrl` を持たせ、`loadFishVisual` が読めたら元の多面体の魚と入れ替える（読めなければ多面体のまま）。同時に、鳥も魚も「倒してから長さで合わせ、プレイヤーの位置を中心にする」（`fitLoadedModelLength`）ように直した。10-29 の鳥は高さで合わせてから倒していたため、体の中心がプレイヤーより約 1 前に出ていた。`birdModelHeight` は `birdModelLength`（2.05、くちばしから尾まで）に名前を変えた。
+ライセンス: Tripo の利用規約。
+
+## 2026-10-31 キイチゴとツキミのドローン
+ツール: Tripo Studio の Smart Mesh、P2.0、Quad 3000 面、テクスチャ 2k、GLB。1体 120 クレジット、2体で 240（残り 2200 → 1960）。
+元絵: ユーザーがくれた絵。キイチゴは赤い球体の2案のうち「上に白い花のほう」（ユーザー指定）の1枚から、正面1枚で生成。ツキミは設定画（1448×1086）の側面と正面を切り出し、側面は鼻先が左を向くので左横、右横はその左右反転にして Multiview（正面・左・右）で生成。設定画の背面には正面と同じコアが描かれていたので使わなかった（切り出しの道具はスクラッチパッドのみ）。
+生の書き出し: `assets_src/tripo/2026-10-31-drones/`（git 対象外）。
+形: 前が glTF の +Z、足元が y=0。アカメのドローン（`drone3dmodel.glb`、幅 0.98 : 高さ 0.54）とほぼ同じ比率なので、同じ `droneModelHeight`（0.28）で合わせる。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/drones/kiichigo_drone.glb`（1.27MB） | 赤い球体、上に白い花（キイチゴ） | 6,055 | 採用: キイチゴのドローン。背面は絵がないので Tripo の推測（模様なし） |
+| `assets/drones/tsukimi_drone.glb`（1.11MB） | 紺の羽つき、桜（ツキミ） | 6,318 | 採用: ツキミのドローン |
+
+ゲームへの組み込み（2026-10-31 ユーザー「キイチゴとツキミのドローンを作ってほしい。今は言っているものはアカメ用」）: `GAMEPLAY_MODELS` に `tsukimiDrone`・`kiichigoDrone` を足し、`PLAYER_VISUALS` の各キャラの `droneModel` で選ぶ。アカメは `droneModel` を持たないので、これまでの `drone`（`drone3dmodel.glb`）のまま。
+ライセンス: Tripo の利用規約。

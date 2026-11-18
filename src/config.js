@@ -18,9 +18,11 @@ export const Config = {
     playerGlowOutline: false,
     playerUseUnlitMaterial: false,
     playerUnlitColor: 0xb8b4ad,
-    birdModelHeight: 3.44,
+    birdModelLength: 2.05,
     birdModelYaw: 0,
     birdModelPitch: Math.PI * 0.5,
+    fishModelLength: 2.4,
+    fishModelPitch: Math.PI * 0.5,
     droneModelHeight: 0.28,
     motherEggModelHeight: 4.2,
     // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と

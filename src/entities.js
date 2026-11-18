@@ -69,7 +69,12 @@ const KIICHIGO_RUN_FBX_URL = new URL('../assets/player/kiichigo_run.fbx', import
 const KIICHIGO_REACT_FBX_URL = new URL('../assets/player/kiichigo_react.fbx', import.meta.url).href;
 const KIICHIGO_DYING_FBX_URL = new URL('../assets/player/kiichigo_dying.fbx', import.meta.url).href;
 const KIICHIGO_BURST_VRMA_URL = new URL('../assets/player/kiichigo_spinning_kick.vrma', import.meta.url).href;
-const TSUKIMI_BIRD_GLB_URL = new URL('../assets/player/tsukimi_bird.glb', import.meta.url).href;
+const TSUKIMI_BIRD_GLB_URL = new URL('../assets/player/birds/tsukimi_bird.glb', import.meta.url).href;
+const AKAME_BIRD_GLB_URL = new URL('../assets/player/birds/akame_bird.glb', import.meta.url).href;
+const KIICHIGO_BIRD_GLB_URL = new URL('../assets/player/birds/kiichigo_bird.glb', import.meta.url).href;
+const TSUKIMI_FISH_GLB_URL = new URL('../assets/player/fish/tsukimi_fish.glb', import.meta.url).href;
+const AKAME_FISH_GLB_URL = new URL('../assets/player/fish/akame_fish.glb', import.meta.url).href;
+const KIICHIGO_FISH_GLB_URL = new URL('../assets/player/fish/kiichigo_fish.glb', import.meta.url).href;
 const DEFAULT_FBX_ANIMATIONS = {
   idle: PLAYER_IDLE_FBX_URL,
   run: PLAYER_RUN_FBX_URL,
@@ -136,14 +141,38 @@ const VRMA_TO_MIXAMO_BONES = {
 };
 const VRMA_STABLE_HEAD_BONES = new Set(['J_neck', 'J_head']);
 const PLAYER_VISUALS = {
-  tsukimiFbx: { type: 'fbx', url: TSUKIMI_FBX_URL, name: 'TsukimiPlayerFbx' },
-  tsukimiGlb: { type: 'gltf', url: TSUKIMI_GLB_URL, name: 'TsukimiPlayer', axisFix: 'zUpToYUp' },
-  akameFbx: { type: 'fbx', url: AKAME_FBX_URL, name: 'AkamePlayerFbx', fbxAnimations: AKAME_FBX_ANIMATIONS },
+  tsukimiFbx: {
+    type: 'fbx',
+    url: TSUKIMI_FBX_URL,
+    name: 'TsukimiPlayerFbx',
+    birdUrl: TSUKIMI_BIRD_GLB_URL,
+    fishUrl: TSUKIMI_FISH_GLB_URL,
+    droneModel: 'tsukimiDrone'
+  },
+  tsukimiGlb: {
+    type: 'gltf',
+    url: TSUKIMI_GLB_URL,
+    name: 'TsukimiPlayer',
+    axisFix: 'zUpToYUp',
+    birdUrl: TSUKIMI_BIRD_GLB_URL,
+    fishUrl: TSUKIMI_FISH_GLB_URL,
+    droneModel: 'tsukimiDrone'
+  },
+  akameFbx: {
+    type: 'fbx',
+    url: AKAME_FBX_URL,
+    name: 'AkamePlayerFbx',
+    fbxAnimations: AKAME_FBX_ANIMATIONS,
+    birdUrl: AKAME_BIRD_GLB_URL,
+    fishUrl: AKAME_FISH_GLB_URL
+  },
   akameGlb: {
     type: 'gltf',
     url: AKAME_GLB_URL,
     name: 'AkamePlayerGlb',
     axisFix: 'zUpToYUp',
+    birdUrl: AKAME_BIRD_GLB_URL,
+    fishUrl: AKAME_FISH_GLB_URL,
     fbxAnimations: AKAME_FBX_ANIMATIONS,
     useFbxAnimations: true,
     useEmbeddedAnimation: false
@@ -153,6 +182,9 @@ const PLAYER_VISUALS = {
     url: KIICHIGO_GLB_URL,
     name: 'KiichigoPlayerGlb',
     axisFix: 'zUpToYUp',
+    birdUrl: KIICHIGO_BIRD_GLB_URL,
+    fishUrl: KIICHIGO_FISH_GLB_URL,
+    droneModel: 'kiichigoDrone',
     fbxAnimations: KIICHIGO_FBX_ANIMATIONS,
     burstVrmaUrl: KIICHIGO_BURST_VRMA_URL,
     useFbxAnimations: true,
@@ -443,11 +475,13 @@ export class Player {
         ? await this.loadFbxVisual(playerVisual.url, playerVisual.name, playerVisual)
         : await this.loadGltfVisual(playerVisual.url, playerVisual.name, playerVisual);
       await this.loadBirdVisual();
+      await this.loadFishVisual();
       this.syncSeeds();
       if (loaded) return;
     }
     if (!Config.visuals.useAssetModels) {
       await this.loadBirdVisual();
+      await this.loadFishVisual();
       this.syncSeeds();
       return;
     }
@@ -477,32 +511,45 @@ export class Player {
       }
     }
     await this.loadBirdVisual();
+    await this.loadFishVisual();
     this.syncSeeds();
+  }
+
+  // The bird and fish GLBs stand upright facing +Z; tipping them forward by `pitch` lays them nose-first
+  // along the player's +Z, and they are then scaled to `length` nose to tail and centred on the player.
+  async loadFormModel(url, name, length, pitch, yaw = 0) {
+    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const gltf = await new GLTFLoader().loadAsync(url);
+    const model = gltf.scene;
+    model.name = name;
+    model.traverse((child) => {
+      if (child.isMesh || child.isSkinnedMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material = Array.isArray(child.material)
+            ? child.material.map((material) => material.clone())
+            : child.material.clone();
+        }
+      }
+    });
+    this.applyPlayerMaterialFinish(model);
+    model.rotation.set(pitch, yaw, 0);
+    this.fitLoadedModelLength(model, length);
+    return model;
   }
 
   async loadBirdVisual() {
     if (this.birdModel) return true;
     try {
-      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
-      const loader = new GLTFLoader();
-      const gltf = await loader.loadAsync(TSUKIMI_BIRD_GLB_URL);
-      const model = gltf.scene;
-      model.name = 'TsukimiBird';
-      model.traverse((child) => {
-        if (child.isMesh || child.isSkinnedMesh) {
-          child.castShadow = true;
-          child.receiveShadow = true;
-          if (child.material) {
-            child.material = Array.isArray(child.material)
-              ? child.material.map((material) => material.clone())
-              : child.material.clone();
-          }
-        }
-      });
-      this.applyPlayerMaterialFinish(model);
-      this.fitLoadedModel(model, Config.visuals.birdModelHeight);
-      model.rotation.y = Config.visuals.birdModelYaw;
-      model.rotation.x = Config.visuals.birdModelPitch;
+      const playerVisual = PLAYER_VISUALS[Config.visuals.playerModel];
+      const model = await this.loadFormModel(
+        playerVisual?.birdUrl ?? TSUKIMI_BIRD_GLB_URL,
+        `${playerVisual?.name ?? 'Player'}Bird`,
+        Config.visuals.birdModelLength,
+        Config.visuals.birdModelPitch,
+        Config.visuals.birdModelYaw
+      );
       this.birdModelBaseY = model.position.y;
       model.visible = false;
       this.birdModel = model;
@@ -510,6 +557,31 @@ export class Player {
       return true;
     } catch (error) {
       console.warn('Failed to load bird GLB. Bird form will reuse the player model.', error);
+      return false;
+    }
+  }
+
+  async loadFishVisual() {
+    const url = PLAYER_VISUALS[Config.visuals.playerModel]?.fishUrl;
+    if (!url || this.fishModel.userData.loaded) return false;
+    try {
+      const model = await this.loadFormModel(
+        url,
+        `${PLAYER_VISUALS[Config.visuals.playerModel].name}Fish`,
+        Config.visuals.fishModelLength,
+        Config.visuals.fishModelPitch
+      );
+      for (const child of [...this.fishModel.children]) {
+        child.geometry?.dispose();
+        this.fishModel.remove(child);
+      }
+      this.fishModel.rotation.set(0, 0, 0);
+      this.fishModel.position.y = 0;
+      this.fishModel.add(model);
+      this.fishModel.userData.loaded = true;
+      return true;
+    } catch (error) {
+      console.warn('Failed to load fish GLB. Fish form will keep the primitive fish.', error);
       return false;
     }
   }
@@ -631,6 +703,21 @@ export class Player {
       model.position.y -= fittedBox.min.y;
       model.position.z -= center.z;
     }
+  }
+
+  // Like fitLoadedModel, but for a model already rotated to lie along Z: scale to `targetLength` along Z,
+  // centre it on the origin in X and Z, and rest its lowest point on y = 0.
+  fitLoadedModelLength(model, targetLength) {
+    model.updateMatrixWorld(true);
+    const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+    if (size.z <= 0.0001) return;
+    model.scale.multiplyScalar(targetLength / size.z);
+    model.updateMatrixWorld(true);
+    const fittedBox = new THREE.Box3().setFromObject(model);
+    const center = fittedBox.getCenter(new THREE.Vector3());
+    model.position.x -= center.x;
+    model.position.y -= fittedBox.min.y;
+    model.position.z -= center.z;
   }
 
   registerModelBone(bone) {
@@ -1125,7 +1212,8 @@ export class Player {
 
   syncSeeds() {
     while (this.seeds.length < this.seedCount) {
-      const drone = this.game.cloneGameplayModel('drone');
+      const droneKey = PLAYER_VISUALS[Config.visuals.playerModel]?.droneModel;
+      const drone = (droneKey && this.game.cloneGameplayModel(droneKey)) ?? this.game.cloneGameplayModel('drone');
       const seed = drone
         ? this.createDroneVisual(drone)
         : (Config.visuals.useAssetModels ? this.game.assets?.cloneModel('seed') : null)
