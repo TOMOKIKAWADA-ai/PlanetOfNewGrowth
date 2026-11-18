@@ -271,21 +271,21 @@ const GAMEPLAY_MODELS = {
   lotusPetalTripo: tripoModel('lotus_petal', 5.6),
   // 2026-10-26〜28 に Tripo で作った敵・水の生き物・ボスの体（docs/devlog/2026-10-26-enemy-3d.md ほか）。
   // 骨とモーションは scripts/blender/build_<名前>_animations.py。消すと元の体（射撃敵の色違い・円錐・母卵）に戻る
-  sniperEnemy: tripoBody('enemies/ivory_dragonfly_anim.glb', 2.05),
-  dragonflyEnemy: tripoBody('enemies/bat_rat_anim.glb', 1.7),
-  frogEnemy: tripoBody('enemies/armored_beetle_anim.glb', 2.0),
-  tadpoleEnemy: tripoBody('enemies/tadpole_anim.glb', 1.0),
-  larvaEnemy: tripoBody('enemies/dragonfly_nymph_anim.glb', 0.8),
-  aquaticEgg: tripoBody('eggs/eye_eggs.glb', 1.8),
-  thirstMotherBody: tripoBody('mother/rose_cocoon_rtp.glb', Config.visuals.motherEggModelHeight),
-  pursuerBody: tripoBody('mother/bat_neck_beast_anim.glb', 6.4),
-  swarmMotherBody: tripoBody('mother/spider_lily_anim.glb', 3.9),
-  floodgateMotherBody: tripoBody('mother/jellyfish_stalk_anim.glb', 4.4)
+  sniperEnemy: tripoBody(new URL('../assets/enemies/ivory_dragonfly_anim.glb', import.meta.url).href, 2.05),
+  dragonflyEnemy: tripoBody(new URL('../assets/enemies/bat_rat_anim.glb', import.meta.url).href, 1.7),
+  frogEnemy: tripoBody(new URL('../assets/enemies/armored_beetle_anim.glb', import.meta.url).href, 2.0),
+  tadpoleEnemy: tripoBody(new URL('../assets/enemies/tadpole_anim.glb', import.meta.url).href, 1.0),
+  larvaEnemy: tripoBody(new URL('../assets/enemies/dragonfly_nymph_anim.glb', import.meta.url).href, 0.8),
+  aquaticEgg: tripoBody(new URL('../assets/eggs/eye_eggs.glb', import.meta.url).href, 1.8),
+  thirstMotherBody: tripoBody(new URL('../assets/mother/rose_cocoon_rtp.glb', import.meta.url).href, Config.visuals.motherEggModelHeight),
+  pursuerBody: tripoBody(new URL('../assets/mother/bat_neck_beast_anim.glb', import.meta.url).href, 6.4),
+  swarmMotherBody: tripoBody(new URL('../assets/mother/spider_lily_anim.glb', import.meta.url).href, 3.9),
+  floodgateMotherBody: tripoBody(new URL('../assets/mother/jellyfish_stalk_anim.glb', import.meta.url).href, 4.4)
 };
 
-function tripoBody(path, height) {
+function tripoBody(url, height) {
   return {
-    url: new URL(`../assets/${path}`, import.meta.url).href,
+    url,
     height,
     centerXZ: true,
     forceOpaque: true,
