@@ -258,8 +258,30 @@ const GAMEPLAY_MODELS = {
   handTripo: tripoModel('hand', 2.0),
   rootsuckerTripo: tripoModel('rootsucker', 1.9),
   lotusCoreTripo: tripoModel('lotus_core', 4.6),
-  lotusPetalTripo: tripoModel('lotus_petal', 5.6)
+  lotusPetalTripo: tripoModel('lotus_petal', 5.6),
+  // 2026-10-26〜28 に Tripo で作った敵・水の生き物・ボスの体（docs/devlog/2026-10-26-enemy-3d.md ほか）。
+  // 骨とモーションは scripts/blender/build_<名前>_animations.py。消すと元の体（射撃敵の色違い・円錐・母卵）に戻る
+  sniperEnemy: tripoBody('enemies/ivory_dragonfly_anim.glb', 2.05),
+  dragonflyEnemy: tripoBody('enemies/bat_rat_anim.glb', 1.7),
+  frogEnemy: tripoBody('enemies/armored_beetle_anim.glb', 2.0),
+  tadpoleEnemy: tripoBody('enemies/tadpole_anim.glb', 1.0),
+  larvaEnemy: tripoBody('enemies/dragonfly_nymph_anim.glb', 0.8),
+  aquaticEgg: tripoBody('eggs/eye_eggs.glb', 1.8),
+  thirstMotherBody: tripoBody('mother/rose_cocoon_rtp.glb', Config.visuals.motherEggModelHeight),
+  pursuerBody: tripoBody('mother/bat_neck_beast_anim.glb', 6.4),
+  swarmMotherBody: tripoBody('mother/spider_lily_anim.glb', 3.9),
+  floodgateMotherBody: tripoBody('mother/jellyfish_stalk_anim.glb', 4.4)
 };
+
+function tripoBody(path, height) {
+  return {
+    url: new URL(`../assets/${path}`, import.meta.url).href,
+    height,
+    centerXZ: true,
+    forceOpaque: true,
+    tripo: true
+  };
+}
 
 function tripoModel(name, height) {
   return {
@@ -2284,7 +2306,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnXp(egg.position, Config.egg.xp);
     if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
     this.player.addBurst(Config.player.burstGainEgg);
-    if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio * this.player.eggHealScale, 0, this.player.maxHp);
+    if (source === 'birdDive' || source === 'fishBite') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio * this.player.eggHealScale, 0, this.player.maxHp);
   }
 
   spawnProjectile(origin, target, spec) {
@@ -2858,6 +2880,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.thirstStats.healed += heal;
     if (consumed > 0) {
       mother.hitPulse = Math.max(mother.hitPulse, 0.03);
+      mother.beatSwell = 1;
       this.spawnRingEffect(mother.position, 4.4, 0x7fe9ff, 0.8, 0.5);
       this.spawnParticleBurst(mother.position, 40, 0x9ff3ff, 3.2, 0.6, 0.8);
       this.showMessage(`${getBossName(this.stage)}が回復した（卵 ${consumed} 個）`, 1.6);
@@ -2869,6 +2892,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   // Pursuer (src/bosses.js): stops, opens its shell and lays an egg behind itself (away from the player).
   onPursuerLayStart(mother, seconds) {
     this.pursuerStats.lays += 1;
+    // 翼獣の体は、止まっている間ずっと首と翼を持ち上げて胸を開く（attack を止まる長さに合わせる）
+    const layClip = mother.creatureActions?.attack?.getClip();
+    if (layClip) mother.playCreatureOneShot('attack', { timeScale: layClip.duration / seconds });
     if (!this.pursuerHintShown) {
       this.pursuerHintShown = true;
       this.showMessage(`${getBossName(this.stage)}が立ち止まって卵を産んでいる
@@ -2892,6 +2918,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   // Floodgate mother (src/bosses.js): bitten while submerged, surfaces stunned on the third bite, sends tadpole lines.
   onFloodgateBite(mother, bites, needed) {
     this.floodgateStats.bites += 1;
+    mother.playCreatureOneShot?.('hit');
     this.spawnRingEffect(mother.position, 3.4, 0x5fd0ff, 0.7, 0.4);
     if (Config.audio.newSfx) this.playSfx('fishBite', { volume: 0.85, cooldown: 0.1 });
     else this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
@@ -2900,6 +2927,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   onFloodgateSurface(mother, seconds) {
     this.floodgateStats.bites += 1;
+    mother.playCreatureOneShot?.('surface');
     this.floodgateStats.surfaces += 1;
     this.spawnBurstEffect(mother.position, 6, 0x9ff3ff);
     this.spawnRingEffect(mother.position, 4.2, 0xffe066, 0.9, 0.6);
@@ -2920,6 +2948,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 魚形態で3回噛みつくと浮上する`, 3.4, MessagePriority.important);
     }
     this.floodgateStats.streams += 1;
+    mother.playCreatureOneShot?.('attack');
     const { direction, points } = floodgateStreamPoints(mother.position, this.player.position, count, cfg.streamStart, cfg.streamSpacing);
     for (const point of points) {
       const position = new THREE.Vector3(point.x, 0, point.z);

@@ -14,7 +14,7 @@ import {
   smooth01
 } from './math.js';
 import { Config } from './config.js';
-import { getBossType, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
+import { getBossType, isMotherCharging, motherBeatSqueeze, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { advanceFootprint } from './footprints.js';
 import { fullWaterScale } from './synergies.js';
@@ -207,8 +207,8 @@ const ENEMY_LOD_SPECS = {
   spawner: { color: 0x180c0d, radius: 0.38, height: 1.0, segments: 5 },
   dragonflyLarva: { color: 0x376d61, radius: 0.34, height: 0.55, segments: 7 },
   tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
-  dragonfly: { color: 0x9bcf67, radius: 0.48, height: 0.72, segments: 6 },
-  frog: { color: 0x577d38, radius: 0.72, height: 1.15, segments: 8 },
+  dragonfly: { color: 0x3a1214, radius: 0.48, height: 0.72, segments: 6 },
+  frog: { color: 0x3b3a30, radius: 0.72, height: 1.15, segments: 8 },
   footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
   crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
   hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
@@ -1371,6 +1371,7 @@ export class Player {
     if (!target || !target.aquatic) return;
     this.faceAngle = angleToXZ(this.position, target.position);
     target.takeDamage(target.hp + 1, 'fishBite');
+    this.feedOnEgg();
     this.specialTimer = Config.player.fishBiteCooldown;
     this.game.spawnDiveImpact(target.position);
   }
@@ -1664,6 +1665,12 @@ export class Player {
     this.diveCooldown = Config.player.birdDiveCooldown;
   }
 
+  // 卵を食べたとき（鳥の急降下・魚の噛みつき）の回復。卵が割れたときの回復は main.js の onEggDestroyed
+  feedOnEgg() {
+    this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio * this.eggHealScale, 0, this.maxHp);
+    this.mp = clamp(this.mp + this.maxMp * Config.player.feedMpRatio, 0, this.maxMp);
+  }
+
   resolveDiveHit() {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
@@ -1678,8 +1685,7 @@ export class Player {
       this.stun(Config.egg.mimic.stunSeconds * this.mimicStunScale);
     } else {
       this.diveTarget.takeDamage(Math.max(this.birdDiveDamage, this.diveTarget.hp + 10), 'birdDive');
-      this.hp = clamp(this.hp + this.maxHp * Config.player.feedHpRatio * this.eggHealScale, 0, this.maxHp);
-      this.mp = clamp(this.mp + this.maxMp * Config.player.feedMpRatio, 0, this.maxMp);
+      this.feedOnEgg();
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
@@ -1990,12 +1996,15 @@ export class Egg {
     this.hitPulse = 0;
     this.isMimic = false;
     this.pulsePhase = Math.random() * TAU;
+    this.beatPhase = Math.random() * TAU;
+    this.beatCharge = 0;
+    this.beatSwell = 0;
     this.shockwaveState = 'idle';
     this.shockwaveTimer = isMother ? Config.egg.motherShockwaveFirstDelay : 0;
     this.bossType = isMother ? getBossType(game.stage?.boss) : null;
     const gameplayMotherEgg = isMother ? game.cloneGameplayModel('motherEgg') : null;
     const sourceModel = !isMother
-      ? game.cloneGameplayModel('darkseedEgg') ?? this.createFallback()
+      ? (this.aquatic && game.cloneGameplayModel('aquaticEgg')) || game.cloneGameplayModel('darkseedEgg') || this.createFallback()
       : gameplayMotherEgg ?? (Config.visuals.useAssetModels ? game.assets.cloneModel('motherEgg') : null) ?? this.createFallback();
     if (!gameplayMotherEgg) sourceModel.scale.setScalar(isMother ? 2.25 : 1.05);
     this.model = Config.performance.useEggLod && !isMother
@@ -2021,6 +2030,23 @@ export class Egg {
       isMother ? 0xffc06b : 0xc7ff87
     );
     this.object.add(this.spore);
+    if (isMother && this.bossType.bodyKey && game.tripoEnemyModelsEnabled) this.useBossBody(game.cloneGameplayModel(this.bossType.bodyKey));
+  }
+
+  // ボスの種類ごとの体（src/bosses.js の bodyKey。Tripo で作った体）。アニメがあれば生き物の体として動かし、
+  // 無ければ（渇きの母の繭）卵と同じように回って拍動する。足元の輪は ringScale 倍。読めなければ母卵のまま。
+  useBossBody(model) {
+    if (!model) return;
+    if (model.animations?.length) {
+      this.useCreatureModel(model);
+    } else {
+      this.object.remove(this.model);
+      this.model = model;
+      this.object.add(model);
+      this.baseModelScale = model.scale.clone();
+    }
+    const ringScale = this.bossType.ringScale ?? 1;
+    if (ringScale !== 1) this.ring.geometry.scale(ringScale, ringScale, 1);
   }
 
   // 卵ではなく生き物の体を持つボス（白蓮の核と花弁、Tripo の体）。回らずにプレイヤーを向き、idle を流し続ける。
@@ -2036,10 +2062,12 @@ export class Egg {
     if (!clips.length) return true;
     this.creatureMixer = new THREE.AnimationMixer(model);
     this.creatureActions = {};
+    this.creatureBase = 'idle';
     for (const clip of clips) {
       const action = this.creatureMixer.clipAction(clip);
-      const loops = clip.name === 'idle' || clip.name === 'walk';
+      const loops = clip.name === 'idle' || clip.name === 'walk' || clip.name === 'stun';
       action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+      action.clampWhenFinished = !loops;
       this.creatureActions[clip.name] = action;
     }
     const idle = this.creatureActions.idle;
@@ -2047,24 +2075,47 @@ export class Egg {
       idle.play();
       idle.time = Math.random() * idle.getClip().duration;
     }
-    // 一回きりの動き（attack など）が終わったら idle に戻す
-    this.creatureMixer.addEventListener('finished', () => {
-      const back = this.creatureActions.idle;
-      if (!back || back.isRunning()) return;
-      back.reset().play();
-      this.creatureOneShot?.crossFadeTo(back, 0.25, false);
+    // 一回きりの動き（attack など）が終わったら、ふだんの動き（creatureBase）に戻す。倒れている間（die）はそのまま
+    this.creatureMixer.addEventListener('finished', (event) => {
+      if (event.action !== this.creatureOneShot || this.creatureHold) return;
       this.creatureOneShot = null;
+      const back = this.creatureActions[this.creatureBase] ?? this.creatureActions.idle;
+      if (!back) return;
+      back.reset().play();
+      event.action.crossFadeTo(back, 0.25, false);
     });
     return true;
   }
 
-  playCreatureOneShot(name) {
+  // 一回きりの動き。timeScale で長さを合わせる（追い手の産卵など）。hold なら最後の姿勢のまま止める（群れの母が倒れたとき）。
+  playCreatureOneShot(name, { timeScale = 1, hold = false } = {}) {
     const action = this.creatureActions?.[name];
-    if (!action || this.creatureOneShot === action) return;
-    const idle = this.creatureActions.idle;
-    action.reset().play();
-    if (idle?.isRunning()) idle.crossFadeTo(action, 0.15, false);
+    if (!action || this.creatureOneShot === action) return false;
+    const from = this.creatureOneShot ?? this.creatureActions[this.creatureBase];
+    action.reset();
+    action.timeScale = timeScale;
+    action.play();
+    // 止まった姿勢のまま残っている動き（paused。die など）からもなめらかに移る
+    if (from && from !== action && (from.isRunning() || from.paused)) from.crossFadeTo(action, 0.15, false);
     this.creatureOneShot = action;
+    this.creatureHold = hold;
+    return true;
+  }
+
+  // ふだん流す動き（idle・walk・stun）を替える。一回きりの動きの途中なら、終わってから替わる。
+  setCreatureBase(name) {
+    const next = this.creatureActions?.[name];
+    if (!next || this.creatureBase === name) return;
+    const previous = this.creatureActions[this.creatureBase];
+    this.creatureBase = name;
+    if (this.creatureOneShot) return;
+    next.reset().play();
+    if (previous && previous !== next) previous.crossFadeTo(next, 0.3, false);
+  }
+
+  // die の姿勢で止めていたのを解く（群れの母が起き上がるとき。続けて revive を流す）。
+  releaseCreatureHold() {
+    this.creatureHold = false;
   }
 
   createFallback() {
@@ -2121,10 +2172,11 @@ export class Egg {
     }
     if (this.isMother) {
       this.hitPulse = Math.max(0, this.hitPulse - dt * 1.7);
-      this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
+      if (this.creatureMixer) this.model.scale.copy(this.baseModelScale).multiplyScalar(1 + this.hitPulse);
+      else this.updateMotherBeat(dt);
       this.bossType.update(this, dt);
       if (this.pursuit) this.updatePursuerShell(dt);
-      if (this.swarm) this.updateSwarmBody();
+      if (this.swarm) this.updateSwarmBody(dt);
       if (this.floodgate) this.updateFloodgateBody(dt);
       if (this.lotus) this.updateLotusBody(dt);
     }
@@ -2166,6 +2218,14 @@ export class Egg {
     this.ring.material.color.setHex(this.shellGlow > 0.05 ? 0xffe066 : 0xff9d4a);
     this.ring.material.opacity = 0.34 + glow * 0.56;
     this.ring.scale.setScalar(1 + glow * 0.28);
+    if (this.creatureModel) {
+      // 歩いたフレームだけ walk（立ち止まっている・産卵中は idle。産卵の attack は main.js の onPursuerLayStart）
+      const walking = this.pursuit.walk !== this.lastPursuitWalk;
+      this.lastPursuitWalk = this.pursuit.walk;
+      this.pursuitWalkHold = walking ? 0.2 : Math.max(0, (this.pursuitWalkHold ?? 0) - dt);
+      this.setCreatureBase(this.pursuitWalkHold > 0 && !open ? 'walk' : 'idle');
+      return;
+    }
     this.model.rotation.z = open ? 0 : Math.sin(this.pursuit.walk * 7) * 0.07;
   }
 
@@ -2174,12 +2234,15 @@ export class Egg {
     const surfaced = this.floodgate.state === 'surfaced';
     this.surfaceLift = clamp((this.surfaceLift ?? 0) + (surfaced ? dt * 2.4 : -dt * 1.2), 0, 1);
     this.surfaceBaseY ??= this.model.position.y;
-    this.model.position.y = this.surfaceBaseY - 2.6 * (1 - this.surfaceLift);
+    // クラゲの体は沈むと赤い傘だけが水面に出る深さ（卵の体は 2.6）
+    const sinkDepth = this.creatureModel ? 1.7 : 2.6;
+    this.model.position.y = this.surfaceBaseY - sinkDepth * (1 - this.surfaceLift);
     const biteGlow = this.floodgate.bites / Config.boss.floodgateMother.bitesToSurface;
     this.ring.material.color.setHex(surfaced ? 0xffe066 : 0x5fd0ff);
     this.ring.material.opacity = surfaced ? 0.5 + Math.sin(this.age * 9) * 0.2 : 0.3 + biteGlow * 0.4;
     this.ring.scale.setScalar(surfaced ? 1.15 : 1 + biteGlow * 0.25 + Math.sin(this.age * 2.2) * 0.04);
-    this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
+    if (this.creatureModel) this.setCreatureBase(surfaced ? 'stun' : 'idle');
+    else this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
   }
 
   // 白蓮の核（src/bosses.js）: 花弁は白い輪でゆっくり揺れ、産む直前に輪が明るくなる。
@@ -2209,12 +2272,50 @@ export class Egg {
   }
 
   // 群れの母（src/bosses.js）: 倒れている姉妹は縮んで輪が消え、起き上がりが近い（3 秒前から）と点滅する。
-  updateSwarmBody() {
+  // 彼岸花の体（生き物の体）は宙に浮き、衝撃波を溜めるときに attack、倒れると die の姿勢で沈み、起き上がると revive。
+  updateSwarmBody(dt) {
+    if (this.creatureModel) this.updateSwarmCreature(dt);
     if (!this.swarmDown) return;
     const blink = this.swarmDownTimer < 3 && Math.sin(this.swarmDownTimer * 14) > 0;
-    this.model.scale.multiplyScalar(blink ? 0.7 : 0.5);
+    if (!this.creatureModel) this.model.scale.multiplyScalar(blink ? 0.7 : 0.5);
     this.ring.visible = blink;
     this.spore.visible = false;
+  }
+
+  updateSwarmCreature(dt) {
+    const down = this.swarmDown;
+    if (down !== Boolean(this.wasSwarmDown)) {
+      this.wasSwarmDown = down;
+      if (down) {
+        this.playCreatureOneShot('die', { hold: true });
+      } else {
+        this.releaseCreatureHold();
+        this.playCreatureOneShot('revive');
+      }
+    }
+    const charging = this.shockwaveState === 'warning';
+    if (charging && !this.wasSwarmCharging && !down) this.playCreatureOneShot('attack', { timeScale: 0.46 });
+    this.wasSwarmCharging = charging;
+    this.swarmBaseY ??= this.model.position.y;
+    const hover = Config.boss.swarmMother.hoverHeight ?? 0;
+    const target = this.swarmBaseY + (down ? 0.1 : hover + Math.sin(this.age * 1.4 + this.pulsePhase) * 0.22);
+    this.model.position.y += (target - this.model.position.y) * Math.min(1, dt * 3);
+  }
+
+  // 骨のない母卵（アニメの無い体）は拍動させる。技を溜めている間は速く強く打ち、放つ瞬間に大きく膨らむ。
+  updateMotherBeat(dt) {
+    const cfg = Config.egg.motherBeat;
+    const target = isMotherCharging(this) ? 1 : 0;
+    this.beatCharge += (target - this.beatCharge) * Math.min(1, dt * 5);
+    this.beatPhase += dt * TAU * (cfg.rate + (cfg.chargeRate - cfg.rate) * this.beatCharge);
+    this.beatSwell = Math.max(0, this.beatSwell - dt * 2.4);
+    const squeeze = motherBeatSqueeze(this.beatPhase, this.beatCharge);
+    const grow = 1 + this.hitPulse + cfg.releaseSwell * this.beatSwell * this.beatSwell;
+    this.model.scale.set(
+      this.baseModelScale.x * grow * (1 + squeeze),
+      this.baseModelScale.y * grow * (1 - squeeze * 0.8),
+      this.baseModelScale.z * grow * (1 + squeeze)
+    );
   }
 
   updateMotherShockwave(dt) {
@@ -2223,6 +2324,7 @@ export class Egg {
     if (this.shockwaveTimer > 0) return;
     if (this.shockwaveState === 'warning') {
       this.shockwaveState = 'idle';
+      this.beatSwell = 1;
       this.shockwaveTimer = Config.egg.motherShockwaveInterval;
       this.game.spawnMotherShockwave(
         this.position,
@@ -2347,7 +2449,6 @@ export class Enemy {
   }
 
   createModel(type) {
-    if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
     const tripo = TRIPO_ENEMY_MODELS[type];
     const tripoModel = tripo && this.game.tripoEnemyModelsEnabled ? this.game.cloneGameplayModel(tripo.key) : null;
     if (tripoModel) return this.prepareTripoModel(tripoModel, type, tripo);
@@ -2356,7 +2457,11 @@ export class Enemy {
     const gameplayModelKeys = {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
-      sniper: 'shooterEnemy',
+      sniper: 'sniperEnemy',
+      dragonfly: 'dragonflyEnemy',
+      frog: 'frogEnemy',
+      tadpole: 'tadpoleEnemy',
+      dragonflyLarva: 'larvaEnemy',
       footprint: 'chaserEnemy',
       crier: 'spawnerEnemy',
       hand: 'chaserEnemy',
@@ -2365,10 +2470,21 @@ export class Enemy {
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
-    const gameplayModel = this.game.cloneGameplayModel(gameplayModelKeys[type]);
+    let gameplayModel = this.game.cloneGameplayModel(gameplayModelKeys[type]);
+    // スナイパー専用の体（Tripo の白骨のトンボ人形）が読めないときは、射撃敵の体を赤く塗って代わりにする
+    const sniperFallback = type === 'sniper' && !gameplayModel;
+    if (sniperFallback) gameplayModel = this.game.cloneGameplayModel('shooterEnemy');
+    if (!gameplayModel && ['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
     if (gameplayModel) {
       gameplayModel.userData.baseY = gameplayModel.position.y;
-      if (type === 'sniper') this.styleSniperModel(gameplayModel);
+      if (sniperFallback) this.styleSniperModel(gameplayModel);
+      // 飛ぶ敵は地面から浮かせる。死ぬと落ちる（spawnDeathCorpse）
+      const hoverHeight = this.stats.hoverHeight ?? 0;
+      if (hoverHeight > 0) {
+        gameplayModel.position.y += hoverHeight;
+        gameplayModel.userData.baseY = gameplayModel.position.y;
+        gameplayModel.userData.hoverHeight = hoverHeight;
+      }
       if (type === 'footprint') this.styleFootprintModel(gameplayModel);
       if (type === 'crier') this.styleCrierModel(gameplayModel);
       if (type === 'hand') this.styleHandModel(gameplayModel);
@@ -2844,7 +2960,7 @@ export class Enemy {
   createHpBar() {
     const group = new THREE.Group();
     const tripoHeight = this.tripoModel ? this.game.gameplayModelHeight(TRIPO_ENEMY_MODELS[this.type].key) : 0;
-    group.position.y = this.type === 'guardian' ? 2.25 : Math.max(1.85, tripoHeight + 0.3);
+    group.position.y = this.stats.hpBarHeight ?? (this.type === 'guardian' ? 2.25 : Math.max(1.85, tripoHeight + 0.3));
     const bg = new THREE.Mesh(
       new THREE.PlaneGeometry(1.15, 0.1),
       new THREE.MeshBasicMaterial({ color: 0x161616, transparent: true, opacity: 0.72, depthWrite: false })
@@ -2863,7 +2979,7 @@ export class Enemy {
   createSniperBeam() {
     const marker = new THREE.Mesh(SNIPER_MARKER_GEOMETRY, SNIPER_MARKER_MATERIAL);
     marker.name = 'SniperMarker';
-    marker.position.y = 2.15;
+    marker.position.y = (this.stats.hpBarHeight ?? 1.85) + 0.3;
     marker.rotation.x = Math.PI * 0.5;
     this.object.add(marker);
     this.beam = new THREE.Group();
@@ -2978,7 +3094,11 @@ export class Enemy {
     this.playModelAnimation('die', 0.06);
     const mixer = this.modelMixer;
     const model = this.model;
-    const baseY = model.userData.baseY ?? 0;
+    // 浮いていた敵は、死ぬと地面まで落ちる（LOD がなければ root と model は同じもの）
+    const hoverHeight = root.userData.hoverHeight ?? 0;
+    const hoverY = root.position.y;
+    const fallSeconds = 0.45;
+    const baseY = (model.userData.baseY ?? 0) - (model === root ? hoverHeight : 0);
     const sinkSeconds = this.getAnimationSetting('corpseSinkSeconds');
     const sinkDepth = this.getAnimationSetting('corpseSinkDepth');
     const duration = dieAction.getClip().duration + this.getAnimationSetting('corpseLingerSeconds') + sinkSeconds;
@@ -2991,6 +3111,10 @@ export class Enemy {
       update(effect, dt) {
         effect.life -= dt;
         mixer.update(dt);
+        if (hoverHeight > 0) {
+          const t = clamp((duration - effect.life) / fallSeconds, 0, 1);
+          root.position.y = hoverY - hoverHeight * t * t;
+        }
         if (effect.life < sinkSeconds) {
           const t = clamp(1 - effect.life / sinkSeconds, 0, 1);
           model.position.y = baseY - t * t * sinkDepth;
@@ -3292,6 +3416,7 @@ export class Enemy {
     if (distance <= Config.enemy.frog.jumpRange && this.jumpTimer <= 0) {
       this.jumpTimer = Config.enemy.frog.jumpInterval;
       this.jumpPhase = 0.75;
+      this.playModelOneShot('attack');
     } else this.moveToward(player.position, dt, this.speed);
   }
 
@@ -3481,7 +3606,7 @@ export class Enemy {
     player.takeDamage((this.stream?.timer > 0 ? this.stream.damage : this.stats.damage) * multiplier);
     if (this.type === 'swarmbird') this.game.onSwarmbirdHit?.(hpBefore - player.hp);
     if (this.type === 'footprint' && this.game.footprintStats) this.game.footprintStats.hits += 1;
-    if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
+    if (this.type === 'chaser' || this.type === 'guardian' || this.type === 'dragonfly') this.playModelOneShot('attack');
   }
 
   updateHpBar() {

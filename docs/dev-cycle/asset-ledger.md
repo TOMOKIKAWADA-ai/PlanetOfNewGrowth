@@ -448,3 +448,33 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | 運ばれた水（第5章） | `reward-icons/carriedWater.png`（新） | 白い卵にシアンのひび。母卵へのダメージ |
 | 踏みしめる足（第5章） | `reward-icons/firmSteps.png`（新） | 地面を踏むブーツと、かかとで止まるシアンの衝撃波 |
 | 見分ける目（第5章） | `reward-icons/seeingEye.png`（新） | 白い目とシアンの瞳。擬態卵の硬直 |
+
+## 2026-10-26 敵とボスの3Dモデル（Tripo）
+ユーザーの指示「enemy_draft/turnarounds の敵を Tripo で3D化し、今のゲームに合うか判断して適材適所で実装する」。三面図10枚から4体を選んで生成。
+ツール: Tripo Studio（Smart Mesh **P2.0**、Multiview: 三面図を前・左・後ろ・右の4枚に切り分けて入力、**Quad 2000 面**＝ゲームでは約 3300〜4000 三角形、テクスチャあり）→ GLB（テクスチャ 2k）で書き出し → Blender 5.1 で骨とモーションを付ける（`scripts/blender/build_<名前>_animations.py`）。
+費用: 1体 100 クレジット＋テクスチャ 20 クレジット。4体で 480（残り 2720）。
+元の三面図: `enemy_draft/turnarounds/`、切り分けた4枚: `enemy_draft/tripo_views/<番号>/`、書き出したままの GLB: `assets_src/tripo/`（git 対象外）。
+
+| ファイル | 元の三面図 | ゲームでの役 | 三角形 | 採用 |
+|---|---|---|---|---|
+| `assets/enemies/ivory_dragonfly_rtp.glb` → `ivory_dragonfly_anim.glb` | 04 白骨のトンボ人形 | スナイパー（`sniper`。今までは射撃の敵の色違い） | 3497 | 採用。モーション5種（attack は右腕を突き出す狙撃） |
+| `assets/enemies/bat_rat_rtp.glb` → `bat_rat_anim.glb` | 10 赤い翼の獣 | 水辺の飛ぶ敵（`dragonfly`。今までは円錐） | 3972 | 採用。宙に浮かせ（`hoverHeight` 0.85）、idle・walk は羽ばたき。死ぬと地面に落ちる |
+| `assets/enemies/armored_beetle_rtp.glb` → `armored_beetle_anim.glb` | 01 葉を背負った甲殻獣 | 水辺の跳ねる敵（`frog`。今までは円錐） | 3303 | 採用。attack はゲームの跳躍 0.75 秒に合わせた跳びかかり |
+| `assets/mother/rose_cocoon_rtp.glb` | 05 薔薇の繭 | 第5章のボス「渇きの母」の体（今までは母卵と同じ） | 3194 | 採用。動かないので骨なし |
+| — | 02・03・06・07・08・09 | — | — | 未生成。07 は細い脚が上からの視点で見えにくいので不採用。02・06・08・09・03 はまだ無い敵（鳴き・吸水根・水門の母・手・影法師・守護者の別形）の候補として保留 |
+
+元に戻すには `src/main.js` の `GAMEPLAY_MODELS` から該当の行を消す（スナイパーは射撃の敵の色違い、飛ぶ敵・跳ねる敵は円錐、渇きの母は母卵に戻る）。
+
+### 2026-10-27 追加: 第2章・第4章のボス
+ユーザーの指示「一枚目を群れの母に　２枚目を追い手に　tripoとblenderで作って実装して」。設定は上と同じ（P2.0・Multiview・Quad 2000 面・テクスチャあり）。2体で 240 クレジット（残り 2480）。
+
+| ファイル | 元の三面図 | ゲームでの役 | 三角形 | 採用 |
+|---|---|---|---|---|
+| `assets/mother/bat_neck_beast_rtp.glb` → `bat_neck_beast_anim.glb` | 20 黒衣の長首翼獣 | 第2章のボス「追い手」（`pursuerBody`） | 3562 | 採用。Tripo が色を読めず灰色の板になった頭の左右のひげ（155 面）は消した。モーション5種（attack は 2.6 秒の産卵: 首と翼を持ち上げて胸を開く） |
+| `assets/mother/spider_lily_rtp.glb` → `spider_lily_anim.glb` | 16 浮遊する彼岸花 | 第4章のボス「群れの母」の体（`swarmMotherBody`、3体） | 2466 | 採用。灰色になった所を塗り直した（花の高さは赤、触手は骨の白）。モーション6種（die は倒れて復活を待つ姿、revive で起き上がる） |
+| `assets/enemies/tadpole_rtp.glb` → `tadpole_anim.glb` | 水の生き物の三面図（2026-10-28）オタマジャクシ | 水の敵 tadpole（`tadpoleEnemy`。水門の母が流す列もこれ） | 3028 | 採用。Quad 1500 面（約 3000 三角形）。尾を振って泳ぐ idle / walk、突っ込む attack、腹を上にする die（`build_tadpole_animations.py`） |
+| `assets/enemies/dragonfly_nymph_rtp.glb` → `dragonfly_nymph_anim.glb` | 同 ヤゴ | 水の敵 dragonflyLarva（`larvaEnemy`） | 3130 | 採用。Quad 1500 面。三脚歩行の walk、下あごを突き出す attack、ひっくり返る die（`build_dragonfly_nymph_animations.py`）。三面図の横の絵の尾毛が後ろの絵に重なっていたので、切り分けは手で範囲を決めた |
+| `assets/eggs/eye_eggs.glb` | 同 水中の目玉卵 | 水中の卵（`aquaticEgg`） | 3177 | 採用。Quad 1500 面。Tripo のテクスチャ生成がサーバーエラー（error.11000）で2回通らなかったので、色なしで書き出し、目の模様を Blender で描いた（`scripts/blender/paint_eye_eggs.py`）。骨なし |
+| `assets/mother/jellyfish_stalk_rtp.glb` → `jellyfish_stalk_anim.glb` | 06 茎の生えたクラゲ | 第3章のボス「水門の母」（`floodgateMotherBody`） | 3247 | 採用。最初は垂れ糸が円柱の壁になったので、糸を消した絵（`scripts/assets/strip-hanging-strings.py`）で作り直した（2回で 220 クレジット、残り 2260）。モーション6種（surface は浮上、stun は気絶のループ）。根は動かさない |
+
+元に戻すには `GAMEPLAY_MODELS` の `pursuerBody`・`swarmMotherBody`・`floodgateMotherBody` を消す。水の敵と水中の卵は `tadpoleEnemy`・`larvaEnemy`・`aquaticEgg` を消すと元の円錐と黒い種の卵に戻る（3体で 340 クレジット、残り 1920）（母卵の見た目に戻る。動きは第2章・第4章の `boss` を `motherEgg` にすると母卵に戻る）。

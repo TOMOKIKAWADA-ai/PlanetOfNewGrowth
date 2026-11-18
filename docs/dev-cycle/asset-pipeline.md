@@ -89,7 +89,7 @@
   3. **整形と組み込み（どちらでも）**: Blender で骨・モーション・ポリゴン削減（下の「3Dの整形（Blender）」と `scripts/blender/enemy_anim_lib.py`）、`config.js` の切り替えでモックに戻せる形でゲームに入れる。生成物は asset-ledger.md に記録する（Tripo の設定、元絵、クレジット）。
 - 設定（2026-10-26〜28 ユーザー指定）: Smart Mesh **P2.0**、面は **Quad（四角形）**（リグやモーションを付けやすい）。敵は **2000 面**（ゲームで約 3300〜4000 三角形）、小さい敵は 1500 面でも足りる、ボスは 8000 面まで。三面図があれば **Multiview**（前・左・後ろ・右に切り分けて渡す）。テクスチャあり。
 - 費用: 1体 100 クレジット＋テクスチャ 20（最初の見積もり 55 は外れた）。生成前に画面の表示額を見る。
-- Tripo のくせ（下の `strip-hanging-strings.py`・`paint_eye_eggs.py` は 2026-10-29 時点でブランチ `claude/enemy-3d-implementation-0a21a1` にだけあり、main にはまだ無い）:
+- Tripo のくせ（細かい手順は下の「3Dモデル（Tripo Studio。敵・ボス、2026-10-26）」。2つのスクリプトは 2026-11-18 に main へ入った）:
   - 絵から色を読めなかった所（細いひげ、花びらの裏など）を灰色で塗る。Blender の `enemy_anim_lib`（`is_unread_gray`・`delete_faces`・`repaint_faces`）で消すか塗り直す。
   - 細い垂れ糸がある絵は糸を壁（円柱）にしてしまう。`scripts/assets/strip-hanging-strings.py` で糸を消してから渡す。
   - テクスチャが error.11000 で通らないことがある。色なしで書き出し、Blender で塗る（`scripts/blender/paint_eye_eggs.py`）。
@@ -98,6 +98,19 @@
   - 2026-11-02: 商用 ○ の **`sd_xl_base_1.0`** でも敵の元絵は描ける（DPM++ 2M、30 steps、CFG 6、832×1216 で1枚 25〜30 秒。Forge の起動は約3分）。灰色と黒に赤だけ、という敵の画風に自然に寄った。
   - 敵の体: `thorny vines` だと肩や背中から細い枝・糸が伸びる（Tripo が壁にしやすい）。`thick black vine bands wrapped tightly`・`compact silhouette` にし、否定に `antlers, horns, branches, tendrils, hair, wings, thin strands, floating strings` を入れると消えた。`A-pose, symmetrical, isolated on plain white background, no shadow` で正面の全身が出やすい（背景は薄い灰色になることが多い）。
   - SDXL base の三面図（`character turnaround sheet, front view, side view and back view`）は、向きごとに別の生き物になり Multiview には使えなかった。Multiview が要る敵は、正面の1枚を Tripo に渡すか、別の方法（Codex など）で三面図を描く。
+
+## 3Dモデル（Tripo Studio。敵・ボス、2026-10-26）
+
+- ブラウザの Tripo Studio を Claude in Chrome で操作する（ログインはユーザー）。拡張がつながらないときは Claude アプリを再起動すると直った。
+- 設定: **Smart Mesh P2.0**、**Multiview**（三面図を前・左・後ろ・右の4枚に切り分けて入れる）、面の種類は **Quad、2000 面**（骨を入れて動かしやすい。ゲームでは約 3300〜4000 三角形）、テクスチャあり。
+- 費用: 1体 100 クレジット、テクスチャ 20 クレジット。生成の前にクレジットの残りを確認する。
+- 体の周りに細い糸が垂れている絵は、Tripo が糸を「壁」にしてしまう（06 茎の生えたクラゲが円柱になった）。切り分けた絵から `python scripts/assets/strip-hanging-strings.py <入力> <出力>` で糸を消してから渡す。
+- Tripo のテクスチャ生成が通らない（error.11000、500 エラー）ときは、色なしで書き出して Blender で塗る。球がくっついた形なら `scripts/blender/paint_eye_eggs.py` のように、頂点の曲がり具合から球ごとの中心を出し、球ごとに平面投影の UV を張って模様を描ける。
+- Tripo は絵から色を読めなかった所（細いひげ、花びらの裏など）を灰色（0.5 前後）で塗る。Blender のスクリプトで、灰色ばかりの島は消し（`enemy_anim_lib.is_unread_gray`・`delete_faces`）、残す所は色を塗り直す（`repaint_faces`。明るさの差は残す）。例: `build_bat_neck_beast_animations.py`、`build_spider_lily_animations.py`。
+- 画像のアップロードは、セッションのフォルダ（作業ツリーかスクラッチパッド）にあるファイルしか使えない。`enemy_draft` の画像はコピーしてから使う。
+- 三面図の切り分けは、翼が隣のコマに触れていると透明部分の切れ目で分けられない。ラベルの中心と中心の中間で切る。
+- 書き出し: GLB、テクスチャ 2k → ダウンロードフォルダから `assets_src/tripo/` へ。
+- 骨とモーション: `blender -b --factory-startup -P scripts/blender/build_<名前>_animations.py -- <入力.glb> <出力.glb>`。Tripo の GLB は骨なしなので、骨を線分として置き、近い骨ほど強く効くウェイトを付ける（`enemy_anim_lib.distance_weights`。L_ の骨は +X 側、R_ の骨は −X 側の頂点だけに効く）。クリップ名を idle / walk / attack / hit / die にすれば、ゲームが自動で使う。
 
 ## 3Dの整形（Blender）
 
