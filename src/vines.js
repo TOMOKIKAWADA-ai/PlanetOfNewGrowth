@@ -1,7 +1,22 @@
 // 縛り蔓（Config.enemy.vine）の見た目: 敵本体、足元の予兆の輪、地面から伸びるツタ、プレイヤーに巻き付くツタ。
 // 細い木のツタに、淡い色のトゲと小さな葉を付ける。形はすべてプログラムで作る（生成モデルはまだない）。
+// 章ごとの強さ（vineStatsForChapter）もここで組み立てる。
 import * as THREE from 'three';
+import { Config } from './config.js';
 import { TAU, clamp } from './math.js';
+
+// その章の縛り蔓の強さ: 共通の値に、章ごとの値（Config.enemy.vine.chapters）を重ねたもの。
+export function vineStatsForChapter(chapter) {
+  const { chapters, ...base } = Config.enemy.vine;
+  const index = clamp(Math.round(chapter) || 1, 1, chapters.length) - 1;
+  return { ...base, ...chapters[index] };
+}
+
+// 試合の中で同時に出せる数。introAt で 1 体、fullAt で maxAlive まで増える。
+export function vineAliveCap(stats, elapsed) {
+  const progress = clamp((elapsed - stats.introAt) / Math.max(1, stats.fullAt - stats.introAt), 0, 1);
+  return Math.max(1, Math.round(1 + (stats.maxAlive - 1) * progress));
+}
 
 const VINE_COLORS = {
   bark: 0x9c7743,

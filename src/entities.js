@@ -1728,7 +1728,7 @@ export class Player {
     const mashes = input.mashCount();
     if (mashes > 0) {
       this.bindMashes += mashes;
-      this.bindTimer -= mashes * Config.enemy.vine.mashSeconds;
+      this.bindTimer -= mashes * this.game.vineConfig.mashSeconds;
       this.struggleBoost = 1;
       this.game.onBindMash(mashes);
     }
@@ -1742,7 +1742,7 @@ export class Player {
     if (!this.bindSource && !(this.bindTimer > 0)) return;
     this.bindTimer = 0;
     this.bindSource = null;
-    this.bindImmuneTimer = Config.enemy.vine.regrabImmunity;
+    this.bindImmuneTimer = this.game.vineConfig.regrabImmunity;
     this.game.onPlayerBindReleased(reason);
   }
 
@@ -1863,7 +1863,7 @@ export class Player {
     hold.play();
     hold.paused = true;
     this.activeModelAction = 'idle';
-    return Config.enemy.vine.limpSeconds;
+    return this.game.vineConfig.limpSeconds;
   }
 
   updateDeath(dt) {
@@ -2387,6 +2387,7 @@ export class Enemy {
   }
 
   get stats() {
+    if (this.type === 'vine') return this.game.vineConfig;
     if (Config.enemy[this.type]) return Config.enemy[this.type];
     if (this.type === 'shooter') return Config.enemy.shooter;
     if (this.type === 'guardian') return Config.enemy.guardian;
@@ -3198,7 +3199,7 @@ export class Enemy {
 
   // 縛り蔓: 近づいて、人間形態の足元に輪を出し、輪が閉じたら地面からツタを伸ばしてしばる（Config.enemy.vine）。
   updateVine(dt) {
-    const stats = Config.enemy.vine;
+    const stats = this.game.vineConfig;
     const player = this.game.player;
     // プレイヤーの速さ（なめらかにしたもの）。輪を先読みで置くのに使う。
     tempVec.subVectors(player.position, this.vineLastPlayer).divideScalar(Math.max(dt, 1e-3)).setY(0);
@@ -3229,7 +3230,7 @@ export class Enemy {
   }
 
   beginVineWindup() {
-    const stats = Config.enemy.vine;
+    const stats = this.game.vineConfig;
     this.vineState = 'windup';
     this.vineTimer = stats.windupSeconds;
     this.vineTarget.copy(this.game.player.position).setY(0);
@@ -3239,7 +3240,7 @@ export class Enemy {
   }
 
   strikeVine() {
-    const stats = Config.enemy.vine;
+    const stats = this.game.vineConfig;
     const player = this.game.player;
     this.removeVineWarning();
     this.vineState = 'idle';
@@ -3274,7 +3275,7 @@ export class Enemy {
       this.vineParts = { stalks: [0, 1, 2].map((i) => root.getObjectByName(`VineStalk${i}`)).filter(Boolean), head, bud };
     }
     const time = this.game.elapsed + this.vinePhase;
-    const windup = this.vineState === 'windup' ? clamp(1 - this.vineTimer / Config.enemy.vine.windupSeconds, 0, 1) : 0;
+    const windup = this.vineState === 'windup' ? clamp(1 - this.vineTimer / this.game.vineConfig.windupSeconds, 0, 1) : 0;
     const binding = this.vineState === 'binding';
     const tremble = binding ? Math.sin(time * 38) * 0.05 : windup * Math.sin(time * 30) * 0.06;
     this.vineParts.stalks.forEach((stalk, i) => {
@@ -3290,7 +3291,7 @@ export class Enemy {
       head.rotation.x = binding ? 0.5 : -windup * 0.5;
     }
     root.scale.y = 1 + windup * 0.12 + (binding ? Math.sin(time * 12) * 0.03 : 0);
-    const sinkTarget = binding ? -Config.enemy.vine.burrowDepth : 0;
+    const sinkTarget = binding ? -this.game.vineConfig.burrowDepth : 0;
     this.model.position.y += (sinkTarget - this.model.position.y) * Math.min(1, dt * 8);
     if (this.vineParts.bud) this.vineParts.bud.material.emissiveIntensity = windup * 1.8;
   }

@@ -21,7 +21,7 @@ import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
-import { VineBindVisual, createVineEruption, updateVineEruption } from './vines.js';
+import { VineBindVisual, createVineEruption, updateVineEruption, vineAliveCap, vineStatsForChapter } from './vines.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
 import {
   createWaterStageTerrainMaterial,
@@ -461,6 +461,8 @@ class Game {
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
     this.mimicStuns = 0;
+    // 縛り蔓は第1章から出る。章が進むほど数が増え、輪が速く閉じ、長くしばる（Config.enemy.vine.chapters）。
+    this.vineConfig = vineStatsForChapter(this.stageId);
     this.vinesActive = Config.enemy.vine.enabled && this.stageId >= Config.enemy.vine.fromChapter;
     this.vineIntroduced = false;
     this.vineHintShown = false;
@@ -1366,7 +1368,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       }
     }
     // 縛り蔓の章では、最初の1体を見える距離に出して紹介する。
-    if (this.vinesActive && !this.vineIntroduced && this.elapsed >= Config.enemy.vine.introAt) {
+    if (this.vinesActive && !this.vineIntroduced && this.elapsed >= this.vineConfig.introAt) {
       this.vineIntroduced = true;
       const point = this.findEnemySpawnPosition(11, 15);
       if (point) this.spawnEnemy('vine', point);
@@ -1638,15 +1640,15 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     else if (this.shouldHatchCrier()) type = 'crier';
     else if (this.shouldHatchHand()) type = 'hand';
     else if (this.shouldHatchRootsucker()) type = 'rootsucker';
-    else if (type === 'chaser' && this.canSpawnVine() && Math.random() < Config.enemy.vine.spawnChance) type = 'vine';
+    else if (type === 'chaser' && this.canSpawnVine() && Math.random() < this.vineConfig.spawnChance) type = 'vine';
     return this.spawnEnemy(type, egg.position, egg);
   }
 
   canSpawnVine() {
-    if (!this.vinesActive || this.elapsed < Config.enemy.vine.introAt) return false;
+    if (!this.vinesActive || this.elapsed < this.vineConfig.introAt) return false;
     let alive = 0;
     for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'vine') alive++;
-    return alive < Config.enemy.vine.maxAlive;
+    return alive < vineAliveCap(this.vineConfig, this.elapsed);
   }
 
   // ignoreCap: enemies a boss sends itself (the floodgate mother's tadpole lines) appear even when the field is full.

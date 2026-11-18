@@ -426,28 +426,31 @@ export const Config = {
     // 移動キー・スティック・ボタンの連打で振りほどく（予兆の間に倒せば出てこない）。enabled: false で出なくなる。
     vine: {
       enabled: true,
-      fromChapter: 4,
-      hp: 56,
+      fromChapter: 1,
       speed: 2.6,
       damage: 6,
       xp: 9,
-      range: 10,
-      cooldown: 4.5,
-      windupSeconds: 1.0,
       trackSeconds: 0.5, // 予兆の最初のこの時間だけ、輪がプレイヤーを少し遅れて追う。残りは止まる
       trackLag: 0.3,
-      // 輪は動いている先を読んで置く（ツタが出る時刻の予想位置）。まっすぐ走り続けると捕まり、曲がるか止まればよけられる。
-      leadMax: 4,
       grabRadius: 1.5,
-      bindSeconds: 3.5, // 何もしなければこの時間しばられる
-      mashSeconds: 0.2, // 連打1回で縮む時間（3.5秒なら約15回で抜ける）
-      bindDamage: 6,
       regrabImmunity: 2.5, // ほどけた直後、この時間は捕まらない
       burrowDepth: 1.5, // しばっている間、本体が地面に沈む深さ（ツタの先だけ地上に残る）
       limpSeconds: 1.6, // 捕まったまま倒れたとき、ぐったりしてから結果へ進むまでの時間（倒れるアニメーションの代わり）
-      spawnChance: 0.22, // 卵から追跡型が孵るとき、代わりに縛り蔓になる割合
-      maxAlive: 4,
-      introAt: 35 // この時刻に1体を近くへ出して見せる
+      // 試合の中でも、同時に出る数は introAt から fullAt にかけて 1 体から maxAlive まで増える。
+      fullAt: 180,
+      // 章ごとの強さ（第1章から順に。上の共通の値に重ねる）。第1章はめったに出ず、数回の連打ですぐ抜けられる。
+      //   hp・cooldown（次の輪までの秒）・range（輪を出す距離）・windupSeconds（輪が閉じるまで）・
+      //   leadMax（先読みする距離。小さいほど、まっすぐ走っていてもよけやすい）・
+      //   bindSeconds（何もしなければしばられる時間）・mashSeconds（連打1回で縮む時間）・bindDamage・
+      //   spawnChance（卵から追跡型が孵るとき、代わりに縛り蔓になる割合）・maxAlive・introAt（この時刻に1体を近くへ出して見せる）
+      chapters: [
+        { hp: 40, cooldown: 7.5, range: 9, windupSeconds: 1.45, leadMax: 1.5, bindSeconds: 1.5, mashSeconds: 0.3, bindDamage: 2, spawnChance: 0.05, maxAlive: 1, introAt: 60 },
+        { hp: 44, cooldown: 6.5, range: 9, windupSeconds: 1.3, leadMax: 2.5, bindSeconds: 2.0, mashSeconds: 0.27, bindDamage: 3, spawnChance: 0.09, maxAlive: 2, introAt: 50 },
+        { hp: 48, cooldown: 5.5, range: 9.5, windupSeconds: 1.2, leadMax: 3, bindSeconds: 2.5, mashSeconds: 0.24, bindDamage: 4, spawnChance: 0.13, maxAlive: 2, introAt: 45 },
+        { hp: 52, cooldown: 5, range: 10, windupSeconds: 1.1, leadMax: 3.5, bindSeconds: 3.0, mashSeconds: 0.22, bindDamage: 5, spawnChance: 0.17, maxAlive: 3, introAt: 40 },
+        { hp: 56, cooldown: 4.5, range: 10, windupSeconds: 1.0, leadMax: 4, bindSeconds: 3.5, mashSeconds: 0.2, bindDamage: 6, spawnChance: 0.22, maxAlive: 4, introAt: 35 },
+        { hp: 62, cooldown: 4, range: 10.5, windupSeconds: 0.95, leadMax: 4.5, bindSeconds: 4.0, mashSeconds: 0.18, bindDamage: 7, spawnChance: 0.26, maxAlive: 5, introAt: 30 }
+      ]
     },
     dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
     tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },
