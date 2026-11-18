@@ -180,6 +180,14 @@ body,
   pointer-events: none;
 }
 
+.damage-edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 52%, rgba(190, 18, 24, 0.55) 82%, rgba(150, 0, 10, 0.9) 100%);
+}
+
 .top-row {
   position: absolute;
   top: 14px;
@@ -276,6 +284,25 @@ body,
 
 .burst.ready i {
   box-shadow: 0 0 22px rgba(255, 235, 105, 0.96);
+}
+
+/* A4: 経験値バー（Config.feedbackFx.xpBar）。細い4段目。レベルアップ直前は光って「まもなく」と出る */
+.meter.xp { grid-column: 1; grid-row: 4; height: 34px; padding: 2px 14px; }
+.meter.xp.hidden { display: none; }
+.meter.xp span,
+.meter.xp b { font-size: 13px; line-height: 14px; }
+.meter.xp div { height: 6px; margin-top: 4px; }
+.xp i { background: linear-gradient(90deg, #3aa9e8, #8ff0ff); }
+.meter.xp.gain i { filter: brightness(1.6); }
+.meter.xp.near b { color: #bff6ff; text-shadow: 0 0 10px rgba(120, 230, 255, 0.85); }
+.meter.xp.near i { box-shadow: 0 0 14px rgba(140, 240, 255, 0.95); animation: xp-near-pulse 0.7s ease-in-out infinite; }
+
+/* 経験値バーの分だけ、下の文字の欄を下げる */
+#hud.xp-on .side-panel { top: 276px; }
+
+@keyframes xp-near-pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.55); }
 }
 
 @keyframes burst-ready-glow {
@@ -402,6 +429,7 @@ body,
   color: #fff2a5;
   font-weight: 800;
   text-align: center;
+  white-space: pre-line; /* 2行の説明（\n）をそのまま改行する。以前は WARNING だけ改行され、説明が1行に伸びて左の HUD に重なった */
   opacity: 0;
   transition: opacity 180ms linear;
 }
@@ -1075,6 +1103,25 @@ html[data-input-mode="gamepad"] .screen .controller-lock-note {
   line-height: 1.5;
 }
 
+.upgrade .upgrade-synergy {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(160, 232, 255, 0.82);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.upgrade .upgrade-synergy.completes {
+  color: #ffe778;
+  font-weight: 700;
+}
+
+.upgrade.synergy-ready {
+  border-color: rgba(255, 231, 120, 0.75);
+  box-shadow: 0 0 0 1px rgba(255, 231, 120, 0.35), 0 0 22px rgba(255, 231, 120, 0.18);
+}
+
 #resultBody { white-space: pre-line; }
 
 #pause {
@@ -1313,6 +1360,12 @@ button {
     height: 7px;
     margin-top: 3px;
   }
+
+  .meter.xp { height: 20px; padding: 0 5px; }
+  #hud.xp-on .side-panel { top: calc(140px + env(safe-area-inset-top)); }
+  .meter.xp span,
+  .meter.xp b { font-size: 10px; line-height: 11px; }
+  .meter.xp div { height: 4px; margin-top: 2px; }
 
   .clock {
     grid-column: 2;
@@ -1584,6 +1637,16 @@ button:focus-visible {
   text-align: left;
 }
 
+/* 引き継ぎ強化のアイコン（Config.visuals.carryOverIcons）。アイコンを左に、名前と説明を右に並べる */
+.carry-over-choice.with-icon {
+  grid-template-columns: 48px 1fr;
+  column-gap: 10px;
+  align-items: center;
+}
+.carry-over-choice.with-icon .carry-over-icon { grid-row: 1 / span 2; width: 48px; height: 48px; }
+.carry-over-choice.with-icon b { align-self: end; }
+.carry-over-choice.with-icon span { align-self: start; }
+
 .carry-over-choice b { color: #fff; font-size: 15px; }
 .carry-over-choice span { color: rgba(255, 255, 255, 0.78); font-size: 13px; line-height: 1.4; }
 .carry-over-choice:hover { border-color: rgba(255, 231, 120, 0.6); }
@@ -1679,4 +1742,62 @@ button:focus-visible {
   .forecast-panel h1 { font-size: 34px; }
   .forecast-block li { font-size: 16px; }
   .forecast-block li strong { font-size: 19px; }
+}
+
+/* A7: result-screen stats (Config.results). */
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  width: min(640px, calc(100vw - 32px));
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+.result-stats > div {
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(10, 16, 22, 0.55);
+  text-align: center;
+}
+
+.result-stats dt {
+  font-size: 12px;
+  color: rgba(235, 240, 245, 0.72);
+}
+
+.result-stats dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+#result.victory .result-stats dd {
+  color: #ffe778;
+}
+
+#retryButton .retry-key {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+@media (max-width: 560px) {
+  .result-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .result-stats dd { font-size: 18px; }
+}
+
+html[data-input-mode="gamepad"] #retryButton .retry-key {
+  display: none;
+}
+
+@media (hover: none) {
+  #retryButton .retry-key { display: none; }
 }

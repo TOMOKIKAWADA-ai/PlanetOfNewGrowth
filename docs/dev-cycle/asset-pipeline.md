@@ -40,6 +40,7 @@
   - 生成: `node scripts/assets/forge-txt2img.mjs <jobs.json> <出力先>`。jobs の書式はスクリプト先頭のコメント。PNG と同名の JSON（設定とシード）を保存する。
   - 所要時間（1344×768、VRAM に空きがあるとき）: softsketch 28 steps 52秒、bluePencil LCM 8 steps 40秒、juggernaut 28 steps 69秒（初回はモデル読み込みを含む）。
   - **他のプロセスが GPU を使っていると VRAM が尽き、1 step 100 秒まで遅くなる**（2026-10-21、別のチャットの TTS と重なった）。生成前に `nvidia-smi` で他の利用者がいないか確認する。Node の fetch は 5 分で `HeadersTimeoutError` になるので、遅いときは待たずに中止する。
+  - **空きメモリ（RAM）が少ないと、最初の生成のモデル読み込みで Forge が黙って落ちる**（2026-11-05。ログはモデル一覧の取得で止まり「続行するには何かキーを押してください」で終わる。呼び出し側は `ECONNRESET`）。そのとき空きは 31 GB 中 2.6 GB で、ユーザーの Photoshop が 15.5 GB 使っていた。起動前に `Get-CimInstance Win32_OperatingSystem` の `FreePhysicalMemory` を見て、空きが 10 GB を切っていたら生成を翌日に回す（ユーザーのアプリは閉じない）。
   - 終了: `Get-CimInstance Win32_Process | ? { $_.ExecutablePath -like 'D:\AI\webui_forge_cu121_torch231\*' } | % { Stop-Process -Id $_.ProcessId -Force }`。
 - 背景の画風（2026-10-21 の比較）: `juggernautXL_ragnarokBy`（DPM++ 2M、28 steps、CFG 5）が `assets/promo/world-awakening.png` に最も近い。暖かい逆光・厚い霧・白い花弁状の塔を明示すると良さそう（未確認）。softsketch は線画寄りで余白が多く、bluePencil は平坦でぼやける。
 - モデルは `D:\AI\webui_forge_cu121_torch231\webui\models\Stable-diffusion`:
@@ -51,6 +52,8 @@
 - 3Dにする元絵の条件: 対象1つ、正面か斜め45度、白か無地の背景、影なし、全体が画面に収まる。
 - 立ち絵に近い絵が必要なときは、既存の `assets/ui/characters` を参照画像にして ControlNet（AnyTest）か img2img を使う。
 - 画風の共通プロンプトは下の「画風の基準」。
+- **強化アイコン（`assets/ui/upgrade-icons`）は Forge で描かない**（2026-11-11 の見比べ）。今の 12 個は 512×512 の透明な PNG に「白い形＋シアン（#01F8FE 付近）の差し色」だけの平らな絵でそろっている。足す・直すときは、この型のまま Pillow で図形を描くか、既存の絵を切り貼りする（`seeds-clean.png` はこの方法）。絵は長辺 400 px 前後で中央に置く。表示は 68 px（スマホ 58 px）なので、線は 512 px の絵で 24 px 以上にする（`speed`・`pierce` は細すぎて弱い）。見比べ用の一覧は、12 個を 180・68・58・32 px で暗い地（#0A1818）に並べると違いが分かる。
+- Forge が使えない日（空きメモリ不足）の水曜は、生成の要らない手直し（アイコン、既存の絵の切り抜き・そろえ）に回す。
 
 ### 画風の基準（B0-3、2026-10-28）
 
@@ -68,6 +71,10 @@
   - 2026-10-28 の結果: 逆光と霧は手本に近づいた（10-21 の青空より良い）。ただし**黄色すぎ**、塔が**ゴシックの尖塔**になり花弁の形が出ない。次は `golden` を外して `pale cream light, cool teal shadows` にし、`gothic, spires` を否定に入れる。花弁の塔は `curved white petal-like structures, organic architecture` のように形を言い換える。
 - 敵: `dark fantasy concept art, giant crimson egg covered in thorny vines with glowing red seams, ...`（全文は `assets_src/illust/2026-10-28/jobs.json`）
   - 2026-10-28 の結果: **採用しない**。卵がつるっとした写真のような赤い卵になり、光る筋も細かい棘も出ない。juggernaut は写真寄りになりやすい。次は `intricate, organic, bramble texture, emissive red cracks, highly detailed digital painting, artstation` を足し、否定に `photo, smooth, plain, minimalist` を入れる。
+- 2026-11-04 の2回目（juggernaut と sd_xl_base、計10枚。Forge の起動 130 秒、1枚 29〜59 秒）:
+  - 世界: `curved white petal-like structures, organic architecture, towers shaped like half-open white flower buds` で**花弁の塔が出る**。`golden` を外し否定に `gothic, spires, golden, orange, yellow tint` で黄色と尖塔は消えた。ただ `ivy` だと緑が濃くなりすぎる。`sparse ivy, pale sage moss, low saturation` と否定 `saturated green` にすると今度は**白と灰色だけ**になり、空の暖色と細密さが消えた。次は両者の中間: `ivy` は残して `muted`、空に `soft warm glow on the horizon` を足し、`low saturation` は外す。
+  - 敵: `red light leaking from deep cracks, glowing red veins` で**割れ目が光る**ようになった。ただ卵が灰色の石になり、蔓が足元に寄る。次は `the egg's shell is crimson`、`crimson thorny vines covering the whole egg` のように卵の色と蔓の位置を言い切る。
+  - sd_xl_base（商用 ○）は世界の絵では平たいイラスト調になり、手本の細密さが出ない。世界・敵の一枚絵は juggernaut で詰め、商用に使う前にモデルの条件を確かめる（判断待ち）。
 - 人物: `softsketchIllustrious_v125`（Euler a、CFG 5.5）では**線画寄りの淡い塗り**になり、手本の艶のあるセル塗りと違う（採用しない）。キャラは手本の立ち絵（`assets/ui/characters`）を参照にした img2img か ControlNet で寄せる方が早い（B4-5）。
 
 判断の基準: 生成した絵は手本と並べて見比べ、(1) 光の向き（逆光か）、(2) 彩度の置き方（世界は低彩度、敵は赤だけ）、(3) 塗り（厚塗り・細密）の3点が合わなければ使わない。
@@ -101,6 +108,9 @@
   - **確認画像のパスは絶対パスで渡す**。相対パス（`out/x.png`）だと Blender が `C:\out\` に書き出した（2026-10-29）。
   - 同じ種類の候補を比べるときは、候補ごとにフォルダを分けて1つずつ実行する（出力名が種類で決まるので上書きされる）。
   - 元絵の言葉: 「翼（wings）」を入れると、2回とも目のある鳥の顔が出た（10-26、10-29）。翼のある形は避けるか、`bird, eyes, face` を否定に入れる。馬蹄形（horseshoe）は正面向きの U がそのまま立体になり、上から見ても読める。
+- Tripo の体に骨を入れる（2026-11-09）: `blender -b --factory-startup -P scripts/blender/build_tripo_enemies.py -- <名前> <元.glb> <assets/enemies/tripo/名前_anim.glb>`。骨の位置と各クリップの姿勢は同じファイルの `SPECS` に体ごとに書く（Tripo の GLB は高さ 1・足元が原点・正面が -Y）。**Blender の自動の重み（ヒート）は Tripo の体ではすべて失敗した**（そのまま・ボクセルの代理・10 倍に拡大のどれも）ので、`enemy_anim_lib.rig_mesh_auto`（骨までの距離＋ならし）を使う。確認画像は `blender -b --factory-startup -P scripts/blender/render_anim_sheet.py -- <anim.glb> <出力.png>`（行がクリップ、列が正面と横のコマ）。1 体 20〜40 秒。
+- Tripo の体をゲームに入れたあとの見直し（2026-11-12）: **黒っぽい体に自発光（emissive）を普段から乗せると、体全体がその色に塗りつぶされる**（鳴きは 0.2 で一面の紫、割れ殻は 0.08 で薄茶になった）。黒い体の普段の光は 0.02〜0.04 までにし、光は予兆のときだけ強くする。白っぽい体（手・吸水根）は 0.08〜0.1 でも絵の色が残る。確かめ方: 開発サーバーを起動し、Playwright で `game.spawnEnemy(種類, 位置, null, { ignoreCap: true })` を追いかけ役と並べて撮る（`scripts/bot-play.mjs` と同じやり方で `main.js` の末尾に `window` への出口を足す）。鳥形態の高いカメラではどの敵も 10 px ほどの点になるので、色や模様より輪郭と大きさで見分けられるかを見る。
+- 機械や建物のような**人工物は Blender のスクリプトで手作りできる**（2026-11-16 第1章のポンプ、`scripts/blender/build_chapter1_pump.py`。箱・円柱・輪の組み合わせで約 3800 三角形、1 回 15 秒）。Forge の空きメモリが足りない月・木や、元絵の商用条件が気になる小物に向く。気づいたこと: (1) Blender で中くらいの灰色（0.36）にしたコンクリートは、ゲームの光では白っぽく浮く。地面になじませるには 0.17 前後まで暗くする。(2) 回す部品は別のオブジェクトにして名前を付け（`PumpRotor`）、ゲーム側で `getObjectByName` して回す（骨やアニメーションは要らない）。(3) 回転を当てたい部品は、作るたびに選択を外してから `transform_apply` する（選んだままだと前の部品にもかかる）。
 - 単色で描く小物には、ゲーム側で陰影の出るマテリアル（`MeshStandardMaterial`、発光は弱め 0.16）を使う。光を受けないマテリアルだと形が影絵になる。
 
 ## 効果音（Stable Audio 3 Small-SFX）
@@ -119,7 +129,10 @@
 - 一括生成（2026-10-27 追加）: `scripts/assets/stable-audio-batch.py`。`stable-audio-3` フォルダで `.venv/Scripts/python.exe <スクリプト> <jobs.json> <出力フォルダ>`。jobs.json の書き方はスクリプトの先頭。モデルの読み込み約 20 秒、1本 1〜2 秒（3.4 秒の音でも）、GPU は最大 2.1GB。処理が終わるとプロセスごと終わるので、止める作業は要らない。
 - **長さは 2 秒以上で作る**（2026-10-27）。1.2 秒を指定したら4本とも、半分以上が振り切れた白色雑音になった。2 秒・3 秒は正常。短い音は 2〜3 秒で作って後から切る。
 - **プロンプトは短く、音そのものを書く**（2026-11-03）。`A strange creature's eerie warbling call, a swollen throat croak rising into ...` のような長く比喩の多いプロンプト（2.5 秒）は、8本とも最初から最後まで同じ大きさの雑音になった（振り切れはないので、0.1 秒ごとの音量が平らなこと・周波数の絵が一面同じ色なことで見分ける）。`A monster croaking call, a deep frog croak that swells and ends in a short howl, creature vocalization`（3 秒）のように短くすると正常。同じ日の手の掴み（2 秒、具体的な音の並び）は1回目で正常だった。生成は 3 音 × 4 本で約 1 分 45 秒（読み込み込み）。
+- **長さは 2 秒か 3 秒にする。2.5 秒は使わない**（2026-11-17）。2.5 秒を指定した 2 つのプロンプト（長いもの・短いもの）は 8 本とも平らな雑音になり、同じ趣旨を 3 秒にしたら 4 本とも正常だった。11-03 の失敗（鳴きの声）も 2.5 秒だったので、原因はプロンプトの長さより秒数のほうらしい。2 秒・3 秒の 12 本は今回もすべて正常。
 - 周波数の見比べ画像は、各候補を `showspectrumpic=s=400x200:legend=0:scale=log:fscale=log` で描き、`xstack` で並べると1枚で比べられる。
+- **空きメモリが少なくても動く**（2026-11-10）。空き RAM 4.1 GB・VRAM 空き 4.7 GB（ユーザーの ComfyUI・Photoshop・Affinity が起動中）でも、3 音 × 4 本が最後まで出た。ただ全体で 4 分 11 秒かかった（ふだんは約 1 分 45 秒。読み込みが遅い）。生成そのものは 1 本 1 秒前後で変わらない。Forge の「10 GB を切ったら翌日」は効果音には当てはめなくてよい。
+- 短く鋭い音（殻の割れなど）は `normalize-sfx.mjs` のリミッターで頭が削られ、目標に 5 dB ほど届かないことがある（shell_crack は -15 目標で -20.1）。ゲームで小さく聞こえたら、呼び出しの `volume` で補う。
 - 候補の選び方（音を聞けない自動のサイクル用）: ffmpeg の `ebur128` でラウドネス、`silencedetect=n=-45dB:d=0.15` で途中の無音、`showspectrumpic` で周波数の絵、numpy で 0.1 秒ごとの音量の推移と主な周波数を見る。振り切れ（|x|>0.99 の割合）が出ていたら失敗。既存の効果音の大きさは -18〜-10 LUFS（xp_pickup -17.8、egg_break -12.4、mother_charge -10.3）なので、その範囲に合わせる。
 - **音量のそろえ方（2026-11-01、B2-2）**: `node scripts/assets/normalize-sfx.mjs` で `assets/audio/sfx/*.wav` を役割ごとの目標（よく鳴る音・メニュー -18、操作への返事 -15、大技とボス -12 LUFS）にそろえて `assets/audio/sfx-normalized/` に書き出す（数秒で終わる）。新しい効果音を足したら、`sfx/` に置いて `FILE_ROLES` に役割を書き、このスクリプトを流し直す（役割の無いファイルは飛ばして警告が出る）。ゲームは `Config.audio.normalizedSfx` が true なら `sfx-normalized/` を使い、無いファイルは `sfx/` から読む。`--dry` で測るだけ。
   - 1 秒前後の音は loudnorm が効きにくいので、目標との差を一定の増減でかけ、`alimiter=limit=0.89:level=false:latency=1` で振り切れを止めている。大きく持ち上げる音（burst_spread +4.3 dB）はリミッターで頭が削られ、目標に 2 dB ほど届かない（-14.1）。
@@ -171,6 +184,10 @@
       4. 残った候補の画像を見て、声が2つに分かれている・途中に長い無音がある・語尾が伸びる・息だけ、などを落とし、1本を選ぶ。話者の近さと自然さは参考にとどめる（自然さが 1.5 未満なら落とす）。
       5. 選んだ理由（落とした候補と理由）を台帳か devlog に書く。
   - 聞いて確かめられないので、Whisper small で文字起こしして台本との一致率（句読点を除いた文字列の類似度）を見る。0.7 以上なら台詞どおり。同音の漢字違い（「ひと暴れ」→「人暴れ」）は問題なし。Python の出力は `PYTHONIOENCODING=utf-8` を付けないと文字化けする。
+    - 2026-11-06: Irodori の `.venv` には `whisper`（openai-whisper）パッケージが**入っていない**。`sys.path` に `D:\AI\Irodori-TTS-v4_1` を足して `local_runtime.configure()` を呼んでから、`transformers.pipeline("automatic-speech-recognition", model="openai/whisper-small", device=0)` を使う（`search_survive_promo\meibuki-intro\tools\asr_check.py` と同じ）。9 本の生成は読み込み込みで約 4 分、文字起こしは 1 分弱。
+    - 「割って」のような短い語は「終わって」と聞き取られやすい（3 シード中 2 本）。似た音の語がある台詞はシードを多めにする。
+    - 2026-11-13: 上の手順をスクリプトにした。`PYTHONIOENCODING=utf-8 D:/AI/Irodori-TTS-v4_1/.venv/Scripts/python.exe scripts/assets/voice-asr.py <候補のフォルダ> <台詞ファイル.json>`。候補（`<キャラ>-<id>-s*.wav`）ごとに文字起こし・一致率・声の長さ・音のかたまり（`librosa.effects.split`、top_db 35）を JSON で出す。9 本で 1 分弱。標準エラーに読み込みの表示が多いので `2>/dev/null` で捨ててよい。
+    - 「いったた」は「いっと」「いっとっと」と崩れやすかった（3 シード中 2 本）。「……」の後の間は 1 秒前後になる（ツキミ「まだ……倒れません。」で 1.1 秒）。
   - シェルの heredoc から Python に日本語を渡すと cp932 で化ける。日本語を含む置換は Edit ツールで行う。
 - ゲームに入れる後処理（FFmpeg）: 前後の無音を削り、既存の声に合わせて **-15 LUFS**（真のピーク -1.5 dB）にそろえて mp3 にする。
   `-af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-15:TP=-1.5:LRA=11,afade=t=in:d=0.01" -ar 44100 -ac 1 -codec:a libmp3lame -q:a 4`
@@ -200,6 +217,7 @@
   - 背景は単色なら `ffmpeg -f lavfi -i "color=c=0x2b3a33:s=768x826" -frames:v 1 bg.png` で作れる。
   - 確認は `fps=2.5,scale=320:-1,tile=5x2` のコマ一覧と、口元の切り出し（`crop=300:240:330:170`）を Read で見る。
   - 各キャラの `built/` は約 1MB（PNG 10 枚と layers.json）。
+- 会話画面のアバターの重さの計測（2026-11-08、B5-5）: 開発サーバー（5183）を起動したまま `PLAYWRIGHT_MODULE=<mesh-avatar-studio の node_modules/playwright> node scripts/check-avatar-weight.mjs --cpu 4`。390×844 のタッチ画面・CPU を 4 倍遅くして、プロローグを AUTO で進めながらフレームの間隔・長いタスク・メモリ・アバターが出そろうまでの時間を、アバターあり／なしで比べる。ビルド版は `npx vite preview --port 5184` のあと `STORY_TEST_URL=http://127.0.0.1:5184` と `--modes on,on`（ビルドでは config を書き換えられないので「なし」は測れない）。1 回 20〜40 秒。
 
 ## 動画・SNS素材
 
@@ -217,6 +235,7 @@
   - 並べ画像: `python scripts/promo/weekly-grid.py promo/YYYY-MM-DD/weekly-grid.png "見出し" <画像> "名前|一言" ...`（devlog のスクリーンショットを 16:10 に切って2列に並べる。確認用に HP を 9999 にした画面は HUD に値が写るので注意）。
   - ボスの場面の録画: `bot-play.mjs --runs 1 --stage N --start 172 --seed 3 --record promo/YYYY-MM-DD/raw/chN`（ボスが出る 180 秒の少し前から実時間で録る。1章あたり約1分）。ボットは新種から逃げることが多いので、新種の場面は確認用の台本（敵と卵を置く）で録る方が早い。
   - 縦動画: `MONTAGE_TITLE="見出し" node scripts/promo/montage.mjs out.mp4 "録画.webm|開始秒|終了秒|一言" ...`。16:9 を縦の真ん中に置く形（中央を縦に切り取ると、画面の端にいるボスが切れる）。一言に半角の `:` と `'` は使えない（消される）。区切りは全角の空白で。場面を選ぶ前に `ffmpeg -ss 15 -i x.webm -t 24 -vf "fps=1,scale=320:200,tile=6x4" -frames:v 1 contact.png` でコマを並べて見る。
+  - ボットが近寄らない場面（2026-11-07 の影法師など）は、bot-play.mjs と同じく `**/src/main.js*` の応答に `window.__botTest` を足す台本を書き、`browser.newContext({ recordVideo })` で録る。動画の何秒目かは `newContext` 直後からの経過時間で印を付けておくと、montage の開始秒がすぐ決まる。プレイヤーの HP を上げると HUD に写るので、代わりに `player.damageTakenMultiplier = 0` にする。
 - 構成のある動画（トレーラー、紹介動画）は、HyperFrames のスキル（hyperframes、product-launch-video、general-video など）が使えれば使う。
 - **紹介動画の型「ゆるい3人の掛け合い」**（ユーザーが気に入った形）: HyperFrames レシピ `yurui-trio-howto` と、`D:\0001_App_Dev\search_survive_promo\_template-yurui-trio\README.md` の手順で作る。新しい紹介・SNS動画は、まずこのトーン（遊び方の説明中心、物語は一言だけ）で作る。
 - 投稿文の案は日本語で、短い本文、ハッシュタグ候補、添付する素材の一覧を書く。**投稿はしない。**

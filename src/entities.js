@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { xpOrbScale, xpPullSpeedScale, xpPullStep } from './reward-feedback.js';
 import {
   TAU,
   angleToXZ,
@@ -13,9 +14,11 @@ import {
   smooth01
 } from './math.js';
 import { Config } from './config.js';
-import { getBossType } from './bosses.js';
+import { getBossType, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { VineWarning, createVineEnemyModel } from './vines.js';
 import { advanceFootprint } from './footprints.js';
+import { fullWaterScale } from './synergies.js';
 
 // 狙えるボスの体（群れの母は倒れていない姉妹だけ）。ゲーム全体なしのテストでは motherEgg だけを見る。
 function bossTargets(game) {
@@ -182,6 +185,25 @@ const HAND_ARM_UP = new THREE.Vector3(0, 1, 0);
 const HAND_ARM_HEIGHT = 1.05;
 const ROOTSUCKER_COLOR = 0x6b4a2b;
 const ROOTSUCKER_GLOW = 0xd99a4e;
+const SPLITSHELL_COLOR = 0xd8ccb0;
+const SPLITSHELL_GLOW = 0xfff0b8;
+const SWARMBIRD_COLOR = 0x3d4a66;
+const SWARMBIRD_GLOW = 0x9fdcff;
+const SWARMBIRD_ALERT = 0xff5a4a;
+// Tripo で作った体（main.js の GAMEPLAY_MODELS、Config.visuals.tripoEnemyModels）。
+// 色は絵のまま残し、各種の光（膨らむ・腕を伸ばす・根を張る）は自発光の色と強さで出す。
+const TRIPO_ENEMY_MODELS = Object.freeze({
+  footprint: { key: 'footprintTripo', glow: 0x4f86c4, glowIntensity: 0.3 },
+  // 鳴き・割れ殻は黒い体なので、普段の光を弱くして絵の色（黒に赤い筋・花）を残す（2026-11-12）。鳴きは膨らむときだけ紫に光る。
+  crier: { key: 'crierTripo', glow: CRIER_GLOW, glowIntensity: 0.04 },
+  swarmbird: { key: 'swarmbirdTripo', glow: SWARMBIRD_ALERT, glowIntensity: 0 },
+  splitshell: { key: 'splitshellTripo', glow: SPLITSHELL_GLOW, glowIntensity: 0.02 },
+  hand: { key: 'handTripo', glow: HAND_GLOW, glowIntensity: 0.08 },
+  rootsucker: { key: 'rootsuckerTripo', glow: ROOTSUCKER_GLOW, glowIntensity: 0.1 }
+});
+const SWARMBIRD_BODY_GEOMETRY = new THREE.ConeGeometry(0.2, 0.72, 5).rotateX(Math.PI / 2);
+const SWARMBIRD_WING_GEOMETRY = new THREE.BoxGeometry(0.62, 0.035, 0.3).translate(0.31, 0, 0);
+const SWARMBIRD_EYE_GEOMETRY = new THREE.SphereGeometry(0.075, 6, 4);
 const DRY_CIRCLE_GEOMETRY = new THREE.CircleGeometry(1, 48);
 const DRY_EDGE_GEOMETRY = new THREE.RingGeometry(0.95, 1, 48);
 const DRY_CIRCLE_OPACITY = 0.42;
@@ -200,7 +222,9 @@ const ENEMY_LOD_SPECS = {
   footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
   crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
   hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
-  rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 }
+  rootsucker: { color: ROOTSUCKER_COLOR, radius: 0.6, height: 1.2, segments: 6 },
+  splitshell: { color: SPLITSHELL_COLOR, radius: 0.48, height: 1.24, segments: 6 },
+  swarmbird: { color: SWARMBIRD_COLOR, radius: 0.32, height: 0.4, segments: 5 }
 };
 const ENEMY_LOD_GEOMETRIES = Object.fromEntries(
   Object.entries(ENEMY_LOD_SPECS).map(([type, spec]) => [
@@ -319,6 +343,9 @@ export class Player {
     this.damageTakenMultiplier = profile.damageTakenMultiplier ?? 1;
     this.radius = profile.radius ?? Config.player.radius;
     this.humanRegenMp = Config.player.humanRegenMp;
+    // A6: 相乗効果が「最大MP・MP回復を上げたか」を見るための元の値。
+    this.baseMaxMp = this.maxMp;
+    this.baseHumanRegenMp = this.humanRegenMp;
     this.birdMpCost = Config.player.birdMpCost;
     this.autoInterval = profile.autoInterval ?? Config.player.autoInterval;
     this.autoDamage = profile.autoDamage ?? Config.player.autoDamage;
@@ -1395,10 +1422,13 @@ export class Player {
     if (!target) return;
     this.fireFromSeeds(target.position, {
       kind: 'player',
-      damage: this.autoDamage,
+      // A6 満ちる水: MP が多いあいだ威力が上がる。
+      damage: this.autoDamage * (this.game.hasSynergy('fullWater') ? fullWaterScale(this.mp, this.maxMp, Config.synergy.fullWater) : 1),
       speed: Config.player.autoProjectileSpeed,
       radius: 0.35,
-      pierce: this.pierce
+      pierce: this.pierce,
+      // A6 貫く雨: 敵を貫くたびに威力が上がる。
+      pierceGain: this.game.hasSynergy('piercingRain') ? Config.synergy.piercingRain.gain : 0
     });
     this.autoTimer = this.autoInterval;
   }
@@ -1580,14 +1610,21 @@ export class Player {
     this.pulseTimer -= dt;
     if (this.pulseTimer > 0) return;
     this.pulseTimer = Math.max(2.2, Config.skill.pulseInterval - this.pulseLevel * 0.35);
-    this.game.spawnPulseEffect(this.position, this.pulseRange);
-    const enemies = this.game.enemyGrid.query(this.position, this.pulseRange, this.game.scratchEnemies);
-    for (const enemy of enemies) enemy.takeDamage(this.pulseDamage, this.position);
-    for (const egg of this.game.findEggsInRadius(this.position, this.pulseRange)) {
-      egg.takeDamage(Math.max(5, this.pulseDamage * 0.45), 'pulse');
+    this.firePulse();
+  }
+
+  // 範囲パルスを 1 回出す。A6 落ちる鼓動（急降下の着地）からも呼ぶ。
+  firePulse(damageScale = 1, rangeScale = 1) {
+    const range = this.pulseRange * rangeScale;
+    const damage = this.pulseDamage * damageScale;
+    this.game.spawnPulseEffect(this.position, range);
+    const enemies = this.game.enemyGrid.query(this.position, range, this.game.scratchEnemies);
+    for (const enemy of enemies) enemy.takeDamage(damage, this.position);
+    for (const egg of this.game.findEggsInRadius(this.position, range)) {
+      egg.takeDamage(Math.max(5, damage * 0.45), 'pulse');
     }
-    for (const building of this.game.findBuildingsInRadius(this.position, this.pulseRange)) {
-      this.game.damageBuilding(building, this.pulseDamage, this.position);
+    for (const building of this.game.findBuildingsInRadius(this.position, range)) {
+      this.game.damageBuilding(building, damage, this.position);
     }
   }
 
@@ -1597,7 +1634,7 @@ export class Player {
       if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
       const motherTarget = this.findMotherForDive();
-      this.startDive(motherTarget ?? this.findCrierForDive() ?? target);
+      this.startDive(this.findShadowForDive() ?? motherTarget ?? this.findCrierForDive() ?? target);
     } else if (this.diveState === 'warning') {
       this.diveTimer -= dt;
       if (!this.diveTarget || this.diveTarget.dead) {
@@ -1658,6 +1695,8 @@ export class Player {
     if (!this.diveTarget || this.diveTarget.dead) return;
     if (this.diveTarget.isMother) {
       this.diveTarget.takeDamage(this.birdMotherDiveDamage, 'birdDive');
+    } else if (this.diveTarget.type === 'shadow') {
+      this.diveTarget.takeDamage(this.birdDiveDamage * Config.enemy.shadow.diveDamageScale, this.position, true);
     } else if (this.diveTarget.type === 'crier') {
       this.diveTarget.takeDamage(this.diveTarget.hp + 10, this.position, true);
       if (this.game.crierStats) this.game.crierStats.diveKills += 1;
@@ -1671,6 +1710,11 @@ export class Player {
     }
     this.game.spawnDiveImpact(this.position);
     this.game.shake = Math.max(this.game.shake, 0.3);
+    if (this.game.hasSynergy('fallingPulse')) {
+      const cfg = Config.synergy.fallingPulse;
+      this.firePulse(cfg.damageScale, cfg.rangeScale);
+      if (this.game.synergyStats) this.game.synergyStats.divePulses += 1;
+    }
   }
 
   // 手（E11）に掴まれる。人間形態のときだけ。変身すれば振りほどける（updateGrab）。
@@ -1756,6 +1800,15 @@ export class Player {
     return best;
   }
 
+  // 影法師（E16）が地面を走っている（こちらは鳥）あいだは、急降下で一番に狙う。
+  findShadowForDive() {
+    const shadow = this.game.lotusShadow;
+    if (!shadow || shadow.dead || shadow.claimed) return null;
+    if (!shadowVulnerable(shadow.shadow.mirror.form, this.form)) return null;
+    const range = Config.enemy.shadow.diveDetectRange;
+    return horizontalDistanceSq(this.position, shadow.position) <= range * range ? shadow : null;
+  }
+
   // 鳴き（E10）は急降下で一撃。近くの卵より先に狙う。
   findCrierForDive() {
     if (!Config.enemy.crier.birdDiveTarget || !this.game.criersActive) return null;
@@ -1813,18 +1866,20 @@ export class Player {
       this.game.showMessage(this.shieldCharges > 0 ? `防護膜 ${this.shieldCharges}` : '防護膜');
       return;
     }
-    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1);
+    amount *= this.damageTakenMultiplier * (Config.player.damageTakenScale ?? 1) * (this.game.stage?.damageTakenScale ?? 1);
+    const hpBefore = this.hp;
     this.hp = Math.max(0, this.hp - amount);
     this.game.playSfx('playerHit', { volume: 0.82, cooldown: 0.12 });
     this.damageFlashTimer = 0.16;
     this.invincibleTimer = Math.max(this.invincibleTimer, 0.18);
-    this.game.shake = Math.max(this.game.shake, 0.18);
+    this.game.onPlayerHurt?.();
     if (this.hp <= 0) {
       this.startDeath();
       return;
     }
     // 捕まっている間は縛り蔓の声（Game.onPlayerBound / onBindMash）を出すので、被弾の声は重ねない。
-    if (!(this.bindTimer > 0 && Config.audio.vineVoices)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
+    const vineVoiceActive = this.bindTimer > 0 && Config.audio.vineVoices;
+    if (!vineVoiceActive && !this.game.tryLowHpVoice?.(hpBefore / this.maxHp, this.hp / this.maxHp)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
     this.playOneShotAnimation('react');
     if (this.hp <= 0) this.game.finish(false, 'HPが尽きました');
   }
@@ -2145,6 +2200,50 @@ export class Egg {
     this.object.add(this.spore);
   }
 
+  // 卵ではなく生き物の体を持つボス（白蓮の核と花弁、Tripo の体）。回らずにプレイヤーを向き、idle を流し続ける。
+  // 置き換えたら true。体が読めていなければ元の卵のまま false。
+  useCreatureModel(model) {
+    if (!model) return false;
+    this.object.remove(this.model);
+    this.model = model;
+    this.object.add(model);
+    this.baseModelScale = model.scale.clone();
+    this.creatureModel = true;
+    const clips = model.animations ?? [];
+    if (!clips.length) return true;
+    this.creatureMixer = new THREE.AnimationMixer(model);
+    this.creatureActions = {};
+    for (const clip of clips) {
+      const action = this.creatureMixer.clipAction(clip);
+      const loops = clip.name === 'idle' || clip.name === 'walk';
+      action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+      this.creatureActions[clip.name] = action;
+    }
+    const idle = this.creatureActions.idle;
+    if (idle) {
+      idle.play();
+      idle.time = Math.random() * idle.getClip().duration;
+    }
+    // 一回きりの動き（attack など）が終わったら idle に戻す
+    this.creatureMixer.addEventListener('finished', () => {
+      const back = this.creatureActions.idle;
+      if (!back || back.isRunning()) return;
+      back.reset().play();
+      this.creatureOneShot?.crossFadeTo(back, 0.25, false);
+      this.creatureOneShot = null;
+    });
+    return true;
+  }
+
+  playCreatureOneShot(name) {
+    const action = this.creatureActions?.[name];
+    if (!action || this.creatureOneShot === action) return;
+    const idle = this.creatureActions.idle;
+    action.reset().play();
+    if (idle?.isRunning()) idle.crossFadeTo(action, 0.15, false);
+    this.creatureOneShot = action;
+  }
+
   createFallback() {
     return new THREE.Mesh(
       new THREE.DodecahedronGeometry(this.isMother ? 1.6 : 0.75, 1),
@@ -2187,7 +2286,12 @@ export class Egg {
     const showDetails = this.isMother || distanceSq <= Config.performance.eggDetailDistance ** 2;
     this.ring.visible = showDetails;
     this.spore.visible = showDetails;
-    this.model.rotation.y += dt * (this.isMother ? 0.18 : 0.35);
+    if (this.creatureModel) {
+      this.creatureMixer?.update(dt);
+      this.model.rotation.y = angleToXZ(this.position, this.game.player.position);
+    } else {
+      this.model.rotation.y += dt * (this.isMother ? 0.18 : 0.35);
+    }
     if (showDetails) {
       this.ring.rotation.z += dt * (this.isMother ? 0.18 : 0.32);
       this.spore.rotation.y -= dt * 0.22;
@@ -2199,6 +2303,7 @@ export class Egg {
       if (this.pursuit) this.updatePursuerShell(dt);
       if (this.swarm) this.updateSwarmBody();
       if (this.floodgate) this.updateFloodgateBody(dt);
+      if (this.lotus) this.updateLotusBody(dt);
     }
     if (this.isMother) return;
     this.updatePulse(dt);
@@ -2254,6 +2359,32 @@ export class Egg {
     this.model.rotation.z = surfaced ? Math.sin(this.age * 5) * 0.12 : 0;
   }
 
+  // 白蓮の核（src/bosses.js）: 花弁は白い輪でゆっくり揺れ、産む直前に輪が明るくなる。
+  // 核は閉じているあいだ小さく白い輪、開くと大きくなって金色の輪が脈打ち、吸い込みの間は輪が縮む。
+  updateLotusBody(dt) {
+    const lotus = this.lotus;
+    if (this.lotusRole === 'petal') {
+      const ready = clamp(1 - this.lotusSpawnTimer / 2, 0, 1);
+      this.ring.material.color.setHex(0xfff2f6);
+      this.ring.material.opacity = 0.3 + ready * 0.5;
+      // 産んだ直後（タイマーが巻き戻った）に体を振る。卵の体は代わりにゆっくり傾いて揺れる
+      if (this.creatureModel && this.lotusSpawnTimer > (this.lastLotusSpawnTimer ?? Infinity)) this.playCreatureOneShot('attack');
+      this.lastLotusSpawnTimer = this.lotusSpawnTimer;
+      if (!this.creatureModel) this.model.rotation.z = Math.sin(this.age * 1.6 + this.position.x) * 0.1;
+      return;
+    }
+    // 核は衝撃波と吸い込みの予告に入ったとき攻撃の動きをする
+    if (this.creatureModel && lotus.attack !== this.lastLotusAttack && lotus.attack?.endsWith('Warning')) this.playCreatureOneShot('attack');
+    this.lastLotusAttack = lotus.attack;
+    const open = lotus.state === 'open';
+    this.lotusBloom = clamp((this.lotusBloom ?? 0) + (open ? dt * 1.5 : -dt), 0, 1);
+    this.model.scale.multiplyScalar(0.8 + this.lotusBloom * 0.3);
+    const inhaling = lotus.attack === 'inhale' || lotus.attack === 'inhaleWarning';
+    this.ring.material.color.setHex(!open ? 0xd8d2e6 : inhaling ? 0xfff2f6 : 0xffe066);
+    this.ring.material.opacity = !open ? 0.22 : 0.45 + Math.sin(this.age * (inhaling ? 14 : 6)) * 0.2;
+    this.ring.scale.setScalar(!open ? 0.9 : inhaling ? 1.25 - (this.age * 2 % 1) * 0.5 : 1.1);
+  }
+
   // 群れの母（src/bosses.js）: 倒れている姉妹は縮んで輪が消え、起き上がりが近い（3 秒前から）と点滅する。
   updateSwarmBody() {
     if (!this.swarmDown) return;
@@ -2296,6 +2427,7 @@ export class Egg {
     }
     if (this.dead || this.swarmDown) return;
     if (this.isMother) amount *= this.game.player?.motherDamageScale ?? 1;
+    if (this.isMother && source === 'burst') amount *= Config.player.burstBossDamageScale ?? 1;
     const bossScale = this.isMother ? this.bossType.damageScale?.(this) ?? 1 : 1;
     amount *= bossScale;
     this.hp -= amount;
@@ -2316,6 +2448,10 @@ export class Egg {
   }
 
 }
+
+// 影法師の足元の輪と体のほのかな光。紫は「同じ形態（攻撃が通らない）」、金は「逆の形態（攻撃が通る）」。
+const SHADOW_GLOW = 0x5a2a8a;
+const SHADOW_OPEN_GLOW = 0xffc94a;
 
 export class Enemy {
   constructor(game, type, position, homeEgg = null) {
@@ -2384,6 +2520,11 @@ export class Enemy {
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
     if (type === 'hand') this.createHandArm();
     if (type === 'rootsucker') this.createDryCircle();
+    if (type === 'shadow') this.initShadow();
+    if (type === 'swarmbird') this.swarm = { flock: null, slot: 0, mode: 'orbit', notice: 0, height: Config.enemy.swarmbird.orbitHeight, angle: 0, phase: Math.random() * TAU };
+    // 割れ殻の半分（makeSplitHalf）はもう割れず、割れた直後はバースト技を受けない
+    this.splitHalf = false;
+    this.burstImmuneTimer = 0;
   }
 
   get stats() {
@@ -2398,6 +2539,11 @@ export class Enemy {
   createModel(type) {
     if (['dragonflyLarva', 'tadpole', 'dragonfly', 'frog'].includes(type)) return createEnemyLowModel(type);
     if (type === 'vine') return this.createLodModel(createVineEnemyModel(), type);
+    const tripo = TRIPO_ENEMY_MODELS[type];
+    const tripoModel = tripo && this.game.tripoEnemyModelsEnabled ? this.game.cloneGameplayModel(tripo.key) : null;
+    if (tripoModel) return this.prepareTripoModel(tripoModel, type, tripo);
+    if (type === 'swarmbird') return this.createSwarmbirdModel();
+    if (type === 'shadow') return this.createShadowModel();
     const gameplayModelKeys = {
       chaser: 'chaserEnemy',
       shooter: 'shooterEnemy',
@@ -2406,6 +2552,7 @@ export class Enemy {
       crier: 'spawnerEnemy',
       hand: 'chaserEnemy',
       rootsucker: 'guardianEnemy',
+      splitshell: 'chaserEnemy',
       guardian: 'guardianEnemy',
       spawner: 'spawnerEnemy'
     };
@@ -2417,6 +2564,7 @@ export class Enemy {
       if (type === 'crier') this.styleCrierModel(gameplayModel);
       if (type === 'hand') this.styleHandModel(gameplayModel);
       if (type === 'rootsucker') this.styleRootsuckerModel(gameplayModel);
+      if (type === 'splitshell') this.styleSplitshellModel(gameplayModel);
       if (type === 'spawner' && Config.performance.enemyLights) {
         const light = new THREE.PointLight(0xffe56c, 1.2, 5);
         light.position.y = 1.8;
@@ -2433,6 +2581,7 @@ export class Enemy {
       if (type === 'crier') this.styleCrierModel(model);
       if (type === 'hand') this.styleHandModel(model);
       if (type === 'rootsucker') this.styleRootsuckerModel(model);
+      if (type === 'splitshell') this.styleSplitshellModel(model);
       model.rotation.y = Math.PI;
       if (Config.performance.enemyLights) {
         const light = new THREE.PointLight(type === 'spawner' ? 0xffe56c : 0x6cffaa, type === 'spawner' ? 1.4 : 0.45, 5);
@@ -2442,6 +2591,43 @@ export class Enemy {
       return this.createLodModel(model, type);
     }
     return createEnemyLowModel(type);
+  }
+
+  // Tripo の体: テクスチャを残したまま材質を敵ごとに複製し、各種の update が光らせる材質の一覧に入れる。
+  prepareTripoModel(model, type, tripo) {
+    this.tripoModel = true;
+    model.userData.baseY = model.position.y;
+    const materials = [];
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const tint = (source) => {
+        const material = source.clone();
+        if (material.emissive?.isColor) material.emissive.setHex(tripo.glow);
+        if ('emissiveIntensity' in material) material.emissiveIntensity = tripo.glowIntensity;
+        // 足跡は追い手の写しなので、絵の色のまま少し透ける（見失うとさらに薄くなる: updateFootprint）
+        if (type === 'footprint') {
+          material.transparent = true;
+          material.opacity = 0.82;
+        }
+        material.needsUpdate = true;
+        materials.push(material);
+        return material;
+      };
+      child.material = Array.isArray(child.material) ? child.material.map(tint) : tint(child.material);
+    });
+    if (type === 'footprint') this.footprintMaterials = materials;
+    if (type === 'crier') this.crierMaterials = materials;
+    if (type === 'hand') this.handMaterials = materials;
+    if (type === 'rootsucker') this.rootsuckerMaterials = materials;
+    if (type === 'swarmbird') {
+      // 群れ鳥は空を飛び、襲うときに大きくなる（updateSwarmbird）。気づいたら体が赤く光る（仮の体の赤い目の代わり）
+      model.userData.alertMaterials = materials;
+      model.userData.swarmBaseScale = model.scale.x;
+      model.position.y = Config.enemy.swarmbird.orbitHeight;
+      model.userData.baseY = model.position.y;
+      return model;
+    }
+    return this.createLodModel(model, type);
   }
 
   styleSniperModel(model) {
@@ -2560,6 +2746,239 @@ export class Enemy {
     });
   }
 
+  // 割れ殻は追いかけ役の体を、白っぽい殻の色に塗る。縁がうっすら光る。
+  styleSplitshellModel(model) {
+    model.traverse((child) => {
+      if (!child.isMesh || !child.material) return;
+      const recolor = (source) => {
+        const material = source.clone();
+        if (material.color?.isColor) material.color.setHex(SPLITSHELL_COLOR);
+        if ('map' in material) material.map = null;
+        if ('vertexColors' in material) material.vertexColors = false;
+        if (material.emissive?.isColor) material.emissive.setHex(SPLITSHELL_GLOW);
+        if ('emissiveMap' in material) material.emissiveMap = null;
+        if ('emissiveIntensity' in material) material.emissiveIntensity = 0.16;
+        material.needsUpdate = true;
+        return material;
+      };
+      child.material = Array.isArray(child.material)
+        ? child.material.map(recolor)
+        : recolor(child.material);
+    });
+  }
+
+  // 群れ鳥の体。細い円錐の胴、左右の羽（羽ばたく）、光る目。目は鳥形態に気づくと赤くなる。
+  createSwarmbirdModel() {
+    const model = new THREE.Group();
+    model.name = 'Enemy_swarmbird';
+    const body = new THREE.Mesh(SWARMBIRD_BODY_GEOMETRY, new THREE.MeshStandardMaterial({ color: SWARMBIRD_COLOR, emissive: SWARMBIRD_GLOW, emissiveIntensity: 0.12, roughness: 0.7 }));
+    model.add(body);
+    const wingMaterial = new THREE.MeshStandardMaterial({ color: SWARMBIRD_COLOR, emissive: SWARMBIRD_GLOW, emissiveIntensity: 0.22, roughness: 0.8 });
+    const wings = [-1, 1].map((side) => {
+      const wing = new THREE.Mesh(SWARMBIRD_WING_GEOMETRY, wingMaterial);
+      wing.scale.x = side;
+      wing.position.set(side * 0.08, 0.02, 0.02);
+      model.add(wing);
+      return wing;
+    });
+    const eyeMaterial = new THREE.MeshBasicMaterial({ color: SWARMBIRD_GLOW, toneMapped: false });
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(SWARMBIRD_EYE_GEOMETRY, eyeMaterial);
+      eye.position.set(side * 0.09, 0.07, 0.24);
+      model.add(eye);
+    }
+    model.scale.setScalar(1.6);
+    model.position.y = Config.enemy.swarmbird.orbitHeight;
+    model.userData.baseY = model.position.y;
+    model.userData.wings = wings;
+    model.userData.eyeMaterial = eyeMaterial;
+    return model;
+  }
+
+  // 群れ鳥。人間形態の間は群れごとプレイヤーの周りを遠巻きに回る。鳥形態になると少し遅れて気づき、
+  // 鳥の高さまで上がって追いかける。高さが近いときだけ当たる（updateContactDamage）。
+  updateSwarmbird(dt) {
+    const cfg = Config.enemy.swarmbird;
+    const player = this.game.player;
+    const swarm = this.swarm;
+    if (player.form === 'bird') swarm.notice = Math.min(cfg.noticeSeconds, swarm.notice + dt);
+    else swarm.notice = 0;
+    const hunting = player.form === 'bird' && swarm.notice >= cfg.noticeSeconds;
+    if (hunting && swarm.mode !== 'hunt') this.game.onSwarmbirdHunt?.(this);
+    swarm.mode = hunting ? 'hunt' : 'orbit';
+    let targetHeight = cfg.orbitHeight;
+    if (hunting) {
+      targetHeight = Math.max(cfg.orbitHeight, player.visualHeight ?? cfg.orbitHeight);
+      // 追いついたら重ならないよう、羽ごとにずらしてプレイヤーのすぐ周りを回る（当たる距離の内側）
+      const swirl = this.game.elapsed * 3.2 + swarm.slot * (TAU / 4) + swarm.phase * 0.2;
+      tempVec2.set(player.position.x + Math.sin(swirl) * 1.1, 0, player.position.z + Math.cos(swirl) * 1.1);
+      const distSq = horizontalDistanceSq(this.position, tempVec2);
+      if (distSq > 0.0025) this.moveToward(tempVec2, dt, Math.min(cfg.diveSpeed, Math.sqrt(distSq) / dt));
+    } else {
+      // 群れの角度（flock.angle）は main.js が毎フレーム進める。羽ごとに少しずらして固まって回る。
+      const base = swarm.flock ? swarm.flock.angle : (swarm.angle += cfg.orbitTurnSpeed * dt);
+      const angle = base + (swarm.slot - 1.5) * 0.32;
+      const radius = cfg.orbitRadius + Math.sin(this.game.elapsed * 1.3 + swarm.phase) * 0.8;
+      tempVec2.set(player.position.x + Math.sin(angle) * radius, 0, player.position.z + Math.cos(angle) * radius);
+      const distSq = horizontalDistanceSq(this.position, tempVec2);
+      if (distSq > 0.04) this.moveToward(tempVec2, dt, Math.min(this.speed * (distSq > 9 ? 1.6 : 1), Math.sqrt(distSq) / dt));
+    }
+    const step = cfg.climbSpeed * dt;
+    swarm.height += clamp(targetHeight - swarm.height, -step, step);
+    const flap = Math.sin(this.game.elapsed * (hunting ? 26 : 16) + swarm.phase) * 0.7;
+    const wings = this.model.userData.wings;
+    if (wings) { wings[0].rotation.z = -flap; wings[1].rotation.z = flap; }
+    const eye = this.model.userData.eyeMaterial;
+    if (eye) eye.color.setHex(swarm.notice > 0 ? SWARMBIRD_ALERT : SWARMBIRD_GLOW);
+    for (const material of this.model.userData.alertMaterials ?? []) {
+      if ('emissiveIntensity' in material) material.emissiveIntensity = swarm.notice > 0 ? 0.55 : 0;
+    }
+    this.model.userData.baseY = swarm.height;
+    // Tripo の体は羽ばたきのモーション（walk）を持つので、高さはここで直接合わせる
+    if (this.tripoModel) this.model.position.y = swarm.height;
+    // 鳥形態のカメラは高く引くので、襲っている間は体を大きくして見えるようにする（仮の体は 1.6 → 2.6）
+    const base = this.model.userData.swarmBaseScale ?? 1.6;
+    const target = base * (hunting ? 2.6 / 1.6 : 1);
+    const scale = this.model.scale.x + (target - this.model.scale.x) * Math.min(1, dt * 4);
+    this.model.scale.setScalar(scale);
+  }
+
+  // ---- 影法師（E16） ----
+  // 選んだキャラの人間形態と鳥形態の体を写し、黒く塗る。足元の輪は、攻撃が通るときだけ金色になる。
+  createShadowModel() {
+    const player = this.game.player;
+    const root = new THREE.Group();
+    root.name = 'Enemy_shadow';
+    const material = new THREE.MeshStandardMaterial({ color: 0x07060a, emissive: SHADOW_GLOW, emissiveIntensity: 0.4, roughness: 0.92, metalness: 0 });
+    const paint = (object) => {
+      object.traverse((child) => {
+        if (!child.isMesh && !child.isSkinnedMesh) return;
+        child.material = material;
+        child.castShadow = Config.performance.enableShadows;
+        child.receiveShadow = false;
+      });
+      object.visible = true;
+      return object;
+    };
+    const humanSource = player?.model ?? player?.fallback;
+    const human = humanSource ? paint(cloneSkeleton(humanSource)) : paint(new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1, 4, 8)));
+    if (!humanSource) human.position.y = 0.9;
+    root.add(human);
+    let bird = null;
+    if (player?.birdModel) {
+      bird = paint(cloneSkeleton(player.birdModel));
+      bird.rotation.x = Config.visuals.birdModelPitch;
+      bird.rotation.y = Config.visuals.birdModelYaw;
+      bird.visible = false;
+      root.add(bird);
+    }
+    let mixer = null;
+    const runClip = player?.modelActions?.run?.getClip?.() ?? player?.modelActions?.idle?.getClip?.();
+    if (runClip && player?.model) {
+      try {
+        mixer = new THREE.AnimationMixer(human);
+        mixer.clipAction(runClip).play();
+      } catch {
+        mixer = null;
+      }
+    }
+    root.userData.baseY = 0;
+    root.userData.shadow = { human, bird, material, mixer, humanTiltX: human.rotation.x };
+    return root;
+  }
+
+  initShadow() {
+    const form = shadowFormOf(this.game.player?.form ?? 'human');
+    this.shadow = { mirror: { form, pending: null, timer: 0 }, height: form === 'bird' ? Config.player.birdHeight : 0, deflectTimer: 0, changed: 0 };
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.85, 1.15, 40),
+      new THREE.MeshBasicMaterial({ color: SHADOW_GLOW, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide, toneMapped: false })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    this.object.add(ring);
+    this.shadow.ring = ring;
+  }
+
+  shadowCanBeHit() {
+    const player = this.game.player;
+    if (shadowVulnerable(this.shadow.mirror.form, player.form)) return true;
+    // 同じ形態のときは弾かれる（灰色の火花と、ときどき一言）
+    this.game.spawnHitSpark(this.position, 0x8a8f99);
+    if (this.shadow.deflectTimer <= 0) {
+      this.shadow.deflectTimer = 4;
+      this.game.onShadowDeflect?.(this);
+    }
+    return false;
+  }
+
+  // こちらの形態を mirrorDelay 秒遅れで写す。人間の間は地面を走って追い、鳥の間は鳥の高さを飛んで追う。
+  updateShadow(dt) {
+    const cfg = Config.enemy.shadow;
+    const player = this.game.player;
+    const shadow = this.shadow;
+    shadow.deflectTimer = Math.max(0, shadow.deflectTimer - dt);
+    if (shadowMirrorStep(shadow.mirror, player.form, dt, cfg.mirrorDelay)) {
+      shadow.changed += 1;
+      this.game.onShadowMirror?.(this, shadow.mirror.form);
+    }
+    const bird = shadow.mirror.form === 'bird';
+    const targetHeight = bird ? Config.player.birdHeight : 0;
+    const step = cfg.climbSpeed * dt;
+    shadow.height += clamp(targetHeight - shadow.height, -step, step);
+    this.moveToward(player.position, dt, bird ? cfg.birdSpeed : this.speed);
+    const view = this.model.userData.shadow;
+    const vulnerable = shadowVulnerable(shadow.mirror.form, player.form);
+    view.mixer?.update(dt);
+    if (view.bird) {
+      view.bird.visible = bird;
+      view.human.visible = !bird;
+    } else {
+      view.human.rotation.x = bird ? -0.34 : view.humanTiltX;
+    }
+    view.material.emissive.setHex(vulnerable ? SHADOW_OPEN_GLOW : SHADOW_GLOW);
+    // 鳥形態のカメラは高く引いて暗くなるので、飛んでいる間は体を大きく・明るくして見えるようにする
+    view.material.emissiveIntensity = (vulnerable ? 0.55 + Math.sin(this.game.elapsed * 14) * 0.2 : 0.4) + (bird ? 0.5 : 0);
+    const scale = this.model.scale.x + ((bird ? 1.7 : 1) - this.model.scale.x) * Math.min(1, dt * 4);
+    this.model.scale.setScalar(scale);
+    shadow.ring.material.color.setHex(vulnerable ? SHADOW_OPEN_GLOW : SHADOW_GLOW);
+    shadow.ring.scale.setScalar(vulnerable ? 1.35 : 1);
+    this.model.userData.baseY = shadow.height;
+  }
+
+  // 同じ形態のときだけ当たる。鳥どうしは高さが近いときだけ。
+  updateShadowContact(player) {
+    const cfg = Config.enemy.shadow;
+    if (shadowVulnerable(this.shadow.mirror.form, player.form)) return;
+    if (player.form === 'fish') return;
+    if (player.form === 'bird' && Math.abs(this.shadow.height - (player.visualHeight ?? 0)) > 2.2) return;
+    if (this.distanceSqToPlayer > 1.9) return;
+    if (this.attackTimer > 0) return;
+    this.attackTimer = cfg.contactCooldown;
+    const hpBefore = player.hp;
+    player.takeDamage(this.stats.damage);
+    this.game.onShadowHit?.(this, hpBefore - player.hp);
+  }
+
+  updateShadowHpBar() {
+    this.hpBar.visible = true;
+    this.hpBar.position.y = this.shadow.height + 2.3;
+    const fg = this.hpBar.getObjectByName('fg');
+    if (fg) fg.scale.x = clamp(this.hp / this.maxHp, 0, 1);
+    this.hpBar.lookAt(this.game.camera.position);
+  }
+
+  // バースト技で割れた割れ殻の片方。小さく、HP と経験値が halfScale 倍で、もう割れない。
+  makeSplitHalf() {
+    const cfg = Config.enemy.splitshell;
+    this.splitHalf = true;
+    this.maxHp = this.stats.hp * cfg.halfScale;
+    this.hp = this.maxHp;
+    this.burstImmuneTimer = cfg.halfBurstImmuneSeconds;
+    this.model.scale.multiplyScalar(0.72);
+    this.collisionRadius *= 0.78;
+  }
+
   // 乾いた円。地面に貼る薄い土色の円と、縁の明るい輪。根を張ると現れて広がる。
   createDryCircle() {
     this.root = { timer: Config.enemy.rootsucker.rootSeconds, rooted: false, age: 0, radius: 0 };
@@ -2615,7 +3034,8 @@ export class Enemy {
 
   createHpBar() {
     const group = new THREE.Group();
-    group.position.y = this.type === 'guardian' ? 2.25 : 1.85;
+    const tripoHeight = this.tripoModel ? this.game.gameplayModelHeight(TRIPO_ENEMY_MODELS[this.type].key) : 0;
+    group.position.y = this.type === 'guardian' ? 2.25 : Math.max(1.85, tripoHeight + 0.3);
     const bg = new THREE.Mesh(
       new THREE.PlaneGeometry(1.15, 0.1),
       new THREE.MeshBasicMaterial({ color: 0x161616, transparent: true, opacity: 0.72, depthWrite: false })
@@ -2788,6 +3208,7 @@ export class Enemy {
     this.updateModelAnimation(dt);
     this.attackTimer = Math.max(0, this.attackTimer - dt);
     this.buildingImpactTimer = Math.max(0, this.buildingImpactTimer - dt);
+    this.burstImmuneTimer = Math.max(0, this.burstImmuneTimer - dt);
     this.fireTimer -= dt;
     this.lifeTimer -= dt;
     this.matureTimer -= dt;
@@ -2821,6 +3242,8 @@ export class Enemy {
     else if (this.type === 'crier') this.updateCrier(dt);
     else if (this.type === 'hand') this.updateHand(dt);
     else if (this.type === 'rootsucker') this.updateRootsucker(dt);
+    else if (this.type === 'swarmbird') this.updateSwarmbird(dt);
+    else if (this.type === 'shadow') this.updateShadow(dt);
     else this.moveToward(this.game.player.position, dt, this.speed);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     // 根を張った吸水根は押されても動かない（乾いた円がずれないように）
@@ -2831,7 +3254,9 @@ export class Enemy {
       this.position.z += this.knock.z * dt;
       this.knock.multiplyScalar(Math.pow(0.05, dt));
     }
-    const blockedBuilding = this.game.resolveBuildingCollision(this.position, this.collisionRadius);
+    // 群れ鳥は空を飛ぶので建物に当たらない
+    const flying = this.type === 'swarmbird' || (this.type === 'shadow' && this.shadow.height > 2);
+    const blockedBuilding = flying ? null : this.game.resolveBuildingCollision(this.position, this.collisionRadius);
     if (blockedBuilding && this.buildingImpactTimer <= 0) {
       this.buildingImpactTimer = 0.85;
       this.game.damageBuilding(blockedBuilding, Math.max(3, this.stats.damage * 0.25), this.position);
@@ -2840,12 +3265,15 @@ export class Enemy {
     // しばっている間は根を張っている（押されてもツタの付け根が離れない）。
     if (this.vineState === 'binding') this.position.copy(this.vineAnchor);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
-    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (this.type === 'spawner' || this.type === 'crier' ? Math.PI : 0);
+    // 産卵獣の体（と、それを使う仮の鳴き）は後ろ向きに作られている
+    const backwards = this.type === 'spawner' || (this.type === 'crier' && !this.tripoModel);
+    this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (backwards ? Math.PI : 0);
     if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
     else if (this.type === 'vine') this.animateVineModel(dt);
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();
     this.updateHpBar();
+    if (this.type === 'shadow') this.updateShadowHpBar();
   }
 
   getThrottledDt(dt) {
@@ -2916,7 +3344,7 @@ export class Enemy {
     const swell = crier.swelling ? clamp(1 - crier.timer / cfg.swellSeconds, 0, 1) : 0;
     this.model.scale.copy(crier.baseScale).multiplyScalar(1 + swell * swell * cfg.swellScale);
     for (const material of this.crierMaterials ?? []) {
-      if ('emissiveIntensity' in material) material.emissiveIntensity = 0.2 + swell * 1.3;
+      if ('emissiveIntensity' in material) material.emissiveIntensity = (this.tripoModel ? TRIPO_ENEMY_MODELS.crier.glowIntensity : 0.2) + swell * 1.3;
     }
     if (crier.timer > 0) return;
     crier.timer = cfg.cryInterval;
@@ -3087,7 +3515,7 @@ export class Enemy {
     if (distance < stats.range * 0.55) this.moveAway(player.position, dt, this.speed);
     else if (distance > stats.range * 0.9) this.moveToward(player.position, dt, this.speed);
 
-    if (this.beamState === 'idle' && distance <= stats.range && this.fireTimer <= 0) {
+    if (this.beamState === 'idle' && distance <= stats.range && this.fireTimer <= 0 && this.game.sniperMayFire?.(this) !== false) {
       this.beamState = 'warning';
       this.beamTimer = stats.warningSeconds;
       this.beamAim = angleToXZ(this.position, player.position);
@@ -3330,12 +3758,22 @@ export class Enemy {
   updateContactDamage() {
     const player = this.game.player;
     if (player.phaseTimer > 0 || this.burrowed) return;
-    if (player.form === 'bird' && this.type !== 'dragonfly') return;
+    if (this.type === 'shadow') {
+      this.updateShadowContact(player);
+      return;
+    }
+    // 群れ鳥は鳥形態のときだけ、高さが近づいてから当たる（人間形態には当たらない）
+    if (this.type === 'swarmbird') {
+      if (player.form !== 'bird' || this.swarm.mode !== 'hunt') return;
+      if (Math.abs(this.swarm.height - (player.visualHeight ?? 0)) > 2.2) return;
+    } else if (player.form === 'bird' && this.type !== 'dragonfly') return;
     if (this.distanceSqToPlayer > 1.55) return;
     if (this.attackTimer > 0) return;
-    this.attackTimer = 0.75;
+    this.attackTimer = this.type === 'swarmbird' ? Config.enemy.swarmbird.contactCooldown : 0.75;
     const multiplier = this.type === 'dragonfly' && player.form === 'bird' ? Config.enemy.dragonfly.birdDamageMultiplier : 1;
+    const hpBefore = player.hp;
     player.takeDamage((this.stream?.timer > 0 ? this.stream.damage : this.stats.damage) * multiplier);
+    if (this.type === 'swarmbird') this.game.onSwarmbirdHit?.(hpBefore - player.hp);
     if (this.type === 'footprint' && this.game.footprintStats) this.game.footprintStats.hits += 1;
     if (this.type === 'chaser' || this.type === 'guardian') this.playModelOneShot('attack');
   }
@@ -3348,8 +3786,11 @@ export class Enemy {
     this.hpBar.lookAt(this.game.camera.position);
   }
 
+  // バースト技（アカメの爆発・ツキミのビーム・キイチゴの斬撃）は burstReward: false で呼ぶ
   takeDamage(amount, origin = null, strongKnock = false, burstReward = true) {
     if (this.dead || this.burrowed) return;
+    if (!burstReward && this.burstImmuneTimer > 0) return;
+    if (this.type === 'shadow' && !this.shadowCanBeHit()) return;
     this.hp -= amount;
     this.game.spawnHitSpark(this.position, this.type === 'spawner' ? 0xffe36c : 0xffffff);
     if (origin) {
@@ -3370,9 +3811,13 @@ export class Enemy {
     if (reward) this.spawnDeathCorpse();
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
+      this.game.feelHit?.(this.type === 'spawner' || this.type === 'shadow' ? 'bigKill' : 'enemyKill');
+      this.game.onEnemyKilled?.(this);
       if (burstReward) this.game.player.addBurst(this.type === 'spawner' ? Config.player.burstGainSpawner : Config.player.burstGainEnemy);
-      this.game.spawnXp(this.position, this.stats.xp);
+      this.game.spawnXp(this.position, this.stats.xp * (this.splitHalf ? Config.enemy.splitshell.halfScale : 1));
       this.game.spawnRandomPickup(this.position, this.type === 'spawner' ? 'spawner' : 'enemy');
+      if (this.type === 'splitshell' && !burstReward && !this.splitHalf) this.game.onSplitshellBurst?.(this);
+      if (this.type === 'shadow') this.game.onShadowDown?.(this);
       this.game.spawnEnemyDissolveEffect(this.position, this.type);
     }
   }
@@ -3453,6 +3898,7 @@ export class Projectile {
     this.damage = spec.damage;
     this.radius = spec.radius ?? this.radius;
     this.pierce = spec.pierce ?? 0;
+    this.pierceGain = spec.pierceGain ?? 0;
     this.hitSet.clear();
     this.spriteFrames = spec.spriteFrames ?? [];
     this.spriteFrameRate = spec.spriteFrameRate ?? 24;
@@ -3588,6 +4034,8 @@ export class Projectile {
         this.game.releaseProjectile(this);
         return;
       }
+      // A6 貫く雨: 貫いた先の敵ほど強く当たる。
+      if (this.pierceGain > 0) this.damage *= 1 + this.pierceGain;
     }
   }
 
@@ -3665,6 +4113,8 @@ export class ExperienceOrb {
     this.glow.material.opacity = this.type === 'xp' ? 0.18 : 0.22;
     this.glow.scale.setScalar(this.type === 'magnet' ? 1.35 : 1);
     this.glow.scale.y *= 1.25;
+    this.pullSeconds = 0;
+    this.object.scale.setScalar(1);
     this.active = true;
     this.dead = false;
     this.object.visible = true;
@@ -3672,6 +4122,7 @@ export class ExperienceOrb {
 
   update(dt) {
     if (!this.active || this.game.player.dead) return;
+    const feedback = this.game.feedbackFxEnabled ? Config.feedbackFx.xpPull : null;
     const player = this.game.player;
     const distanceSq = horizontalDistanceSq(this.position, player.position);
     const showGlow = distanceSq <= Config.performance.xpGlowDistance ** 2;
@@ -3688,9 +4139,26 @@ export class ExperienceOrb {
     this.object.position.y = 0.45 + Math.sin(this.game.elapsed * 6 + this.position.x) * 0.08;
     if (distanceSq < magnetRange ** 2 && distanceSq > 0.0001) {
       normalizeXZ(tempVec, player.position.x - this.position.x, player.position.z - this.position.z);
-      const pullSpeed = player.getPickupMagnetSpeed() * (this.type === 'xp' ? 1 : 1.08);
-      this.position.x += tempVec.x * pullSpeed * dt;
-      this.position.z += tempVec.z * pullSpeed * dt;
+      let pullSpeed = player.getPickupMagnetSpeed() * (this.type === 'xp' ? 1 : 1.08);
+      if (feedback) {
+        // A4: the longer an orb is pulled, the faster it flies in, and it shrinks as it reaches the player.
+        this.pullSeconds += dt;
+        pullSpeed *= xpPullSpeedScale(this.pullSeconds, feedback);
+        const step = xpPullStep(Math.sqrt(distanceSq), pullSpeed, dt);
+        this.position.x += tempVec.x * step;
+        this.position.z += tempVec.z * step;
+      } else {
+        this.position.x += tempVec.x * pullSpeed * dt;
+        this.position.z += tempVec.z * pullSpeed * dt;
+      }
+    } else {
+      this.pullSeconds = 0;
+    }
+    if (feedback) {
+      const s = xpOrbScale(Math.sqrt(horizontalDistanceSq(this.position, player.position)), feedback);
+      this.object.scale.setScalar(s);
+    } else if (this.object.scale.x !== 1) {
+      this.object.scale.setScalar(1);
     }
     if (distanceSq < Config.pickups.pickupRange ** 2) {
       this.collect(player);

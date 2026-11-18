@@ -9,6 +9,8 @@
 | Irodori-TTS 4.1（コード・モデル） | MIT | ○ | モデルカードの禁止事項: 本人の同意なく実在の人の声を複製しない、人を欺く音声に使わない。出力には Sony silentcipher の透かしが入る（MIT） |
 | Semantic-DACVAE-Japanese（Irodori の音声コーデック） | MIT | ○ | 元の facebook/dacvae-watermarked は SAM License（使用料なし、商用の禁止なし。軍事・諜報用途の禁止、輸出規制の順守、再配布時はライセンス同梱） |
 | Mesh Avatar Studio（エディタ・ランタイム） | MIT | ○ | 同梱のサンプル絵（Miko）は対象外。今回のアバターは自前の立ち絵から作成 |
+| Anime2.5DRig（2.5D アバターツール。表示部分をゲームに移植） | MIT（Copyright (c) 2026 hakoniwa） | ○ | 同梱のサンプル PSD は使っていない。移植したコードのライセンス文は `src/vendor/anime25d-player.LICENSE` |
+| See-through（立ち絵のパーツ分け。ComfyUI-See-through、重み layerdifforg/seethroughv0.0.2_layerdiff3d・24yearsold/seethroughv0.0.1_marigold） | 重みは商用可（Open RAIL 系の利用制限つき） | ○ | 制作用の道具。有害用途の禁止などの利用制限を守る。分けたパーツは自前の立ち絵の画素そのもの |
 | HyperFrames（CLI・core） | Apache-2.0 | ○ | — |
 | GSAP（動画のアニメーション） | GSAP Standard License（無料） | ○ | Webflow と競合するノーコードのアニメーション制作ツールへの組み込みは不可 |
 | しっぽり明朝／Zen角ゴシック New | SIL OFL 1.1 | ○ | 動画への使用は自由。フォント単体の販売は不可 |
@@ -339,3 +341,158 @@
 | `assets/audio/sfx/root_dry.wav`（1.3 秒、-16.5 LUFS、操作） | root_dry2_s37（3 秒） | Dry earth cracking and crumbling, wooden roots creaking, ground splitting | 0.15〜1.45 秒、1.0 秒から 0.3 秒のフェードアウト | 採用: ひび割れの細かい粒が並ぶ。4本のうち出だしがいちばん強い |
 | — | crier_cry2_s11 / s37 / s51、hand_grab_s11 / s37 / s51、root_dry2_s11 / s23 / s51 | 同上 | — | 次点（候補として残す） |
 | — | crier_cry_s11〜s51、root_dry_s11〜s51（**2.5 秒**、長く説明的なプロンプト） | `A strange creature's eerie warbling call, ...`、`Roots burrowing into dry soil, ...` | — | 失敗: 8本とも最初から最後まで同じ大きさ（-30 dB 前後）の広い帯域の雑音。短いプロンプト・3 秒で作り直したら正常（asset-pipeline.md に記録） |
+
+## 2026-11-04 画風の基準づくりの試し描き 2回目（B4-1 の続き）
+
+すべて**不採用（比較用）**。設定とプロンプトの全文は `assets_src/illust/2026-11-04/jobs.json`（1巡目）・`jobs2.json`（2巡目）と各 PNG と同名の JSON。見比べ画像は `docs/devlog/img/2026-11-04-style-compare.jpg`・`-compare2.jpg`。
+ライセンスの注意: juggernautXL_ragnarokBy は商用の条件が「要確認」、sd_xl_base_1.0 は商用 ○。
+
+| ファイル | ツール・モデル | 内容 | シード | 判定 |
+|---|---|---|---|---|
+| `assets_src/illust/2026-11-04/world-jugg-a.png` / `-b.png` | Forge / juggernautXL_ragnarokBy（DPM++ 2M 28 steps CFG 5、1344×768） | 世界。`golden` を外し `pale cream light, cool teal shadows`、塔を `curved white petal-like structures` に言い換え、否定に `gothic, spires` | 110401 / 110402 | 不採用: 花弁の形は出た（a）。黄色と尖塔は消えた。ただ**蔦の緑が濃すぎ**、逆光と奥の霞が弱い |
+| `assets_src/illust/2026-11-04/world-base-a.png` / `-b.png` | Forge / sd_xl_base_1.0（DPM++ 2M 30 steps CFG 6） | 同上 | 110401 / 110402 | 不採用: 平たいイラスト調で緑一色。細密さがない |
+| `assets_src/illust/2026-11-04/enemy-jugg-a.png` | juggernautXL（1巡目と同じ設定） | 敵。`dense bramble of black thorny vines, emissive red cracks`、否定に `photo, smooth, plain` | 110411 | 不採用: 黒い棘の巣に包まれた赤い卵は近いが、筋が光らない。写真寄り |
+| `assets_src/illust/2026-11-04/enemy-base-a.png` | sd_xl_base_1.0 | 同上 | 110411 | 不採用: 木の根に絡んだ赤い卵。光る筋なし |
+| `assets_src/illust/2026-11-04/world2-a.png` / `-b.png` | juggernautXL | 世界。`sparse ivy, pale sage moss, bright hazy white sky, thick white mist, low saturation`、否定に `lush green jungle, saturated green` | 110421 / 110422 | 不採用: 色は手本の白・クリームに近づき、水の映り込みと霧も出た。ただ**白と灰色だけになり、空の暖色・奥行き・細密さが消えた**（3D の描画のよう） |
+| `assets_src/illust/2026-11-04/enemy2-a.png` / `-b.png` | juggernautXL | 敵。`crimson thorn vines, glowing red veins, red light leaking from deep cracks`、否定に `bare branches, tree` | 110431 / 110432 | 不採用: 割れ目から赤い光が漏れるようになった。ただ卵が**灰色の石**になり、赤い蔓は足元だけ。手本の「赤い棘の蔓に覆われた卵」とは違う |
+
+## 2026-11-05 群れ鳥・割れ殻の Tripo 用の元絵（B1-8、失敗）
+
+生成できず、ファイルはない。ジョブ（sd_xl_base_1.0、DPM++ 2M 30 steps CFG 6、群れ鳥 1024×1024 シード 501〜503、割れ殻 832×1216 シード 511〜513、プロンプト全文つき）は `assets_src/3d/2026-11-05-swarmbird-splitshell/jobs.json`。Forge が最初のモデル読み込みで落ちた（空きメモリ 2.6 GB。asset-pipeline.md に記録）。
+
+## 2026-11-06 ボスを倒したときの一言（B3-8）
+ツール: Irodori-TTS v4.1（`Aratako/Irodori-TTS-v4.1-Small`、bf16）、`scripts/assets/irodori-batch.py`、手本は `assets_src/voice/refs/<キャラ>/`（10-30 と同じ組み合わせ）。指定文は空、台詞ごとの演技の指定だけ。台詞ファイル `scripts/assets/voices/2026-11-06-boss-down.json`（演技の指定の全文）、候補は `assets_src/voice/2026-11-06/`（各3シード、9 本、git 対象外）。
+選び方: Whisper small（transformers の pipeline）の文字起こし → `voice-analyze.py` の声の高さと画像（`tmp/voice-analysis/2026-11-06/`）。後処理: 前後の無音カット → loudnorm -15 LUFS → mp3（結果 -15.0〜-16.9 LUFS）。置き場所 `assets/audio/voice/<キャラ>/boss_down_01.mp3`。`Config.audio.bossDownVoice: false` で鳴らなくなる。
+
+| キャラ | ファイル | 台詞 | 採用シード | 長さ（秒） | 選んだ理由・落とした候補 |
+|---|---|---|---|---|---|
+| ツキミ | `boss_down_01.mp3` | ……止まった。終わった、の？ | 1601 | 2.96 | 3本とも文字起こし一致。1601 だけ語尾が上がり「？」と聞き取られた（問いかけになっている）。「止まった」と「終わった」の間に約 1 秒の間（「……」の間として残した）。高さ 303Hz（手本 285〜347） |
+| アカメ | `boss_down_01.mp3` | 片付いた。次。 | 2602 | 1.50 | 3本とも一致。2602 は手本との近さ 0.966 で最も近く、高さ 215Hz（手本 189〜210 に近い）。2601 は 233Hz・有声 0.45 |
+| キイチゴ | `boss_down_01.mp3` | よっしゃ、割ってやった！ | 3603 | 2.35 | 3601・3602 は「割って」が「終わって」と聞き取られた。3603 は「わってやったー」。高さ 507Hz は叫び声の範囲（450〜520） |
+
+## 2026-11-08〜09 新種とボスの 3D モデル 8 体（Tripo、受け取り用のチャットで生成）
+ユーザーの指示「`enemy_draft` から作られていない敵の造形を選んで Tripo で作って」→ 候補を見せて「第一候補で作って」（2026-11-08）。
+ツール: Tripo Studio の Smart Mesh **P2.0**、**Multiview**（前・左・右・後ろ）、**Quad**、テクスチャ 2k、GLB で書き出し。費用は 1 体あたり生成 100＋テクスチャ 20 クレジット（8 体で 960）。書き出し後の残りは 1200。
+元絵: `enemy_draft/turnarounds/` の三面図（Forge 製、ユーザーが用意したもの）を、絵と絵のすき間で前・横・後ろに切り分け、正方形 1024 にした。左は右の左右反転。手は細い垂れ糸を消してから渡した（Tripo が糸を壁にするため）。切り分けた絵は `assets_src/tripo/2026-11-09-enemies/views/<名前>/`（手の消す前は `hand_raw/`）、一覧は `views/views_sheet.jpg`。
+GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git 対象外。Tripo から書き出したままの元）。
+
+| 敵（設定の名前） | GLB | 元絵 | 面数の指定 → 結果 | メモ |
+|---|---|---|---|---|
+| 足跡 `footprint`（第2章） | `footprint.glb` | `46_00068-4113397219_rose_hood_coat_tail_3view.png` | 2000 → 2244 | 頭に薔薇のフードの外套、長い尾 |
+| 群れ鳥 `swarmbird`（第2章） | `swarmbird.glb` | `92_00230-4113397646_ivory_redwing_crawler_3view.png` | 1500 → 1698 | 白い体に赤い翼。翼の付け根に赤い花 |
+| 割れ殻 `splitshell`（第3章） | `splitshell.glb` | `89_00224-4113397640_black_hunched_moth_bat_beast_3view.png` | 2000 → 2231 | 黒い背の丸い獣、背に赤い花の帯 |
+| 鳴き `crier`（第4章） | `crier.glb` | `87_00219-4113397370_black_redvein_skull_quadruped_3view.png` | 2000 → 2241 | 頭蓋骨の顔、黒い体に赤い筋 |
+| 手 `hand`（第4章） | `hand.glb` | `40_00060-4113397476_ivory_black_drooping_root_moth_3view.png`（糸を消した版） | 2000 → 2121 | 垂れた腕と翅、足元に赤い花 |
+| 吸水根 `rootsucker`（第5章） | `rootsucker.glb` | `75_00177-4113397328_ivory_skull_thorn_tree_totem_3view.png` | 2000 → 2106 | 頭蓋骨の顔の幹、頭に赤い花と棘 |
+| 白蓮の核 `whiteLotusCore`（第6章ボス） | `lotus_core.glb` | `84_00206-4113397357_ivory_eye_flower_stilt_hunter_3view.png` | 8000 → 10000 | 目のある花の頭、細長い脚 4 本。いちばんきれいに出た |
+| 白蓮の花弁（核が産む） | `lotus_petal.glb` | `24_00038-4113397189_floating_flower_blades_3view.png` | 2000 → 1868 | 赤い花と刃の葉。下の細い根は少し崩れている |
+
+**骨とモーション（2026-11-09、受け取り用のチャット。ユーザー「ボーンとゲームへの組み込みをお願いします」）**
+- `scripts/blender/build_tripo_enemies.py <名前> <元.glb> <出力.glb>` で、体ごとの骨（`SPECS`）を入れ、idle・walk・attack・hit・die の 5 つを付けた。テクスチャは 2k → 1k に縮小。確認は `scripts/blender/render_anim_sheet.py`（クリップ×コマを正面と横から並べる）。
+- 骨の重みは Blender の自動（ヒート）が Tripo の体では 3 通り試してすべて失敗したので、`enemy_anim_lib.rig_mesh_auto`（骨の線分までの距離で重みを付け、辺に沿ってならし、小さな破片は 1 本の骨に固定）を使った。
+- 灰色の読み残しは目立たなかったので塗り直していない。花弁の崩れた根はそのまま揺らしている。白蓮の核は 1 万面のまま（1 体だけなので減らしていない）。
+- 出力: `assets/enemies/tripo/<名前>_anim.glb`（足跡 416 KB・鳴き 364 KB・群れ鳥 392 KB・割れ殻 404 KB・手 468 KB・吸水根 404 KB・白蓮の核 1.3 MB・白蓮の花弁 384 KB）。
+- ゲーム: `src/main.js` の `GAMEPLAY_MODELS`（`*Tripo`、高さは足跡 1.8・鳴き 1.75・群れ鳥 0.75・割れ殻 1.7・手 2.0・吸水根 1.9・核 4.6・花弁 5.6×0.5）。`Config.visuals.tripoEnemyModels: false` か URL の `?tripoEnemies=0` で元の仮の体（色違いの体・母卵）に戻る。各種の光（膨らむ・腕・根・群れ鳥が気づいたとき）は絵の色を残したまま自発光で出す。核と花弁は回らずにプレイヤーを向き、核は衝撃波・吸い込みの予告、花弁は産んだときに attack を流す。画面: `docs/devlog/img/2026-11-09-tripo-enemies.png`・`2026-11-09-tripo-lotus.png`。
+- 2026-11-12 見直し: ゲームの中で 6 種を並べて見たところ、鳴きが一面の紫、割れ殻が薄茶に見えた（普段から乗せる自発光が黒い体を塗りつぶす）。普段の光を鳴き 0.2 → 0.04、割れ殻 0.08 → 0.02 に下げ、絵の色（黒に赤い筋・花）が出るようにした（`src/entities.js` の `TRIPO_ENEMY_MODELS`）。鳴きが膨らむときの紫はそのまま。GLB は変えていない。大きさと動きは直す所なし。比較: `docs/devlog/img/2026-11-12-tripo-glow-before-after.png`。
+
+## 2026-11-10 効果音: 魚の噛みつき・割れ殻の割れ・群れの母の起き上がり（B2-1 の続き）
+ツール: Stable Audio 3 Small-SFX（steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で 3 音 × 4 シード（11・23・37・51）。候補と jobs、周波数の見比べ画像 `grid.png`: `assets_src/sfx/2026-11-10/`（git 対象外。画像は `docs/devlog/img/2026-11-10-sfx-spectrum.png` にも置いた）。12 本とも振り切れ・一面の雑音はなかった。後処理は FFmpeg（先頭の無音を切る → 長さを切る → フェード）のあと `normalize-sfx.mjs`。`Config.audio.newSfx: false` で元の流用に戻る。耳での確認はまだ。
+
+| ファイル | 元（シード、長さ） | プロンプト | 後処理 | 採用 |
+|---|---|---|---|---|
+| `assets/audio/sfx/fish_bite.wav`（0.75 秒、そろえた後 -15.4 LUFS、操作） | fish_bite_s37（2 秒） | An underwater bite, a sharp wet chomp of teeth with a bubbly splash, creature biting under water | 先頭の無音を切り 0.75 秒、0.55 秒から 0.2 秒のフェードアウト | 採用: 水泡の細かい音が並ぶ。4 本のうち山がいちばん早く（0.3 秒）短い。水門の母を魚形態で噛んだとき（`onFloodgateBite`、元は `birdFeed`） |
+| `assets/audio/sfx/shell_crack.wav`（0.9 秒、-20.1 LUFS、操作） | shell_crack_s37（2 秒） | A hard eggshell cracking and splitting in two, sharp brittle crack with small fragments falling | 先頭の無音を切り 0.9 秒、0.65 秒から 0.25 秒のフェードアウト | 採用: 鋭い割れの音が数回続く（主な周波数が高い、重心 8.8 kHz）。4 本のうち最初の割れがいちばん強い。割れ殻がバーストで割れたとき（`onSplitshellBurst`、元は撃破音だけ）。尖った音なのでリミッターで目標（-15）に届かず -20 |
+| `assets/audio/sfx/swarm_rise.wav`（2.6 秒、-12.4 LUFS、大技・ボス） | swarm_rise_s11（3 秒） | A monster rising again, a low rumbling groan swelling up with a creaking shell and a short roar | 先頭の無音を切り 2.6 秒、2.1 秒から 0.5 秒のフェードアウト | 採用: 低いうなり（重心 317 Hz）が 1.3 秒にかけて膨らんで引く。4 本のうち膨らみの形がいちばんはっきり。群れの母の姉妹が起き上がったとき（`onSwarmMemberRevive`、元は `motherCharge`） |
+| — | fish_bite・shell_crack・swarm_rise の s11 / s23 / s51（採用以外） | 同上 | — | 次点（候補として残す） |
+
+## 2026-11-11 強化アイコンの見直し（B4-2、生成なし）
+空きメモリ 5.8 GB のため Forge は起動せず、今ある 12 個（`assets/ui/upgrade-icons/*.png`、512×512、白とシアンの平らな絵）を実際の表示の大きさ（68・58・32 px）で見比べた。見比べ画像: `docs/devlog/img/2026-11-11-upgrade-icons-review.png`。
+
+| ファイル | 元 | 処理 | 採用 |
+|---|---|---|---|
+| `assets/ui/upgrade-icons/seeds-clean.png` | `seeds.png`（最初からある絵。作ったツールの記録なし） | Pillow で右側の切り残しのかけら（x 418〜456、y 210〜286）を消し、種3つを中央に寄せて長辺 400 px に拡大。生成はしていない | 採用。`Config.visuals.cleanedUpgradeIcons: false` で元の `seeds.png` に戻る |
+
+見比べで分かったこと（直すのは次回以降、backlog B4-2）:
+- 画風は 12 個でそろっている（白い形＋シアンの差し色）。Forge の絵に替えるより、この型のまま足りない分を足すほうがそろう。
+- 細くて小さく見える: `speed`（絵が占める割合 10%）、`pierce`（9%）。58 px では線が 2〜3 px。
+- 意味が伝わりにくい: `damage` は剣（このゲームの攻撃は種の射撃）、`dive` は葉か矢印に見える、`speed`（攻撃速度）と `move`（移動速度）が言葉でも絵でも紛らわしい。
+- 絵が無い: 章をまたぐ引き継ぎ強化 15 個（`ChapterRewards`）は文字だけ。
+
+## 2026-11-16 第1章の給水ポンプ（B1-7、Blender で手作り、生成なし）
+生成ツールは使っていない。Blender 5.1 のスクリプトで基本の形（箱・円柱・輪）を組み合わせて作った。元絵も外部サービスも無いので、商用の条件の心配はない。
+作り方: `"C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" -b --factory-startup -P scripts/blender/build_chapter1_pump.py -- <出力.glb> [<確認画像.png>]`（約 15 秒。確認画像は斜めと真上の 2 枚）。
+
+| ファイル | 中身 | 採用 |
+|---|---|---|
+| `assets/background/chapter1_pump.glb`（135 KB、3848 三角形） | コンクリートの台（苔の板 4 枚）、青緑の塗装が剥げたポンプの胴、黒いモーター（冷却のひだ）、灰色の送水管（上に立ち上がって奥の地面へ）、地面沿いの取水管、上から見える赤い弁ハンドル、シアンに光る水の窓。ノードは `PumpBody`・`PumpRotor`（はずみ車。ゲームが X 軸で回す）・`PumpGlow`（光を 1.0〜2.2 で脈打たせる） | 採用。第1章だけ、出発点の北東（x 6.5、z -5.5）に 1.2 倍で置く。見た目だけで当たり判定・耐久値は無い。`Config.visuals.chapterPump: false` か URL の `?pump=0` で置かない |
+
+## 2026-11-15 強化アイコン `speed`・`pierce` の描き直し（B4-2 の続き、生成なし）
+11-11 の見比べで「細くて小さい」（絵の占める割合 9〜10%、58 px で線が 2〜3 px）とした 2 つを、今の型（白い形＋シアンの差し色、透明背景 512×512）のまま Pillow で描き直した。生成ツールは使っていない。スクリプト: `scripts/assets/redraw-upgrade-icons.py`（4 倍の大きさで描いて縮める）。
+
+| ファイル | 元 | 中身 | 採用 |
+|---|---|---|---|
+| `assets/ui/upgrade-icons/speed-bold.png` | `speed.png` | 種（尾に V の切れ込み）を高さ約 1.5 倍に。後ろの速さの線 3 本をシアンで太さ 28 px | 採用。`Config.visuals.cleanedUpgradeIcons: false` で元の `speed.png` に戻る |
+| `assets/ui/upgrade-icons/pierce-bold.png` | `pierce.png` | 矢の軸を 32 px に、貫かれる 2 体の楕円を高さ 176 px に、矢じりをシアンの大きな三角に。楕円と軸の境に透明の細い隙間 | 採用。同上で元の `pierce.png` に戻る |
+
+## 2026-11-13 HP が 3 割を切ったときの一言（B3-9）
+ツール: Irodori-TTS v4.1（`Aratako/Irodori-TTS-v4.1-Small`、bf16）、`scripts/assets/irodori-batch.py`、手本は `assets_src/voice/refs/<キャラ>/`（11-06 と同じ組み合わせ）。指定文は空、台詞ごとの演技の指定だけ。台詞ファイル `scripts/assets/voices/2026-11-13-low-hp.json`（演技の指定の全文）、候補は `assets_src/voice/2026-11-13/`（各 3 シード、9 本、git 対象外）。生成は読み込み込みで 2 分 8 秒。
+選び方: Whisper small（transformers の pipeline）の文字起こし → `voice-analyze.py` の声の高さと画像（`tmp/voice-analysis/2026-11-13/`）。後処理: 前後の無音カット → loudnorm -15 LUFS → mp3。置き場所 `assets/audio/voice/<キャラ>/low_hp_01.mp3`。`Config.audio.lowHpVoice: false` で鳴らなくなる（その被弾では普段の被弾の声）。
+
+| キャラ | ファイル | 台詞 | シード | 長さ（秒） | 選んだ理由 |
+|---|---|---|---|---|---|
+| ツキミ | `low_hp_01.mp3`（-14.9 LUFS） | まだ……倒れません。 | 1703 | 2.43 | 3 本とも文字起こし一致。1701・1702 は「まだ」のあとに 0.2 秒ほどの息の音が残る。1703 だけきれい。高さ 302Hz（手本 285〜347）。「まだ」と「倒れません」の間に約 1.1 秒の間（「……」として残した） |
+| アカメ | `low_hp_01.mp3`（-15.0 LUFS） | ……かすり傷だ。 | 2701 | 0.78 | 2701 だけ「かすりキズだ」と聞き取られた（2702「かすりキズナー」、2703「かすりキスだ」）。高さ 216Hz（手本 189〜210 に近い） |
+| キイチゴ | `low_hp_01.mp3`（-13.5 LUFS） | いったた……まだまだ！ | 3703 | 3.33 | 一致率 0.94 で最も高い（3701「いっと、まだまだ」、3702「いっとっと」で「いったた」が崩れた）。高さ 347Hz（手本 287〜417） |
+
+## 2026-11-17 効果音: 卵の孵化・ボス出現の警告・残り1分の警告（B2-1 の続き）
+ツール: Stable Audio 3 Small-SFX（steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で 3 音 × 4 シード（11・23・37・51）、残り1分だけ作り直して計 20 本。候補・jobs（`jobs.json`、`jobs-retry.json`）・周波数の見比べ画像: `assets_src/sfx/2026-11-17/`（git 対象外。画像は `docs/devlog/img/2026-11-17-sfx-spectrum.png`）。後処理は FFmpeg（前後の無音を切る → 0.04 秒のフェードアウト）のあと `normalize-sfx.mjs`。`Config.audio.newSfx: false` で鳴らない（3 つとも元は無音）。耳での確認はまだ。
+
+| ファイル | 元（シード、長さ） | プロンプト | 採用 |
+|---|---|---|---|
+| `assets/audio/sfx/egg_hatch.wav`（0.9 秒、そろえた後 -18.3 LUFS、よく鳴る音） | egg_hatch_s23（2 秒） | A small egg hatching, a soft wet shell crack followed by a short slimy squelch, small creature emerging | 採用: 割れの音（0.3 秒ぶん）のあとに湿った音が 0.3 秒続き、4 本のうち後半がいちばん残る。重心 7.9 kHz の軽い音。プレイヤーから 24 以内の卵が孵ったとき（`spawnEnemyFromEgg`、0.6 秒に 1 回まで、音量 0.5、距離は `Config.audio.eggHatchSfxRange`） |
+| `assets/audio/sfx/boss_warning.wav`（2.6 秒、-12.2 LUFS、大技・ボス） | boss_warning_s23（3 秒） | A deep ominous warning horn, one long low alarm blast with a heavy sub rumble, giant monster approaching | 採用: 低い響き（重心 198 Hz、200 Hz 未満が 88%）が 0.3 秒で山になり 1.1 秒まで保ってから引く。4 本のうち保つ時間がいちばん長い。ボスが出たとき（`spawnMotherEgg`、声の `bossAppear` と同時） |
+| `assets/audio/sfx/time_warning.wav`（2.2 秒、-15.8 LUFS、操作） | last_minute_c_s37（3 秒） | A clock ticking fast four times then a single low gong hit | 採用: 鐘のような打音が 5 回（0・0.3・0.9・1.3・1.6 秒）鳴って引く。4 本のうち打音の間隔がそろい、頭に無音がない。**残り 30 秒**でボスがまだ立っているとき（`Config.audio.timeWarningSeconds`、0 で鳴らない。音量 0.7）。残り 1 分はボスの出現（180 秒）と同じ瞬間で、角笛と声 2 本に重なるので 30 秒に移した |
+| — | last_minute_s11〜51・last_minute_b_s11〜51（どちらも 2.5 秒） | An urgent alert signal, three quick tense metallic ticks then a short rising warning tone, countdown alarm ／ Three quick warning bell strikes, a small metal alarm bell ringing three times | **不採用: 8 本とも最初から最後まで同じ大きさの雑音**（0.1 秒ごとの音量が -20〜-27 dB で平ら）。プロンプトを短くしても直らず、長さを 3 秒にしたら直った |
+| — | ほかの候補（egg_hatch・boss_warning・last_minute_c の採用以外） | 同上 | 次点（候補として残す） |
+
+## 2026-11-18 引き継ぎ強化のアイコン（B4-2 の続き、生成なし）
+章のクリア後に選ぶ引き継ぎ強化 15 個（`ChapterRewards`）に、今は文字しか無かったのでアイコンを付けた。11-11 の方針どおり Forge では描かず、強化アイコンと同じ型（白い形＋シアンの差し色、透明背景 512×512）を Pillow で描いた。スクリプト: `scripts/assets/draw-reward-icons.py`（4 倍の大きさで描いて縮める）。見比べ: `docs/devlog/img/2026-11-18-reward-icons.png`（上段が既存の強化アイコン、下段が今回の 6 個）。
+表示は `Config.visuals.carryOverIcons`（false で元の文字だけ）。「この章で取った強化」の側は、その強化のアイコン（`cleanedUpgradeIcons` の差し替えも反映）を出す。
+
+| 引き継ぎ強化 | アイコン | 中身 |
+|---|---|---|
+| ポンプの守り（第1章） | `assets/ui/reward-icons/pumpGuard.png`（新） | 白い盾の中にシアンの水滴 |
+| 給水の列（第1章） | 既存 `hp.png` | 最大 HP |
+| 見回りの足（第1章） | 既存 `move.png` | 移動速度 |
+| シラユリの記録（第2章） | `reward-icons/shirayuriRecord.png`（新） | 開いた帳面とシアンのしおり |
+| 残された手順（第2章） | `reward-icons/leftProcedure.png`（新） | 砂時計（シアンの砂）。バーストの再使用時間 |
+| 研いだ種（第2章） | 既存 `damage.png` | 自動攻撃の威力 |
+| 水底の息（第3章） | 既存 `birdCost.png` | 変身の MP 消費 |
+| 深い呼吸（第3章） | 既存 `mp.png` | 最大 MP |
+| 水面を割る（第3章） | 既存 `dive.png` | 急降下 |
+| 根の誓い（第4章） | 既存 `regen.png` | 卵を食べたときの回復 |
+| 夜の鼓動（第4章） | 既存 `pulse.png` | 範囲パルス |
+| 芽吹く種（第4章） | 既存 `seeds.png`（掃除した版） | 種が 1 つ増える |
+| 運ばれた水（第5章） | `reward-icons/carriedWater.png`（新） | 白い卵にシアンのひび。母卵へのダメージ |
+| 踏みしめる足（第5章） | `reward-icons/firmSteps.png`（新） | 地面を踏むブーツと、かかとで止まるシアンの衝撃波 |
+| 見分ける目（第5章） | `reward-icons/seeingEye.png`（新） | 白い目とシアンの瞳。擬態卵の硬直 |
+
+## 2026-11-06 会話画面の動く立ち絵を Anime2.5DRig に（ユーザーの指示「ゲームに実装している横向きのキャラクターも作ってほしい」「それをゲームにも実装してほしい」）
+
+紹介動画の口パクを Anime2.5DRig に作り直したところ Mesh Avatar Studio より出来がよかったので、会話画面の斜め向きの立ち絵（`assets/ui/characters/faces/<キャラ>/normal.png`）も同じ方法で作った。
+
+手順（作業ファイルは `D:\0001_App_Dev\search_survive_promo\meibuki-intro\.work\rig-test\`、git 対象外）:
+1. See-through（ComfyUI-See-through をコマンドで実行。`seethrough_run.py`、seed 42、解像度 1280、30 steps、LayerDiff は group_offload）で立ち絵をパーツに分ける。1人 1〜2 時間。出力は `side/<キャラ>/`。
+2. 足りない絵（閉じた目・「あ」の口）を Codex の画像生成で描く（`codex exec --sandbox read-only`、元の絵とマスクを渡す）。依頼一式は `D:\0001_App_Dev\search_survive_promo\codex-requests-side\<キャラ>\`（source.png、mask.png、prompt.md、results/）。Codex はマスクの外もわずかに描き変えるので、マスクの範囲だけを元の絵に貼り込む（`check_codex.py`）。
+3. 目・口の差分を元の絵から切り出して足す（`build_variants.py`）。あわせて、重ねたパーツが元の絵と食い違うところを直す: 顔のパーツに塗り込まれた頭の地肌（ツキミの後頭部が灰色になっていた）を消し、拾い損ねた部分（アカメの肩の葉、ツキミの髪留め）を元の絵から切り出して足す。腕・耳の左右は重なり順を保つため別レイヤーのまま（`make_psd.cjs`）。
+4. PSD を `scripts/assets/bake-rig.mjs` で、ゲームが読む形（パーツの位置・アンカー・髪の束の JSON と、全パーツを詰めた1枚の PNG）に変換する。
+
+| ファイル | 内容 | 状態 |
+|---|---|---|
+| `assets/avatars/rig/akame.json`・`.png` | 17 パーツ、PNG 2.5MB。目閉じ・口開きは Codex（閉じ目は「まぶたに点を描かない」と頼み直した2回目） | 採用 |
+| `assets/avatars/rig/kiichigo.json`・`.png` | 23 パーツ、PNG 1.6MB。目閉じ・口開きは Codex | 採用 |
+| `assets/avatars/rig/tsukimi.json`・`.png` | 22 パーツ、PNG 1.9MB。目閉じ・口開きは Codex（2026-11-08） | 採用 |
+
+表示: `src/vendor/anime25d-player.js`（Anime2.5DRig v2.0.0 の変形・髪の揺れ・まばたきを移植、MIT）。`Config.story.avatarEngine: 'mesh'` で前の Mesh Avatar Studio に、`avatarPortraits: false` で静止画に戻る。
+表情: アバターは通常の表情だけ。笑顔・怒り・悲しみ・驚きは描き分けた静止画を出す（眉は前髪に隠れ、目は元の絵のパーツが上にあるので、変形ではほとんど表情が変わらなかった）。
+ライセンス: 上の表の Anime2.5DRig・See-through・GPT Image（Codex）。

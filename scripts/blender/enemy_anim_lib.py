@@ -226,3 +226,63 @@ def rig_mesh(mesh, bone_specs, weights, max_influences=4):
 def smoothstep(edge0, edge1, x):
     t = np.clip((x - edge0) / (edge1 - edge0), 0, 1)
     return t * t * (3 - 2 * t)
+
+
+def merge_close_vertices(mesh, threshold=1e-5):
+    """UV の継ぎ目で分かれた同じ位置の頂点をつなぐ（UV は面ごとに残る）。継ぎ目で体が裂けないようにする。"""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(mesh.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=threshold)
+    bm.to_mesh(mesh.data)
+    bm.free()
+    mesh.data.update()
+
+
+def segment_distances(points, bone_specs):
+    """各頂点からボーンの線分までの距離（頂点数 × ボーン数）。"""
+    out = np.zeros((len(points), len(bone_specs)))
+    for j, (_name, head, tail, _parent) in enumerate(bone_specs):
+        a, b = np.array(head), np.array(tail)
+        ab = b - a
+        t = np.clip(((points - a) @ ab) / max(ab @ ab, 1e-9), 0, 1)
+        out[:, j] = np.linalg.norm(points - (a + t[:, None] * ab), axis=1)
+    return out
+
+
+def smooth_weights(mesh, W, iterations=6, keep=0.5):
+    """辺でつながった頂点どうしでウェイトをならす（骨の境目で体が折れないように）。"""
+    edges = np.array([e.vertices[:] for e in mesh.data.edges])
+    if len(edges) == 0:
+        return W
+    n = len(W)
+    degree = np.bincount(edges.ravel(), minlength=n).astype(float)
+    for _ in range(iterations):
+        acc = np.zeros_like(W)
+        np.add.at(acc, edges[:, 0], W[edges[:, 1]])
+        np.add.at(acc, edges[:, 1], W[edges[:, 0]])
+        has = degree > 0
+        W[has] = keep * W[has] + (1 - keep) * acc[has] / degree[has, None]
+    return W
+
+
+def rig_mesh_auto(mesh, bone_specs, falloff=0.035, rigid_island_size=0.08, max_influences=3, smooth=6):
+    """ランドマークで置いた骨に、骨までの距離でウェイトを付けて割り当てる（高さ 1 のモデル向け）。
+
+    Tripo のメッシュは閉じておらず重なりもあるので、Blender の自動ウェイト（熱拡散）は解けない。代わりに
+    - 各骨の線分までの距離 d から exp(-(d - d_min)^2 / falloff^2)（いちばん近い骨との差で減衰）
+    - 上位 max_influences 本に絞り、辺でつながった頂点どうしで smooth 回ならす
+    - 大きさが rigid_island_size 未満の小さな部品（花・棘など）は 1 つの塊として動かす
+    """
+    V = mesh_vertices(mesh)
+    D = segment_distances(V, bone_specs)
+    W = np.exp(-((D - D.min(axis=1, keepdims=True)) / falloff) ** 2)
+    if max_influences < W.shape[1]:
+        cutoff = -np.sort(-W, axis=1)[:, max_influences - 1:max_influences]
+        W = np.where(W >= cutoff, W, 0)
+    W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-9)
+    W = smooth_weights(mesh, W, smooth)
+    for piece in mesh_islands(mesh):
+        if np.ptp(V[piece], axis=0).max() < rigid_island_size:
+            W[piece] = W[piece].mean(axis=0)
+    return rig_mesh(mesh, bone_specs, W, max_influences=4)

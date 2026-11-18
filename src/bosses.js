@@ -59,13 +59,32 @@ export const BOSS_TYPES = Object.freeze({
   swarmMother: Object.freeze({
     id: 'swarmMother',
     name: '群れの母',
-    forecast: '光の糸でつながった三つ子。1体だけ倒しても、10秒以内に残りを倒さないと起き上がる',
+    forecast: `光の糸でつながった三つ子。1体だけ倒しても、${Config.boss.swarmMother.reviveSeconds}秒以内に残りを倒さないと起き上がる`,
     spawnCount: Config.boss.swarmMother.count,
     update(egg, dt) {
       updateSwarmMember(egg, dt);
     },
     onLethal(egg) {
       return swarmOnLethal(egg);
+    }
+  }),
+  // 最終章のボス（E15 の第1・第2段階）。核の周りに6枚の花弁（体は母卵を小さくしたもの）。
+  // 第1段階: 核は閉じていて狙えない。花弁はそれぞれ、それまでの章の新種を産み続ける。
+  // 第2段階: 花弁を openAfterPetals 枚壊すと核が開き、衝撃波（鳥で避ける）と吸い込み（人間で踏みとどまる）を交互に出す。
+  whiteLotusCore: Object.freeze({
+    id: 'whiteLotusCore',
+    name: '白蓮の核',
+    forecast: '6枚の花弁が、これまでの新種を産む。花弁を壊すと核が開き、衝撃波と吸い込みを交互に出す',
+    spawnCount: 1 + Config.boss.whiteLotusCore.petalCount,
+    update(egg, dt) {
+      updateLotusMember(egg, dt);
+    },
+    onLethal(egg) {
+      return lotusOnLethal(egg);
+    },
+    // 第3段階（E16）: 影法師が生きているあいだ、核へのダメージは shadowCoreDamageScale 倍。
+    damageScale(egg) {
+      return lotusCoreDamageScale(egg);
     }
   })
 });
@@ -357,4 +376,170 @@ export function floodgateStreamPoints(from, toward, count, start, spacing) {
     points.push({ x: from.x + dx * distance, z: from.z + dz * distance });
   }
   return { direction: { x: dx, z: dz }, points };
+}
+
+// ---- 白蓮の核（最終章） ----
+// 核と花弁をつなぐ。花弁 i は species[i] を産む。最初の産卵は少しずつずらす。
+export function linkLotus(core, petals, species, cfg = Config.boss.whiteLotusCore) {
+  const lotus = {
+    core, petals, state: 'closed', broken: 0,
+    attack: 'rest', attackTimer: 0, next: 'shockwave', inhaleBiteTimer: 0,
+    shadow: null, shadowHatched: false,
+    stats: { spawned: 0, shockwaves: 0, inhales: 0, bites: 0, openedAt: null, shadowAt: null, shadowDownAt: null }
+  };
+  core.lotus = lotus;
+  core.lotusRole = 'core';
+  petals.forEach((petal, i) => {
+    petal.lotus = lotus;
+    petal.lotusRole = 'petal';
+    petal.lotusSpecies = species[i % species.length];
+    petal.lotusSpawnTimer = cfg.petalFirstSpawnSeconds + i * 0.8;
+    petal.lotusBrood = [];
+  });
+  return lotus;
+}
+
+// 核が閉じているあいだは狙えない（弾も当たらない）。
+export function lotusTargetable(egg) {
+  return !(egg.lotusRole === 'core' && egg.lotus?.state === 'closed');
+}
+
+// 花弁の HP が 0 になったとき: 花弁は壊れる（勝利にはならない）。true を返して通常の撃破を止める。
+// 核なら false（通常の撃破＝勝利へ）。
+export function lotusOnLethal(egg, cfg = Config.boss.whiteLotusCore) {
+  const lotus = egg.lotus;
+  if (!lotus || egg.lotusRole !== 'petal') return false;
+  egg.dead = true;
+  egg.hp = 0;
+  lotus.broken += 1;
+  const opened = lotus.state === 'closed' && lotus.broken >= cfg.openAfterPetals;
+  if (opened) {
+    lotus.state = 'open';
+    lotus.attack = 'rest';
+    lotus.attackTimer = cfg.openRestSeconds;
+    lotus.next = 'shockwave';
+  }
+  egg.game.onLotusPetalBroken?.(egg, lotus.broken, opened);
+  return true;
+}
+
+// 開いた核の攻撃の周期。休み → 衝撃波の予兆 → 衝撃波 → 休み → 吸い込みの予兆 → 吸い込み → 休み …
+// 起きたことを返す（'shockwaveWarning' | 'shockwave' | 'inhaleWarning' | 'inhaleStart' | 'inhaleEnd' | null）。
+export function lotusAttackStep(lotus, dt, cfg = Config.boss.whiteLotusCore) {
+  if (lotus.state !== 'open') return null;
+  lotus.attackTimer -= dt;
+  if (lotus.attackTimer > 0) return null;
+  switch (lotus.attack) {
+    case 'rest':
+      if (lotus.next === 'shockwave') {
+        lotus.attack = 'shockwaveWarning';
+        lotus.attackTimer = cfg.shockwaveWarning;
+        return 'shockwaveWarning';
+      }
+      lotus.attack = 'inhaleWarning';
+      lotus.attackTimer = cfg.inhaleWarning;
+      return 'inhaleWarning';
+    case 'shockwaveWarning':
+      lotus.attack = 'rest';
+      lotus.attackTimer = cfg.restSeconds;
+      lotus.next = 'inhale';
+      lotus.stats.shockwaves += 1;
+      return 'shockwave';
+    case 'inhaleWarning':
+      lotus.attack = 'inhale';
+      lotus.attackTimer = cfg.inhaleSeconds;
+      lotus.inhaleBiteTimer = 0;
+      lotus.stats.inhales += 1;
+      return 'inhaleStart';
+    case 'inhale':
+    default:
+      lotus.attack = 'rest';
+      lotus.attackTimer = cfg.restSeconds;
+      lotus.next = 'shockwave';
+      return 'inhaleEnd';
+  }
+}
+
+// 吸い込みで引き寄せる量（この dt の間に核へ近づく距離）。鳥形態は大きく、人間・魚形態は少しだけ。範囲外は 0。
+// 核に重なるほど近ければそれ以上は引かない。
+export function lotusInhalePull(distance, form, dt, cfg = Config.boss.whiteLotusCore) {
+  if (distance > cfg.inhaleRadius || distance <= cfg.inhaleBiteRadius * 0.6) return 0;
+  const speed = form === 'bird' ? cfg.inhalePullBird : cfg.inhalePullHuman;
+  return Math.min(speed * dt, distance - cfg.inhaleBiteRadius * 0.6);
+}
+
+// 花弁が産んだ敵のうち、まだ生きている数。
+export function lotusBroodAlive(petal) {
+  petal.lotusBrood = petal.lotusBrood.filter((enemy) => !enemy.dead);
+  return petal.lotusBrood.length;
+}
+
+export function updateLotusMember(egg, dt, cfg = Config.boss.whiteLotusCore) {
+  const game = egg.game;
+  if (game.state !== 'playing' || !egg.lotus || egg.dead) return;
+  const lotus = egg.lotus;
+  if (egg.lotusRole === 'petal') {
+    egg.lotusSpawnTimer -= dt;
+    if (egg.lotusSpawnTimer > 0) return;
+    egg.lotusSpawnTimer = cfg.petalSpawnSeconds;
+    if (lotusBroodAlive(egg) >= cfg.petalMaxAlive) return;
+    const spawned = game.spawnLotusBrood?.(egg, egg.lotusSpecies);
+    if (spawned) {
+      egg.lotusBrood.push(spawned);
+      lotus.stats.spawned += 1;
+    }
+    return;
+  }
+  if (lotusShadowDue(lotus, game.elapsed, Config.map.playSeconds, cfg)) {
+    lotus.shadowHatched = true;
+    lotus.stats.shadowAt = Math.round(game.elapsed);
+    lotus.shadow = game.spawnLotusShadow?.(egg) ?? null;
+  }
+  const event = lotusAttackStep(lotus, dt, cfg);
+  if (event) game.onLotusAttack?.(egg, event);
+  if (lotus.attack === 'inhale') game.applyLotusInhale?.(egg, dt);
+}
+
+// ---- 影法師（E16、白蓮の第3段階） ----
+// 残り時間が shadowAtRemaining 秒になったら、核から1度だけ孵る（花弁が残っていても、核が閉じていても）。
+export function lotusShadowDue(lotus, elapsed, playSeconds, cfg = Config.boss.whiteLotusCore) {
+  if (!lotus || lotus.shadowHatched || Config.enemy.shadow?.enabled === false) return false;
+  return elapsed >= playSeconds - cfg.shadowAtRemaining;
+}
+
+// 影法師が生きているあいだは核が守られる。
+export function lotusCoreDamageScale(egg, cfg = Config.boss.whiteLotusCore) {
+  if (egg.lotusRole !== 'core') return 1;
+  const shadow = egg.lotus?.shadow;
+  return shadow && !shadow.dead ? cfg.shadowCoreDamageScale : 1;
+}
+
+// 影法師の形態は「人間」か「鳥」の2つ。プレイヤーの魚形態は鳥と同じ側に数える。
+export function shadowFormOf(playerForm) {
+  return playerForm === 'human' ? 'human' : 'bird';
+}
+
+// プレイヤーの形態を delay 秒遅れで写す。mirror = { form, pending, timer }。形態が変わった瞬間に true を返す。
+export function shadowMirrorStep(mirror, playerForm, dt, delay = Config.enemy.shadow.mirrorDelay) {
+  const target = shadowFormOf(playerForm);
+  if (target === mirror.form) {
+    mirror.pending = null;
+    mirror.timer = 0;
+    return false;
+  }
+  if (mirror.pending !== target) {
+    mirror.pending = target;
+    mirror.timer = delay;
+  }
+  mirror.timer -= dt;
+  if (mirror.timer > 0) return false;
+  mirror.form = target;
+  mirror.pending = null;
+  mirror.timer = 0;
+  return true;
+}
+
+// 逆の形態のときだけ傷つく（同じ形態のときは、こちらを傷つけられる）。
+export function shadowVulnerable(shadowForm, playerForm) {
+  return shadowForm !== shadowFormOf(playerForm);
 }

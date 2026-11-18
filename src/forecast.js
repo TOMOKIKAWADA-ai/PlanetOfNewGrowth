@@ -53,6 +53,22 @@ const NEW_SPECIES = Object.freeze([
     form: '人間形態で、円の外から撃つ',
     chapter: () => Config.enemy.rootsucker.fromChapter,
     enabled: () => Config.enemy.rootsucker.enabled
+  }),
+  Object.freeze({
+    id: 'splitshell',
+    name: '割れ殻',
+    trait: 'バースト技で倒すと、二つに割れる',
+    form: '人間形態の普通の射撃で倒す',
+    chapter: () => Config.enemy.splitshell.fromChapter,
+    enabled: () => Config.enemy.splitshell.enabled
+  }),
+  Object.freeze({
+    id: 'swarmbird',
+    name: '群れ鳥',
+    trait: '鳥形態のときだけ、群れで襲ってくる',
+    form: '人間形態のうちに撃ち落とす',
+    chapter: () => Config.enemy.swarmbird.fromChapter,
+    enabled: () => Config.enemy.swarmbird.enabled
   })
 ]);
 

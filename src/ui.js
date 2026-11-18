@@ -1,7 +1,16 @@
-import { Config, UpgradePool } from './config.js';
+import { Config, UpgradePool, getUpgrade } from './config.js';
+import { synergyHints } from './synergies.js';
 import { clamp } from './math.js';
 import { isFinalChapter } from './campaign.js';
 import { getBossName } from './bosses.js';
+import { xpBarState } from './reward-feedback.js';
+import { resultRows } from './run-stats.js';
+import { MessagePriority, MessageSlot } from './message-slot.js';
+
+function messagePriorityEnabled() {
+  const fromUrl = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('messagePriority');
+  return fromUrl === null ? Boolean(Config.messages?.priority) : fromUrl !== '0';
+}
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -17,6 +26,31 @@ const UPGRADE_ICON_URLS = {
   pulse: new URL('../assets/ui/upgrade-icons/pulse.png', import.meta.url).href,
   pickupMagnet: new URL('../assets/ui/upgrade-icons/pickupMagnet.png', import.meta.url).href
 };
+// 切り残しのかけらを消して中央に寄せた版（2026-11-11）と、細かった絵を太く描き直した版（2026-11-15、
+// scripts/assets/redraw-upgrade-icons.py）。Config.visuals.cleanedUpgradeIcons: false で元の絵に戻る。
+const CLEANED_UPGRADE_ICON_URLS = {
+  seeds: new URL('../assets/ui/upgrade-icons/seeds-clean.png', import.meta.url).href,
+  speed: new URL('../assets/ui/upgrade-icons/speed-bold.png', import.meta.url).href,
+  pierce: new URL('../assets/ui/upgrade-icons/pierce-bold.png', import.meta.url).href
+};
+
+const upgradeIconUrl = id => (Config.visuals.cleanedUpgradeIcons && CLEANED_UPGRADE_ICON_URLS[id]) || UPGRADE_ICON_URLS[id];
+
+// 引き継ぎ強化（ChapterRewards）のアイコン。合う強化アイコンがあればそれを使い、無い 6 個は
+// scripts/assets/draw-reward-icons.py で描いたもの（2026-11-18）。Config.visuals.carryOverIcons: false で出さない。
+const REWARD_ICON_URLS = {
+  pumpGuard: new URL('../assets/ui/reward-icons/pumpGuard.png', import.meta.url).href,
+  shirayuriRecord: new URL('../assets/ui/reward-icons/shirayuriRecord.png', import.meta.url).href,
+  leftProcedure: new URL('../assets/ui/reward-icons/leftProcedure.png', import.meta.url).href,
+  carriedWater: new URL('../assets/ui/reward-icons/carriedWater.png', import.meta.url).href,
+  firmSteps: new URL('../assets/ui/reward-icons/firmSteps.png', import.meta.url).href,
+  seeingEye: new URL('../assets/ui/reward-icons/seeingEye.png', import.meta.url).href
+};
+const REWARD_ICON_FROM_UPGRADE = {
+  waterLine: 'hp', patrolSteps: 'move', sharpSeeds: 'damage', deepBreath: 'birdCost', longBreath: 'mp',
+  breakSurface: 'dive', rootOath: 'regen', nightPulse: 'pulse', buddingSeed: 'seeds'
+};
+export const rewardIconUrl = id => REWARD_ICON_URLS[id] ?? (REWARD_ICON_FROM_UPGRADE[id] ? upgradeIconUrl(REWARD_ICON_FROM_UPGRADE[id]) : null);
 
 const UPGRADE_CATEGORIES = {
   damage: '攻撃', speed: '攻撃', seeds: '攻撃', pierce: '攻撃',
@@ -109,6 +143,12 @@ export class Hud {
     this.hpText = document.getElementById('hpText');
     this.mpText = document.getElementById('mpText');
     this.burstText = document.getElementById('burstText');
+    this.xpMeter = document.getElementById('xpMeter');
+    this.xpBar = document.getElementById('xpBar');
+    this.xpLevel = document.getElementById('xpLevel');
+    this.xpText = document.getElementById('xpText');
+    this.xpGainTimer = 0;
+    this.lastXpKey = '';
     this.clock = document.getElementById('clock');
     this.statsLine = document.getElementById('statsLine');
     this.hintLine = document.getElementById('hintLine');
@@ -118,10 +158,12 @@ export class Hud {
     this.result = document.getElementById('result');
     this.resultTitle = document.getElementById('resultTitle');
     this.resultBody = document.getElementById('resultBody');
+    this.resultStats = document.getElementById('resultStats');
     this.carryOver = document.getElementById('carryOver');
     this.restartButton = document.getElementById('restartButton');
     this.replayStoryButton = document.getElementById('replayStoryButton');
     this.deathBlackout = document.getElementById('deathBlackout');
+    this.damageEdge = document.getElementById('damageEdge');
     this.pause = document.getElementById('pause');
     this.pauseResumeButton = document.getElementById('pauseResumeButton');
     this.motherPanel = document.getElementById('motherPanel');
@@ -131,6 +173,10 @@ export class Hud {
     this.bindBar = document.getElementById('bindBar');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
+    this.messageSlot = new MessageSlot({
+      enabled: messagePriorityEnabled(),
+      resumeMinSeconds: Config.messages?.resumeMinSeconds ?? 0.8
+    });
     this.nextChapterButton = document.getElementById('nextChapterButton');
     this.retryButton = document.getElementById('retryButton');
     const motherTitle = this.motherPanel?.querySelector('.mother-title');
@@ -139,6 +185,14 @@ export class Hud {
     this.replayStoryButton.addEventListener('click', () => this.game.replayAftermath());
     this.nextChapterButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId + 1));
     this.retryButton.addEventListener('click', () => this.game.launchChapter(this.game.stageId));
+    // A7: R retries from the defeat screen without reaching for the button.
+    window.addEventListener('keydown', event => {
+      if (event.code !== 'KeyR' || event.repeat || this.game.state !== 'result') return;
+      if (!this.game.resultsConfig.enabled || this.retryButton.classList.contains('hidden')) return;
+      if (this.result.classList.contains('hidden')) return;
+      event.preventDefault();
+      this.retryButton.click();
+    });
     this.pauseResumeButton.addEventListener('click', () => {
       if (this.game.state !== 'paused') return;
       this.game.state = 'playing';
@@ -148,7 +202,10 @@ export class Hud {
 
   update(dt) {
     const player = this.game.player;
-    this.messageTimer = Math.max(0, this.messageTimer - dt);
+    const resumed = this.messageSlot.update(dt);
+    if (resumed) this.renderMessage(resumed.text, resumed.className);
+    this.messageTimer = this.messageSlot.remaining;
+    this.updateDamageEdge(dt, player);
     if (this.messageTimer <= 0) this.centerMessage.classList.remove('show', 'boss-warning');
     this.setBar(this.hpBar, player.hp / player.maxHp);
     this.setBar(this.mpBar, player.mp / player.maxMp);
@@ -161,6 +218,7 @@ export class Hud {
     this.mpText.textContent = `${Math.floor(player.mp)} / ${player.maxMp}`;
     const burstCooldownText = player.burstCooldownTimer > 0 ? `  CD ${player.burstCooldownTimer.toFixed(1)}s` : '';
     this.burstText.textContent = `${Math.floor(player.burst)} / ${Config.player.burstMax}${burstCooldownText}`;
+    this.updateXpBar(dt, player);
     const remain = Math.max(0, Config.map.playSeconds - this.game.elapsed);
     const minutes = Math.floor(remain / 60);
     const seconds = Math.floor(remain % 60).toString().padStart(2, '0');
@@ -208,21 +266,49 @@ export class Hud {
     this.bindMeter.classList.add('jolt');
   }
 
+  // A4: 経験値バーとレベルアップ直前の予告（Config.feedbackFx.xpBar）
+  updateXpBar(dt, player) {
+    if (!this.xpMeter) return;
+    const enabled = Boolean(this.game.feedbackFxEnabled);
+    this.xpMeter.classList.toggle('hidden', !enabled);
+    this.xpMeter.parentElement?.parentElement?.classList.toggle('xp-on', enabled);
+    if (!enabled) return;
+    const state = xpBarState(player.xp, player.nextXp, Config.feedbackFx.xpBar.nearRatio);
+    const key = `${player.level}:${Math.floor(player.xp)}`;
+    if (key !== this.lastXpKey) {
+      if (this.lastXpKey) this.xpGainTimer = 0.12;
+      this.lastXpKey = key;
+      this.setBar(this.xpBar, state.ratio);
+      this.xpLevel.textContent = `Lv ${player.level}`;
+      this.xpText.textContent = state.near ? `まもなく Lv ${player.level + 1}` : `あと ${state.remain}`;
+      this.xpMeter.classList.toggle('near', state.near);
+    }
+    this.xpGainTimer = Math.max(0, this.xpGainTimer - dt);
+    this.xpMeter.classList.toggle('gain', this.xpGainTimer > 0);
+  }
+
   setBar(element, ratio) {
     element.style.width = `${clamp(ratio, 0, 1) * 100}%`;
   }
 
-  showMessage(text, seconds = 1.25) {
+  // A19: priority is MessagePriority.normal / important / warning. Returns false when a more important line keeps the slot.
+  showMessage(text, seconds = 1.25, priority = MessagePriority.normal, className = '') {
+    if (!this.messageSlot.offer(text, seconds, priority, className)) return false;
+    this.renderMessage(text, className);
+    this.messageTimer = seconds;
+    return true;
+  }
+
+  renderMessage(text, className = '') {
     this.centerMessage.classList.remove('boss-warning');
     this.centerMessage.textContent = text;
     this.centerMessage.classList.add('show');
-    this.messageTimer = seconds;
+    if (className) this.centerMessage.classList.add(className);
   }
 
   showBossWarning(seconds, form = 'human') {
     const hint = form === 'bird' ? '\u98db\u3093\u3067\u3044\u308c\u3070\u5730\u3092\u9019\u3046\u6ce2\u306f\u5c4a\u304b\u306a\u3044' : '\u9ce5\u5f62\u614b\u3067\u98db\u3079\u3070\u304b\u308f\u305b\u308b';
-    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds);
-    this.centerMessage.classList.add('boss-warning');
+    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds, MessagePriority.warning, 'boss-warning');
   }
 
   nearestBossTarget() {
@@ -270,7 +356,7 @@ export class Hud {
       button.className = 'upgrade';
       button.type = 'button';
       button.setAttribute('aria-label', `${index + 1}番 ${UPGRADE_CATEGORIES[upgrade.id] ?? '強化'}：${upgrade.title}。${upgrade.body}`);
-      const iconUrl = UPGRADE_ICON_URLS[upgrade.id];
+      const iconUrl = upgradeIconUrl(upgrade.id);
       if (iconUrl) {
         const icon = document.createElement('img');
         icon.className = 'upgrade-icon';
@@ -289,6 +375,21 @@ export class Hud {
       const body = document.createElement('span');
       body.textContent = upgrade.body;
       copy.append(kind, title, body);
+      // A6: 相乗効果のヒント（Config.synergy.hints）。そろうものを優先して 1 行だけ出す。
+      const synergy = this.game.synergyConfig;
+      const hint = synergy?.hints ? synergyHints(upgrade.id, this.game.player, synergy)[0] : null;
+      if (hint) {
+        const line = document.createElement('span');
+        line.className = `upgrade-synergy ${hint.state}`;
+        line.textContent = hint.state === 'completes'
+          ? `相乗効果「${hint.title}」がそろう：${hint.body}`
+          : hint.state === 'active'
+            ? `相乗効果「${hint.title}」が働いている`
+            : `「${getUpgrade(hint.partner)?.title ?? hint.partner}」と合わせると「${hint.title}」`;
+        copy.appendChild(line);
+        button.classList.toggle('synergy-ready', hint.state === 'completes');
+        button.setAttribute('aria-label', `${button.getAttribute('aria-label')} ${line.textContent}`);
+      }
       button.appendChild(copy);
       const number = document.createElement('span');
       number.className = 'upgrade-index';
@@ -318,10 +419,30 @@ export class Hud {
     this.nextChapterButton.classList.toggle('hidden', !victory || finale);
     this.retryButton.classList.toggle('hidden', victory);
     this.resultBody.textContent = body;
+    this.renderResultStats(victory);
     this.result.classList.remove('hidden');
     this.renderCarryOver();
     const firstChoice = this.carryOver.querySelector('button:not(.selected)');
     (firstChoice ?? (victory && !finale ? this.nextChapterButton : victory ? this.restartButton : this.retryButton)).focus();
+  }
+
+  // A7: kills, eggs, time, best streak and level under the result text.
+  renderResultStats(victory) {
+    const { resultsConfig, runStats, elapsed, player } = this.game;
+    this.resultStats.replaceChildren();
+    const show = Boolean(resultsConfig.enabled && runStats);
+    this.resultStats.classList.toggle('hidden', !show);
+    this.retryButton.querySelector('.retry-key')?.classList.toggle('hidden', !show);
+    if (!show) return;
+    for (const row of resultRows(runStats, { elapsed: runStats.endedAt ?? elapsed, level: player?.level ?? 1, victory })) {
+      const item = document.createElement('div');
+      const label = document.createElement('dt');
+      const value = document.createElement('dd');
+      label.textContent = row.label;
+      value.textContent = row.value;
+      item.append(label, value);
+      this.resultStats.append(item);
+    }
   }
 
   // After a cleared chapter: pick one upgrade taken this chapter and one of the chapter's rewards to carry on.
@@ -357,6 +478,18 @@ export class Hud {
         title.textContent = item.count > 1 ? `${item.title} ×${item.count}` : item.title;
         const body = document.createElement('span');
         body.textContent = group.kind === 'upgrade' ? `${item.body}（1回分を引き継ぐ）` : item.body;
+        const iconUrl = Config.visuals.carryOverIcons
+          ? (group.kind === 'upgrade' ? upgradeIconUrl(item.id) : rewardIconUrl(item.id))
+          : null;
+        if (iconUrl) {
+          const icon = document.createElement('img');
+          icon.className = 'carry-over-icon';
+          icon.src = iconUrl;
+          icon.alt = '';
+          icon.setAttribute('aria-hidden', 'true');
+          button.classList.add('with-icon');
+          button.append(icon);
+        }
         button.append(title, body);
         button.addEventListener('click', () => {
           this.game.chooseCarryOver(group.kind, item.id);
@@ -371,6 +504,23 @@ export class Hud {
       this.carryOver.appendChild(section);
     }
     this.nextChapterButton.disabled = groups.some(group => !options.choice[group.key]);
+  }
+
+  // A3: red screen edge right after a hit, and a faint pulse while HP is low (Config.feel.damageEdge).
+  updateDamageEdge(dt, player) {
+    if (!this.damageEdge) return;
+    const cfg = Config.feel?.damageEdge;
+    if (!cfg?.enabled || !this.game.feelEnabled || !player) {
+      this.damageEdge.style.opacity = '0';
+      return;
+    }
+    this.game.damageEdgeTimer = Math.max(0, (this.game.damageEdgeTimer ?? 0) - dt);
+    const hit = cfg.seconds > 0 ? this.game.damageEdgeTimer / cfg.seconds * cfg.strength : 0;
+    const ratio = player.hp / player.maxHp;
+    const low = !player.dead && ratio > 0 && ratio < cfg.lowHpRatio
+      ? cfg.lowHpStrength * (0.6 + 0.4 * Math.sin(performance.now() / 1000 * Math.PI * 2 * 0.9))
+      : 0;
+    this.damageEdge.style.opacity = Math.max(hit, low, 0).toFixed(3);
   }
 
   showDeathBlackout(show) {

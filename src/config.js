@@ -23,6 +23,17 @@ export const Config = {
     birdModelPitch: Math.PI * 0.5,
     droneModelHeight: 0.28,
     motherEggModelHeight: 4.2,
+    // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と
+    // 白蓮の核・花弁を、色違いの仮の体から置き換える。false（または URL に ?tripoEnemies=0）で元の仮の体に戻る。
+    tripoEnemyModels: true,
+    // 強化アイコンの手直し版（2026-11-11 seeds の切り残しを消した版、2026-11-15 speed・pierce を太く描き直した版）。false で元の絵に戻る。
+    cleanedUpgradeIcons: true,
+    // 章のクリア後に選ぶ引き継ぎ強化のアイコン（2026-11-18、B4-2。新しい 6 個は scripts/assets/draw-reward-icons.py、
+    // 残り 9 個は強化アイコンの流用）。false で元の文字だけの選択肢に戻る。
+    carryOverIcons: true,
+    // 第1章の戦場に置く給水ポンプ（B1-7、2026-11-16。Blender で手作り、scripts/blender/build_chapter1_pump.py）。
+    // 見た目だけの目印で、当たり判定も耐久値も無い（ポンプの耐久は A9 で保留中）。false（または URL に ?pump=0）で置かない。
+    chapterPump: true,
     usePlayerFbxAnimations: true,
     useEmbeddedPlayerAnimation: false,
     useProceduralPlayerBones: false,
@@ -56,6 +67,65 @@ export const Config = {
     environmentLightIntensity: 0.32,
     floorTextureTint: 0xffffff,
     backgroundModelBrightness: 1.08
+  },
+  // Game feel (A3, 2026-11-09): hit stop (the world slows for a few frames), small camera shakes and a red screen edge
+  // when hurt. enabled: false (or ?feel=0 in the URL) turns all three off and keeps the old shakes.
+  feel: {
+    enabled: true,
+    hitStop: {
+      timeScale: 0.05, // world speed while stopped
+      enemyKill: 0.025,
+      bigKill: 0.06, // spawner, shadow
+      eggBreak: 0.03,
+      playerHit: 0.07,
+      minGap: 0.12, // game seconds between kill/egg stops (a burst kills many at once)
+      maxSeconds: 0.09
+    },
+    shake: {
+      scale: 1, // multiplies the shakes below (0 = none)
+      enemyKill: 0.07,
+      bigKill: 0.16,
+      eggBreak: 0.1,
+      playerHit: 0.26 // the old fixed value was 0.18
+    },
+    damageEdge: {
+      enabled: true,
+      strength: 0.75, // opacity right after a hit
+      seconds: 0.5, // fade out
+      lowHpRatio: 0.3, // below this HP ratio the edge pulses faintly
+      lowHpStrength: 0.28
+    }
+  },
+  // A19: 画面中央のメッセージの優先度（普通・大事な説明・警告）。低いものは高いものを上書きしない。
+  // 警告で途切れた説明は、警告のあとに残りの時間だけ出し直す。
+  // priority: false か URL の ?messagePriority=0 で、元の「後から来たものが常に上書き」に戻る。
+  messages: {
+    priority: true,
+    resumeMinSeconds: 0.8 // 途切れた説明の残りがこれより短ければ出し直さない
+  },
+  // A4: 撃破の破片、経験値の吸い込み、経験値バーとレベルアップ直前の予告。
+  // enabled: false か URL の ?feedbackFx=0 で、すべて消えて元の見た目に戻る。
+  feedbackFx: {
+    enabled: true,
+    shards: {
+      count: 5, // 普通の敵
+      bigCount: 9, // 湧き手・影法師・守り手
+      size: 0.17,
+      speed: 4.2, // 横に飛ぶ速さの上限
+      lift: 4.5, // 上に飛ぶ速さの上限
+      life: 0.6,
+      fadeFrom: 0.55, // 寿命のこの割合から縮んで消える
+      maxActive: 16 // 同時に出す破片の組の上限（バーストで一度に倒しても重くしない）
+    },
+    xpPull: {
+      accel: 2.4, // 吸い寄せられて1秒ごとに速さ +240%
+      maxBoost: 2.2, // 速さは最大で 3.2 倍
+      shrinkFrom: 1.6, // この距離より近づくと小さくなる
+      minScale: 0.45
+    },
+    xpBar: {
+      nearRatio: 0.85 // 経験値がこの割合を超えたら、バーが光って「まもなく」と出る
+    }
   },
   performance: {
     maxPixelRatio: 1,
@@ -96,18 +166,71 @@ export const Config = {
     vineVoices: true,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
     // 2026-11-03: crier's cry, hand grab, rootsucker rooting (false = mother_release for the cry, no sound for the other two).
+    // 2026-11-17: egg hatching nearby, a horn when the boss appears, ticks and a gong when little time is left (false = no sound, as before).
     newSfx: true,
+    // An egg's hatching is heard only within this distance of the player.
+    eggHatchSfxRange: 24,
+    // Seconds left on the clock when the time warning sounds, if the boss still stands (0 = never).
+    timeWarningSeconds: 30,
     // Effect files with loudness matched by role (assets/audio/sfx-normalized, 2026-11-01). false = original files.
     normalizedSfx: true,
     // One-liners added 2026-10-30 when the boss appears, on level-up and at one minute left (false = none, as before).
     cueVoices: true,
     // Level-ups come often; the line plays at most once per this many seconds of battle time.
-    levelUpVoiceCooldown: 25
+    levelUpVoiceCooldown: 25,
+    // One-liner when the chapter boss is destroyed (added 2026-11-06; false = none, as before).
+    bossDownVoice: true,
+    // One-liner when HP first drops below lowHpVoiceRatio, instead of the hit cry (added 2026-11-13; false = none, as before).
+    lowHpVoice: true,
+    lowHpVoiceRatio: 0.3,
+    lowHpVoiceCooldown: 40
+  },
+  // A5: 敵の出現の緩急（波と小休止）。計算は src/pacing.js。
+  // enabled: false か URL の ?pacing=0 で、元の出方（stageBeats だけ、孵る速さは一定の伸び）に戻る。
+  pacing: {
+    enabled: true,
+    // 静かな谷を埋める小さな波（balance-report 2026-11-08: 最初の 60 秒、50–60 秒、140–150 秒）。上限は元のまま。
+    ripples: [
+      { at: 18, enemies: ['chaser', 'chaser'], eggs: 1 },
+      { at: 55, enemies: ['chaser', 'shooter'], eggs: 1 },
+      { at: 140, enemies: ['chaser', 'chaser', 'shooter'], eggs: 1 }
+    ],
+    surgeSeconds: 8, // 波の直後、卵が早く孵る時間
+    surgeHatchScale: 1.5,
+    lullSeconds: 7, // そのあとの小休止
+    lullHatchScale: 0.5,
+    untilSeconds: 180, // ボスが出たあとは緩急をつけない（ボス戦は元のまま）
+    announce: true, // 元からある大きな波（35・70・110・150 秒）で一言出す。ほかの説明が出ている間は出さない
+    announceText: '敵の波が来る'
+  },
+  // A6: 強化の相乗効果。2 つの強化を両方持つと働く。計算は src/synergies.js。
+  // enabled: false か URL の ?synergy=0 で、相乗効果もカードのヒントも出ない（元のまま）。
+  synergy: {
+    enabled: true,
+    hints: true, // 強化の選択肢に「◯◯と合わせると…」を出す
+    list: [
+      { id: 'piercingRain', title: '貫く雨', parts: ['seeds', 'pierce'], body: '弾が敵を貫くたびに威力＋25％' },
+      { id: 'fallingPulse', title: '落ちる鼓動', parts: ['dive', 'pulse'], body: '急降下の着地で範囲パルスが出る' },
+      { id: 'fullWater', title: '満ちる水', parts: ['mp', 'regen'], body: 'MPが8割以上のあいだ自動攻撃の威力＋20％' }
+    ],
+    piercingRain: { gain: 0.25 },
+    fallingPulse: { damageScale: 1, rangeScale: 1 }, // 着地のパルスの威力・範囲（普通のパルスに掛ける）
+    fullWater: { mpRatio: 0.8, damageScale: 1.2 }
+  },
+  // A7: 結果画面の成績と、やり直しを短くする。計算は src/run-stats.js。
+  // enabled: false か URL の ?results=0 で、成績の表も R キーも出撃前会話の省略も無い（元のまま）。
+  results: {
+    enabled: true,
+    streakWindow: 1.5, // 前の撃破からこの秒数以内なら「連続」
+    quickRetry: true // 倒れたあとの「この章をやり直す」で出撃前の会話を飛ばす（クリア後の「次の章へ」はそのまま）
   },
   story: {
-    // 会話画面の立ち絵を動くアバター（assets/avatars/*.mavatar）にする（false で静止画のみ）。
+    // 会話画面の立ち絵を動くアバターにする（false で静止画のみ）。
     avatarPortraits: true,
-    // 'normal': 通常の表情の台詞だけアバター、ほかの表情は描き分けた静止画。'all': すべてアバターで、表情は変形で付ける。
+    // 'rig': Anime2.5DRig（assets/avatars/rig/、2026-11-05〜）。'mesh': Mesh Avatar Studio（assets/avatars/*.mavatar）。
+    avatarEngine: 'rig',
+    // 'mesh' のときだけ使う。'normal': 通常の表情の台詞だけアバター、ほかの表情は描き分けた静止画。'all': すべてアバターで、表情は変形で付ける。
+    // 'rig' は通常の表情だけアバターで、ほかは描き分けた静止画（src/story-avatars.js）。
     avatarExpressions: 'all'
   },
   map: {
@@ -151,7 +274,8 @@ export const Config = {
   },
   player: {
     // 全キャラ共通の被ダメージ倍率。1 で調整前（2026-10-21 以前）と同じ。
-    damageTakenScale: 0.9,
+    // 2026-11-16 ユーザー「難易度は bot がクリアできるくらいまで下げましょう」で 0.9 → 0.8
+    damageTakenScale: 0.8,
     maxHp: 120,
     maxMp: 100,
     humanSpeed: 6.72,
@@ -184,6 +308,8 @@ export const Config = {
     burstEnemyDamage: 100,
     burstEggDamage: 50,
     burstMotherDamageCap: 28,
+    // 2026-11-16 ユーザー「バーストはもっとボスに対してダメージはいってもいい」: バーストがボス（母卵・各章のボスの体）に与えるダメージの倍率。1 で元どおり
+    burstBossDamageScale: 2,
     burstRange: 12,
     burstInvincible: 1,
     burstCooldown: 8,
@@ -284,10 +410,11 @@ export const Config = {
       bodyRadius: 2.2,
       mapMargin: 6,
       firstLayDelay: 5,
-      layInterval: 6.5,
-      layDuration: 2.8,
+      layInterval: 5, // 2026-11-16 6.5 → 5（殻が開く回数を増やす）
+      // 2026-11-16 ユーザー「bot がクリアできるくらいまで」: 開いている時間 2.8 → 3.5 秒、閉じているときの効き 0.3 → 0.5
+      layDuration: 3.5,
       openDamageScale: 1.8,
-      closedDamageScale: 0.3,
+      closedDamageScale: 0.5,
       contactRadius: 3.1,
       contactDamage: 20,
       contactCooldown: 1.1
@@ -321,15 +448,52 @@ export const Config = {
     swarmMother: {
       count: 3,
       spread: 6.5,
-      hpShare: 0.45,
-      reviveSeconds: 10,
-      reviveHpRatio: 0.6,
+      hpShare: 0.3, // 2026-11-16 0.45 → 0.3
+      // 2026-11-16 ユーザー「bot がクリアできるくらいまで」: 起き上がりまで 10 → 25 秒、起き上がりの HP 0.6 → 0.3
+      reviveSeconds: 25,
+      reviveHpRatio: 0.3,
       handoverDelay: 3
+    },
+    // Final chapter's white lotus core (E15 phases 1-2, E16 phase 3). Six petals ring the core (petalSpread away), each with
+    // petalHpShare of the stage's mother HP. Every petal keeps hatching one earlier chapter's new species
+    // (petalSpecies, in order; a disabled species falls back to a chaser) every petalSpawnSeconds, up to
+    // petalMaxAlive of its own at once. While closed the core cannot be targeted. Breaking openAfterPetals
+    // petals opens it (phase 2): it then alternates the ground shockwave (dodge in bird form) and an inhale
+    // that pulls the player in for inhaleSeconds (bird form is pulled at inhalePullBird, human form only at
+    // inhalePullHuman). Touching the core during the inhale (inhaleBiteRadius) costs inhaleDamage every
+    // inhaleBiteInterval. Set chapter 6's boss to 'motherEgg' to remove it.
+    whiteLotusCore: {
+      coreHpShare: 0.45, // 2026-11-16 1 → 0.45
+      petalCount: 6,
+      petalSpread: 8,
+      petalHpShare: 0.08, // 2026-11-16 0.14 → 0.08
+      petalScale: 0.5,
+      petalSpecies: ['footprint', 'swarmbird', 'splitshell', 'crier', 'hand', 'rootsucker'],
+      petalFirstSpawnSeconds: 3,
+      petalSpawnSeconds: 11,
+      petalMaxAlive: 2,
+      openAfterPetals: 2, // 2026-11-16 4 → 2（核を開くのに要る花弁）
+      openRestSeconds: 2.5,
+      restSeconds: 4.5,
+      shockwaveWarning: 1.6,
+      inhaleWarning: 1.4,
+      inhaleSeconds: 3,
+      inhaleRadius: 30,
+      inhalePullBird: 7.5,
+      inhalePullHuman: 1.4,
+      inhaleBiteRadius: 4,
+      inhaleDamage: 8,
+      inhaleBiteInterval: 0.6,
+      // Phase 3 (E16): with shadowAtRemaining seconds left the core hatches the shadow (Config.enemy.shadow) once.
+      // While the shadow lives, the core takes shadowCoreDamageScale of the damage (1 = no guard).
+      shadowAtRemaining: 30,
+      shadowCoreDamageScale: 0.5
     }
   },
   egg: {
     hp: 38,
-    motherHp: 300,
+    // 2026-11-16 ユーザー「難易度は bot がクリアできるくらいまで」で 300 → 150（各章の motherHpScale がこれに掛かる）
+    motherHp: 150,
     motherShockwaveFirstDelay: 4.5,
     motherShockwaveInterval: 10,
     motherShockwaveWarning: 1.6,
@@ -402,8 +566,11 @@ export const Config = {
       hitInterval: 0.42,
       humanHitRadius: 0.85,
       birdHitRadius: 1.8,
-      maxAliveBeforeRush: 2,
-      maxAliveDuringRush: 6
+      // 2026-11-16 ユーザー「狙撃タイプは一体まで」: 同時にいる狙撃手は 1 体まで（元は 2 と、210 秒からは 6）
+      maxAliveBeforeRush: 1,
+      maxAliveDuringRush: 1,
+      // A35（2026-11-16 ユーザー「狙撃タイプは一体まで」）: ボスが出ている間、同時に予告・発射できる狙撃手の数。0 で制限なし（元の動き）
+      maxFiringDuringBoss: 1
     },
     guardian: { hp: 72, speed: 2.14, damage: 15, xp: 10, walkAnimationSpeed: 1.8, corpseSinkDepth: 0.9 },
     spawner: {
@@ -549,6 +716,68 @@ export const Config = {
       dryRadiusMax: 8,
       growSeconds: 25,
       dryRegenScale: 0
+    },
+    // 割れ殻（E14 の片方。第3章から）。普通に近づいてくる殻をかぶった敵。バースト技で倒すと
+    // splitCount 体の「半分」に割れる（半分は HP・経験値が halfScale 倍で、もう割れない）。
+    // 半分は割れてから halfBurstImmuneSeconds のあいだバースト技を受けない（続くビームや斬撃でまとめて消えないように）。
+    // 普通の射撃・パルス・急降下で倒せば割れない。卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
+    splitshell: {
+      enabled: true,
+      fromChapter: 3,
+      fromElapsed: 40,
+      chance: 0.1,
+      maxAlive: 4,
+      hp: 46,
+      speed: 2.2,
+      damage: 8,
+      xp: 8,
+      walkAnimationSpeed: 1.1,
+      splitCount: 2,
+      halfScale: 0.5,
+      halfBurstImmuneSeconds: 0.9,
+      halfSpread: 1.6
+    },
+    // 群れ鳥（E14 のもう片方。出す章は判断待ちで、今は第2章から）。卵1つから flockSize 羽の小さな群れが孵る。
+    // プレイヤーが人間形態の間は、半径 orbitRadius・高さ orbitHeight で遠巻きに回るだけで襲わない（自動射撃で落とせる）。
+    // 鳥形態になると noticeSeconds で気づき、diveSpeed で鳥の高さまで上がって集中して襲う（鳥形態でも当たる）。
+    // 人間形態に戻ると、また遠巻きに戻る。卵から孵る敵の chance が群れになる。enabled: false で出なくなる。
+    swarmbird: {
+      enabled: true,
+      fromChapter: 2,
+      fromElapsed: 60,
+      chance: 0.08,
+      maxFlocks: 2,
+      flockSize: 4,
+      hp: 18,
+      speed: 5.2,
+      diveSpeed: 15.5,
+      climbSpeed: 7,
+      damage: 2,
+      contactCooldown: 1.2,
+      xp: 3,
+      orbitRadius: 9,
+      orbitHeight: 3.2,
+      orbitTurnSpeed: 0.45,
+      noticeSeconds: 0.6
+    },
+    // Shadow (E16, final chapter only): the white lotus core hatches a black copy of the chosen character when
+    // shadowAtRemaining seconds are left (Config.boss.whiteLotusCore). It copies the player's form mirrorDelay seconds
+    // late. Same form as the player: it can hit the player and takes no damage. Different form (just after the
+    // player switched): it cannot hit and takes damage (shots while it flies, a bird dive while it walks).
+    // Set enabled: false to remove it.
+    shadow: {
+      enabled: true,
+      hp: 260,
+      speed: 6.1,
+      birdSpeed: 12.4,
+      climbSpeed: 9,
+      mirrorDelay: 1.4,
+      damage: 14,
+      contactCooldown: 0.9,
+      diveDamageScale: 1,
+      diveDetectRange: 7,
+      xp: 40,
+      healOnDefeatRatio: 0.15
     }
   },
   xp: {

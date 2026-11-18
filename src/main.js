@@ -15,14 +15,19 @@ import {
 import { ChapterRewards, Config, getChapterReward, getUpgrade } from './config.js';
 import { Egg, Enemy, ExperienceOrb, installPickupModel, Player, Projectile } from './entities.js';
 import { InputState } from './input.js';
-import { clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
-import { floodgateStreamPoints, getBossName, getBossType, linkSwarm, swarmPositions } from './bosses.js';
+import { angleToXZ, clamp, horizontalDistanceSq, normalizeXZ, randomPointInCircle, randRange, TAU } from './math.js';
+import { floodgateStreamPoints, getBossName, getBossType, linkLotus, linkSwarm, lotusInhalePull, lotusTargetable, swarmPositions } from './bosses.js';
 import { PlayerTrail } from './footprints.js';
 import { ObjectPool } from './object-pool.js';
+import { buildWaveTimes, pacingPhase } from './pacing.js';
+import { activeSynergies } from './synergies.js';
+import { createRunStats, recordEggBreak, recordKill } from './run-stats.js';
+import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
 import { VineBindVisual, createVineEruption, updateVineEruption, vineAliveCap, vineStatsForChapter } from './vines.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
+import { MessagePriority } from './message-slot.js';
 import {
   createWaterStageTerrainMaterial,
   createWaterSurfaceMaterial,
@@ -104,6 +109,7 @@ const PLAYER_BURST_COLOR = 0xffdf70;
 const CRIER_RING_COLOR = 0xe7a6ff;
 const HAND_RING_COLOR = 0xff6a3d;
 const ROOTSUCKER_RING_COLOR = 0xf0c27a;
+const SPLITSHELL_SHARD_COLOR = 0xfff0b8;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
 // Sound effect files by name. Config.audio.normalizedSfx picks the loudness-matched copies in sfx-normalized/
 // (made by scripts/assets/normalize-sfx.mjs, 2026-11-01); false = the original files as before.
@@ -132,7 +138,13 @@ const SFX_FILES = {
   thirstDrain: 'thirst_drain',
   crierCry: 'crier_cry',
   handGrab: 'hand_grab',
-  rootDry: 'root_dry'
+  rootDry: 'root_dry',
+  fishBite: 'fish_bite',
+  shellCrack: 'shell_crack',
+  swarmRise: 'swarm_rise',
+  eggHatch: 'egg_hatch',
+  bossWarning: 'boss_warning',
+  timeWarning: 'time_warning'
 };
 const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
 const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
@@ -161,7 +173,9 @@ const VOICE_URLS = {
     escape: [new URL('../assets/audio/voice/tsukimi/escape_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/tsukimi/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
-    lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href]
+    lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href],
+    bossDown: [new URL('../assets/audio/voice/tsukimi/boss_down_01.mp3', import.meta.url).href],
+    lowHp: [new URL('../assets/audio/voice/tsukimi/low_hp_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -183,7 +197,9 @@ const VOICE_URLS = {
     escape: [new URL('../assets/audio/voice/akame/escape_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/akame/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
-    lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href]
+    lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href],
+    bossDown: [new URL('../assets/audio/voice/akame/boss_down_01.mp3', import.meta.url).href],
+    lowHp: [new URL('../assets/audio/voice/akame/low_hp_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -205,7 +221,9 @@ const VOICE_URLS = {
     escape: [new URL('../assets/audio/voice/kiichigo/escape_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/kiichigo/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
-    lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href]
+    lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href],
+    bossDown: [new URL('../assets/audio/voice/kiichigo/boss_down_01.mp3', import.meta.url).href],
+    lowHp: [new URL('../assets/audio/voice/kiichigo/low_hp_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -259,8 +277,27 @@ const GAMEPLAY_MODELS = {
     height: 2.0,
     centerXZ: true,
     forceOpaque: true
-  }
+  },
+  // Tripo の新種とボス（Config.visuals.tripoEnemyModels）。骨とモーションは scripts/blender/build_tripo_enemies.py
+  footprintTripo: tripoModel('footprint', 1.8),
+  crierTripo: tripoModel('crier', 1.75),
+  swarmbirdTripo: tripoModel('swarmbird', 0.75),
+  splitshellTripo: tripoModel('splitshell', 1.7),
+  handTripo: tripoModel('hand', 2.0),
+  rootsuckerTripo: tripoModel('rootsucker', 1.9),
+  lotusCoreTripo: tripoModel('lotus_core', 4.6),
+  lotusPetalTripo: tripoModel('lotus_petal', 5.6)
 };
+
+function tripoModel(name, height) {
+  return {
+    url: new URL(`../assets/enemies/tripo/${name}_anim.glb`, import.meta.url).href,
+    height,
+    centerXZ: true,
+    forceOpaque: true,
+    tripo: true
+  };
+}
 const BACKGROUND_OBJECTS = [
   { url: new URL('../assets/background/obj_001_rtp.glb', import.meta.url).href, height: 3.0, count: 1, minRadius: 28 },
   { url: new URL('../assets/background/obj_002_rtp.glb', import.meta.url).href, height: 3.2, count: 1, minRadius: 30 },
@@ -270,6 +307,11 @@ const BACKGROUND_OBJECTS = [
   { url: new URL('../assets/background/obj_007_rtp.glb', import.meta.url).href, height: 1.25, count: 16, minRadius: 12 },
   { url: new URL('../assets/background/obj_008_rtp.glb', import.meta.url).href, height: 2.2, count: 2, minRadius: 24 }
 ];
+// 第1章の給水ポンプ（B1-7）。プレイヤーの出発点の北東、最初の画面の端に見える位置。PumpRotor（はずみ車）をゲーム側で回す。
+const CHAPTER_PUMP = {
+  url: new URL('../assets/background/chapter1_pump.glb', import.meta.url).href,
+  x: 6.5, z: -5.5, rotation: -0.6, scale: 1.2, rotorSpeed: 5, glowPulseHz: 0.9
+};
 const WATER_STAGE_LAND_PATCHES = [
   { x: 0, z: 0, radius: 25, scaleX: 1.2, scaleZ: 0.8, rotation: 0.18, seed: 0.4 },
   { x: -36, z: -12, radius: 18, scaleX: 1.0, scaleZ: 0.72, rotation: -0.65, seed: 1.7 },
@@ -441,12 +483,16 @@ class Game {
     this.hint = '';
     this.hintTimer = 0;
     this.shake = 0;
+    this.hitStopTimer = 0;
+    this.lastHitStopAt = -Infinity;
+    this.damageEdgeTimer = 0;
     this.spawnPauseTimer = 0;
     this.eggSpawnPauseTimer = 0;
     this.enemySpawnPauseTimer = 0;
     this.eggOverCapSpawnBudget = 0;
     this.enemyOverCapSpawnBudget = 0;
     this.eggsDestroyed = 0;
+    this.runStats = createRunStats();
     this.eggs = [];
     this.enemies = [];
     this.projectiles = [];
@@ -492,10 +538,27 @@ class Game {
     this.rootsuckerHintShown = false;
     this.dryGroundHintShown = false;
     this.rootsuckerStats = { spawned: 0, rooted: 0, drySeconds: 0, dryMpLost: 0 };
+    this.splitshellsActive = Config.enemy.splitshell.enabled && this.stageId >= Config.enemy.splitshell.fromChapter;
+    this.splitshellHintShown = false;
+    this.splitHintShown = false;
+    this.splitshellStats = { spawned: 0, splits: 0, halves: 0 };
+    this.swarmbirdsActive = Config.enemy.swarmbird.enabled && this.stageId >= Config.enemy.swarmbird.fromChapter;
+    this.swarmFlocks = [];
+    this.swarmbirdHintShown = false;
+    this.swarmbirdHuntHintShown = false;
+    this.swarmbirdStats = { flocks: 0, birds: 0, hunts: 0, hits: 0, damage: 0 };
+    this.lotusStats = null;
+    this.lotusShadow = null;
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
     this.takenUpgrades = new Map();
     this.carryChoice = null;
+    // A6: いま働いている相乗効果の id。
+    this.synergies = new Set();
+    this.synergyStats = { activated: [], divePulses: 0 };
     this.nextStageBeat = 0;
+    this.nextRipple = 0;
+    this.waveTimes = buildWaveTimes(Config.map.stageBeats, Config.pacing);
+    this.pacingState = { phase: 'calm', hatchScale: 1 };
     this.enemyGrid = new SpatialGrid(5.5);
     this.scratchEnemies = [];
     this.scratchNeighbors = [];
@@ -576,6 +639,7 @@ class Game {
     this.scene.add(this.player.group);
     await this.player.loadVisuals();
     const carried = this.applyCarryOver();
+    this.refreshSynergies();
     this.cameraRig = new CameraRig(this.camera, this.player);
     this.spawnInitialEggs();
     this.spawnInitialEnemies();
@@ -584,7 +648,7 @@ class Game {
     this.clock.start();
     this.cameraRig.update(0, 0);
     const carriedLine = carried ? `\n引き継いだ強化 ${carried}` : '';
-    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${getBossName(this.stage)}を破壊せよ${carriedLine}`, 3);
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${getBossName(this.stage)}を破壊せよ${carriedLine}`, 3, MessagePriority.important);
     if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
@@ -678,6 +742,7 @@ class Game {
       if (this.isWaterStage) this.loadWaterStageProps();
       else this.loadBackgroundObjects();
     }
+    if (this.stageId === 1 && this.chapterPumpEnabled) this.loadChapterPump();
   }
 
   createWaterStageEnvironment(ground) {
@@ -1038,7 +1103,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
       const loader = new GLTFLoader();
       const entries = Object.entries(GAMEPLAY_MODELS)
-        .filter(([key]) => !(key === 'xpCrystal' && Config.performance.usePrimitiveXp));
+        .filter(([key]) => !(key === 'xpCrystal' && Config.performance.usePrimitiveXp))
+        .filter(([, entry]) => !entry.tripo || this.tripoEnemyModelsEnabled);
       await Promise.all(entries.map(async ([key, entry]) => {
         try {
           const gltf = await loader.loadAsync(entry.url);
@@ -1358,14 +1424,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const beats = Config.map.stageBeats;
     while (this.nextStageBeat < beats.length && this.elapsed >= beats[this.nextStageBeat].at) {
       const beat = beats[this.nextStageBeat++];
-      for (let i = 0; i < beat.eggs; i++) {
-        const point = this.findEggSpawnPosition(this.player.position, 13, 25);
-        if (point) this.spawnEgg(point);
-      }
-      for (const type of beat.enemies) {
-        const point = this.findEnemySpawnPosition(14, 24);
-        if (point) this.spawnEnemy(type, point);
-      }
+      this.spawnBeat(beat);
+      if (this.pacingEnabled && Config.pacing.announce && beat.at < Config.pacing.untilSeconds
+        && this.hud.messageTimer <= 0) this.showMessage(Config.pacing.announceText, 1.4);
     }
     // 縛り蔓の章では、最初の1体を見える距離に出して紹介する。
     if (this.vinesActive && !this.vineIntroduced && this.elapsed >= this.vineConfig.introAt) {
@@ -1373,6 +1434,33 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       const point = this.findEnemySpawnPosition(11, 15);
       if (point) this.spawnEnemy('vine', point);
     }
+    if (!this.pacingEnabled) return;
+    // A5: small extra waves in the quiet valleys, then a surge / lull in how fast eggs hatch.
+    const ripples = Config.pacing.ripples;
+    while (this.nextRipple < ripples.length && this.elapsed >= ripples[this.nextRipple].at) {
+      this.spawnBeat(ripples[this.nextRipple++]);
+    }
+    this.pacingState = pacingPhase(this.elapsed, this.waveTimes, Config.pacing);
+  }
+
+  spawnBeat(beat) {
+    for (let i = 0; i < beat.eggs; i++) {
+      const point = this.findEggSpawnPosition(this.player.position, 13, 25);
+      if (point) this.spawnEgg(point);
+    }
+    for (const type of beat.enemies) {
+      const point = this.findEnemySpawnPosition(14, 24);
+      if (point) this.spawnEnemy(type, point);
+    }
+  }
+
+  // A5: waves and lulls (Config.pacing, ?pacing=0 turns them off).
+  get pacingEnabled() {
+    if (this._pacingEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('pacing');
+      this._pacingEnabled = fromUrl === null ? Boolean(Config.pacing?.enabled) : fromUrl !== '0';
+    }
+    return this._pacingEnabled;
   }
 
   findEnemySpawnPosition(minDistance, maxDistance) {
@@ -1404,16 +1492,28 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.handleGlobalInput();
     this.touchControls.setEnabled(this.state === 'playing');
     this.updateBgmState();
+    this.updateChapterPump(dt);
     if (this.state === 'playing') {
+      const realDt = dt;
+      if (this.hitStopTimer > 0) {
+        this.hitStopTimer = Math.max(0, this.hitStopTimer - realDt);
+        dt *= Config.feel.hitStop.timeScale;
+      }
       this.elapsed += dt;
-      this.hintTimer = Math.max(0, this.hintTimer - dt);
+      this.hintTimer = Math.max(0, this.hintTimer - realDt);
       if (this.hintTimer <= 0) this.hint = '';
-      this.shake = Math.max(0, this.shake - dt * 1.7);
+      this.shake = Math.max(0, this.shake - realDt * 1.7);
       this.updateSpawnPause(dt);
       if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
       if (!this.lastMinuteCalled && this.elapsed >= Config.map.playSeconds - 60) {
         this.lastMinuteCalled = true;
         if (Config.audio.cueVoices) this.playVoice('lastMinute', { volume: 0.9 });
+      }
+      // B2-1: ticks and a gong when little time is left and the boss still stands (the one-minute mark is taken by the boss's horn).
+      if (!this.timeWarningCalled && Config.audio.newSfx && Config.audio.timeWarningSeconds > 0
+        && this.elapsed >= Config.map.playSeconds - Config.audio.timeWarningSeconds) {
+        this.timeWarningCalled = true;
+        if (this.bossEggs.some((egg) => !egg.dead)) this.playSfx('timeWarning', { volume: 0.7 });
       }
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
@@ -1421,6 +1521,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.updateVineBind(dt);
       if (this.playerTrail) this.updatePlayerTrail(dt);
       if (this.rootsuckersActive) this.updateDryGround(dt);
+      if (this.swarmFlocks.length) this.updateSwarmFlocks(dt);
       for (const egg of this.eggs) egg.update(dt);
       for (const mother of this.bossEggs) mother.update(dt);
       for (const enemy of this.enemies) enemy.update(dt);
@@ -1599,30 +1700,43 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const wantsWater = this.isWaterStage && getBossType(this.stage.boss).prefersWater;
     let best = null;
     let bestDistance = -Infinity;
-    for (let i = 0; i < (wantsWater ? 80 : 20); i++) {
+    // 2026-11-16: on a water map, a boss that does not live in the water (chapter 5's thirst mother) stands on land, so that the
+    // player can step out of the water and dodge its shockwave in bird form (in the water a transform gives fish form).
+    const wantsLand = this.isWaterStage && !wantsWater;
+    for (let i = 0; i < (wantsWater || wantsLand ? 80 : 20); i++) {
       const point = randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
       if (this.isBlockedByBuilding(point, 3)) continue;
       if (wantsWater && this.isWaterStageLand(point, Config.boss.floodgateMother.shoreMargin)) continue;
+      if (wantsLand && !this.isWaterStageLand(point, 0.6)) continue;
       const distance = horizontalDistanceSq(point, this.player.position);
       if (distance > bestDistance) { best = point; bestDistance = distance; }
     }
     const position = best ?? randomPointInCircle(Config.map.radius - 8, Config.map.radius * 0.58);
     const bossType = getBossType(this.stage.boss);
-    if (bossType.spawnCount > 1) {
+    if (bossType.id === 'whiteLotusCore') {
+      this.spawnWhiteLotus(position);
+    } else if (bossType.spawnCount > 1) {
       this.spawnSwarmMother(position, bossType.spawnCount);
     } else {
       const mother = this.spawnEgg(position, true);
       mother.maxHp *= this.stage.motherHpScale;
       mother.hp = mother.maxHp;
     }
-    this.spawnBurstEffect(position, 7, 0xff8b52);
+    this.spawnBurstEffect(this.motherEgg?.position ?? position, 7, 0xff8b52);
+    if (Config.audio.newSfx) this.playSfx('bossWarning', { volume: 0.9 });
     if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
-    if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6);
-    else this.showMessage('\u30dc\u30b9\u51fa\u73fe');
+    if (bossType.id === 'whiteLotusCore') this.showMessage(`白蓮の核が現れた。6枚の花弁が、これまでの新種を産む
+花弁を${Config.boss.whiteLotusCore.openAfterPetals}枚壊すと核が開く`, 3.8, MessagePriority.important);
+    else if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6, MessagePriority.important);
+    else this.showMessage('\u30dc\u30b9\u51fa\u73fe', undefined, MessagePriority.important);
   }
 
   spawnEnemyFromEgg(egg) {
     if (!this.canSpawnEnemy()) return null;
+    // B2-1: a soft crack when an egg hatches close enough to be on screen (not for the many eggs far away).
+    if (Config.audio.newSfx && horizontalDistanceSq(egg.position, this.player.position) < Config.audio.eggHatchSfxRange ** 2) {
+      this.playSfx('eggHatch', { volume: 0.5, cooldown: 0.6 });
+    }
     if (egg.aquatic) return this.spawnEnemy(Math.random() < 0.5 ? 'dragonflyLarva' : 'tadpole', egg.position, egg);
     const roll = Math.random();
     let type = 'chaser';
@@ -1640,8 +1754,25 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     else if (this.shouldHatchCrier()) type = 'crier';
     else if (this.shouldHatchHand()) type = 'hand';
     else if (this.shouldHatchRootsucker()) type = 'rootsucker';
+    else if (this.shouldHatchSplitshell()) type = 'splitshell';
+    else if (this.shouldHatchSwarmbirds()) return this.hatchSwarmFlock(egg);
     else if (type === 'chaser' && this.canSpawnVine() && Math.random() < this.vineConfig.spawnChance) type = 'vine';
-    return this.spawnEnemy(type, egg.position, egg);
+    const enemy = this.spawnEnemy(type, egg.position, egg);
+    // 割れて出た半分は数えないので、卵から孵ったときだけ（spawnEnemy ではなくここで）
+    if (enemy?.type === 'splitshell') this.onSplitshellSpawned();
+    return enemy;
+  }
+
+  // A35: ボスが出ている間は、同時に予告・発射する狙撃手を Config.enemy.sniper.maxFiringDuringBoss 体までにする。
+  // 撃てなかった狙撃手は fireTimer が 0 のまま待ち、前の 1 体が撃ち終わると次が撃つ。
+  sniperMayFire(sniper) {
+    const limit = Config.enemy.sniper.maxFiringDuringBoss;
+    if (!limit || !this.motherSpawned || !this.bossEggs.some((egg) => !egg.dead)) return true;
+    let firing = 0;
+    for (const enemy of this.enemies) {
+      if (enemy !== sniper && !enemy.dead && enemy.type === 'sniper' && enemy.beamState !== 'idle') firing++;
+    }
+    return firing < limit;
   }
 
   canSpawnVine() {
@@ -1687,7 +1818,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.footprintStats.spawned += 1;
     if (this.footprintHintShown) return;
     this.footprintHintShown = true;
-    this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6);
+    this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6, MessagePriority.important);
   }
 
   shouldHatchCrier() {
@@ -1702,7 +1833,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.crierStats.spawned += 1;
     if (this.crierHintShown) return;
     this.crierHintShown = true;
-    this.showMessage('鳴きが孵った。膨らんで鳴くと、周りの卵が早く孵る\n鳥形態の急降下なら一撃で潰せる', 3.6);
+    this.showMessage('鳴きが孵った。膨らんで鳴くと、周りの卵が早く孵る\n鳥形態の急降下なら一撃で潰せる', 3.6, MessagePriority.important);
   }
 
   // 鳴く前の予兆。体が膨らむのに合わせて、足元に届く範囲の輪を出す。
@@ -1746,7 +1877,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.handStats.spawned += 1;
     if (this.handHintShown) return;
     this.handHintShown = true;
-    this.showMessage('手が孵った。近づくと腕を伸ばして掴みかかる\n掴まれたら、鳥形態に変身すれば振りほどける', 3.6);
+    this.showMessage('手が孵った。近づくと腕を伸ばして掴みかかる\n掴まれたら、鳥形態に変身すれば振りほどける', 3.6, MessagePriority.important);
   }
 
   // 腕を伸ばしはじめた（予兆）。足元に届く範囲の輪を出す。
@@ -1765,7 +1896,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(this.player.position, 1.6, HAND_RING_COLOR, 0.8, 0.4);
     this.shake = Math.max(this.shake, 0.25);
     if (Config.audio.newSfx) this.playSfx('handGrab', { volume: 0.8, cooldown: 0.3 });
-    this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8);
+    this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8, MessagePriority.warning);
   }
 
   onPlayerReleased(hand, reason) {
@@ -1791,7 +1922,97 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.rootsuckerStats.spawned += 1;
     if (this.rootsuckerHintShown) return;
     this.rootsuckerHintShown = true;
-    this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6);
+    this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6, MessagePriority.important);
+  }
+
+  shouldHatchSplitshell() {
+    const cfg = Config.enemy.splitshell;
+    if (!this.splitshellsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'splitshell' && !enemy.splitHalf) alive++;
+    return alive < cfg.maxAlive;
+  }
+
+  onSplitshellSpawned() {
+    this.splitshellStats.spawned += 1;
+    if (this.splitshellHintShown) return;
+    this.splitshellHintShown = true;
+    this.showMessage('割れ殻が孵った。バースト技で倒すと二つに割れる\n普通の射撃で倒せば割れない', 3.6, MessagePriority.important);
+  }
+
+  shouldHatchSwarmbirds() {
+    const cfg = Config.enemy.swarmbird;
+    if (!this.swarmbirdsActive || this.elapsed < cfg.fromElapsed || Math.random() >= cfg.chance) return false;
+    return this.swarmFlocks.length < cfg.maxFlocks;
+  }
+
+  // 卵1つから群れ（flockSize 羽）が孵る。1羽目は普通に数え、残りは敵の上限を超えても出す（群れが欠けないように）。
+  // 群れの回る角度は、孵った位置の方角から始める。
+  hatchSwarmFlock(egg) {
+    const cfg = Config.enemy.swarmbird;
+    const flock = { angle: angleToXZ(this.player.position, egg.position), birds: [] };
+    for (let i = 0; i < cfg.flockSize; i++) {
+      const bird = this.spawnEnemy('swarmbird', egg.position, i === 0 ? egg : null, { ignoreCap: i > 0 });
+      if (!bird) break;
+      bird.swarm.flock = flock;
+      bird.swarm.slot = i;
+      bird.swarm.height = 1;
+      flock.birds.push(bird);
+    }
+    if (!flock.birds.length) return null;
+    this.swarmFlocks.push(flock);
+    this.swarmbirdStats.flocks += 1;
+    this.swarmbirdStats.birds += flock.birds.length;
+    if (!this.swarmbirdHintShown) {
+      this.swarmbirdHintShown = true;
+      this.showMessage('群れ鳥が孵った。鳥形態になると、群れで襲ってくる\n人間形態でいるうちに撃ち落とす', 3.6, MessagePriority.important);
+    }
+    return flock.birds[0];
+  }
+
+  // 群れの角度を進め、全滅した群れを外す。
+  updateSwarmFlocks(dt) {
+    const turn = Config.enemy.swarmbird.orbitTurnSpeed * dt;
+    this.swarmFlocks = this.swarmFlocks.filter((flock) => {
+      flock.angle += turn;
+      return flock.birds.some((bird) => !bird.dead);
+    });
+  }
+
+  // 群れ鳥が鳥形態のプレイヤーに気づいた（1羽ごと、気づくたびに呼ばれる）
+  onSwarmbirdHunt() {
+    this.swarmbirdStats.hunts += 1;
+    if (this.swarmbirdHuntHintShown) return;
+    this.swarmbirdHuntHintShown = true;
+    this.showMessage('群れ鳥が気づいた。人間形態に戻れば離れていく', 2.6, MessagePriority.important);
+  }
+
+  // 実際に減った HP（無敵時間や防護膜で防いだ分は数えない）
+  onSwarmbirdHit(damage) {
+    if (!(damage > 0)) return;
+    this.swarmbirdStats.hits += 1;
+    this.swarmbirdStats.damage += damage;
+  }
+
+  // バースト技で倒された割れ殻（割れる前のもの）が、左右に半分ずつ飛び散る。敵の上限を超えても出す。
+  onSplitshellBurst(shell) {
+    const cfg = Config.enemy.splitshell;
+    this.splitshellStats.splits += 1;
+    if (Config.audio.newSfx) this.playSfx('shellCrack', { volume: 0.9, cooldown: 0.08 });
+    const away = angleToXZ(this.player.position, shell.position);
+    for (let i = 0; i < cfg.splitCount; i++) {
+      const half = this.spawnEnemy('splitshell', shell.position, null, { ignoreCap: true });
+      if (!half) continue;
+      half.makeSplitHalf();
+      const angle = away + (i - (cfg.splitCount - 1) / 2) * 1.4;
+      half.position.copy(shell.position);
+      half.knock.set(Math.sin(angle) * cfg.halfSpread * 6, 0, Math.cos(angle) * cfg.halfSpread * 6);
+      this.splitshellStats.halves += 1;
+    }
+    this.spawnParticleBurst(shell.position, 18, SPLITSHELL_SHARD_COLOR, 2.2, 0.4, 0.7);
+    if (this.splitHintShown) return;
+    this.splitHintShown = true;
+    this.showMessage('割れ殻が二つに割れた。割れたほうは普通の射撃で倒す', 2.6, MessagePriority.important);
   }
 
   onRootsuckerRooted(rootsucker) {
@@ -1916,7 +2137,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     const relief = clamp(this.eggsDestroyed / Config.map.hatchDestroyReliefEggs, 0, 1) * Config.map.hatchDestroyMaxSlow;
     const minimumScale = Config.map.hatchMinAccelerationScale
       + (Config.map.hatchLateMinAccelerationScale - Config.map.hatchMinAccelerationScale) * progress;
-    return Config.map.hatchRateMultiplier * Math.max(minimumScale, 1 + timeAcceleration + pressureAcceleration - relief);
+    return Config.map.hatchRateMultiplier * Math.max(minimumScale, 1 + timeAcceleration + pressureAcceleration - relief)
+      * this.pacingState.hatchScale;
   }
 
   findEggsInRadius(position, radius, includeMother = false) {
@@ -1931,7 +2153,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   // Boss bodies that can be hit and targeted: the swarm mother's fallen sisters are left out until they stand up.
   getBossTargets() {
-    return this.bossEggs.filter((mother) => !mother.dead && !mother.swarmDown);
+    return this.bossEggs.filter((mother) => !mother.dead && !mother.swarmDown && lotusTargetable(mother));
   }
 
   // The boss bar: the swarm mother's three sisters share one bar (a fallen sister counts as empty).
@@ -1945,15 +2167,172 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return maxHp > 0 ? hp / maxHp : 0;
   }
 
+  // 第1章のポンプを置くか（Config.visuals.chapterPump、URL の ?pump=0 で置かない）
+  get chapterPumpEnabled() {
+    const fromUrl = new URLSearchParams(window.location.search).get('pump');
+    return fromUrl === null ? Boolean(Config.visuals.chapterPump) : fromUrl !== '0';
+  }
+
+  async loadChapterPump() {
+    try {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const gltf = await new GLTFLoader().loadAsync(CHAPTER_PUMP.url);
+      const pump = gltf.scene;
+      pump.name = 'ChapterPump';
+      pump.position.set(CHAPTER_PUMP.x, 0, CHAPTER_PUMP.z);
+      pump.rotation.y = CHAPTER_PUMP.rotation;
+      pump.scale.setScalar(CHAPTER_PUMP.scale);
+      pump.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = Config.performance.enableShadows;
+        child.receiveShadow = true;
+      });
+      this.pumpRotor = pump.getObjectByName('PumpRotor') ?? null;
+      const glow = pump.getObjectByName('PumpGlow');
+      this.pumpGlowMaterial = glow?.material ?? null;
+      this.scene.add(pump);
+      this.chapterPump = pump;
+    } catch (error) {
+      console.warn('Failed to load the chapter 1 pump.', error);
+    }
+  }
+
+  // ポンプは回り続けている（はずみ車と水の窓の光）。戦闘中でなくても回す。
+  updateChapterPump(dt) {
+    if (!this.chapterPump) return;
+    if (this.pumpRotor) this.pumpRotor.rotation.x += dt * CHAPTER_PUMP.rotorSpeed;
+    if (this.pumpGlowMaterial) {
+      this.pumpPhase = (this.pumpPhase ?? 0) + dt * CHAPTER_PUMP.glowPulseHz * Math.PI * 2;
+      this.pumpGlowMaterial.emissiveIntensity = 1.6 + Math.sin(this.pumpPhase) * 0.6;
+    }
+  }
+
+  // Tripo の新種・ボスの体を使うか（Config.visuals.tripoEnemyModels、URL の ?tripoEnemies=0 で仮の体と比べられる）
+  get tripoEnemyModelsEnabled() {
+    if (this._tripoEnemyModels === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('tripoEnemies');
+      this._tripoEnemyModels = fromUrl === null ? Boolean(Config.visuals.tripoEnemyModels) : fromUrl !== '0';
+    }
+    return this._tripoEnemyModels;
+  }
+
+  gameplayModelHeight(key) {
+    return GAMEPLAY_MODELS[key]?.height ?? 0;
+  }
+
+  get feelEnabled() {
+    if (this._feelEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('feel');
+      this._feelEnabled = fromUrl === null ? Boolean(Config.feel?.enabled) : fromUrl !== '0';
+    }
+    return this._feelEnabled;
+  }
+
+  // A4: kill shards, XP pull and the XP bar (Config.feedbackFx, ?feedbackFx=0 turns them off).
+  get feedbackFxEnabled() {
+    if (this._feedbackFxEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('feedbackFx');
+      this._feedbackFxEnabled = fromUrl === null ? Boolean(Config.feedbackFx?.enabled) : fromUrl !== '0';
+    }
+    return this._feedbackFxEnabled;
+  }
+
+  // A4: a few dark shell chips (and one or two red ones) fly out and bounce when an enemy dies.
+  spawnKillShards(position, type) {
+    const cfg = Config.feedbackFx.shards;
+    let active = 0;
+    for (const effect of this.effects) if (effect.shards) active += 1;
+    if (active >= cfg.maxActive) return;
+    if (!this.shardGeometry) {
+      this.shardGeometry = new THREE.TetrahedronGeometry(1, 0);
+      this.shardMaterials = [
+        new THREE.MeshBasicMaterial({ color: 0x3a3536 }),
+        new THREE.MeshBasicMaterial({ color: 0x6b6262 }),
+        new THREE.MeshBasicMaterial({ color: 0xff5a46, toneMapped: false })
+      ];
+    }
+    const big = type === 'spawner' || type === 'shadow' || type === 'guardian';
+    const count = big ? cfg.bigCount : cfg.count;
+    const size = cfg.size * (big ? 1.35 : 1);
+    const group = new THREE.Group();
+    group.position.set(position.x, 0, position.z);
+    const pieces = [];
+    for (let i = 0; i < count; i++) {
+      const material = this.shardMaterials[i % 3 === 2 ? 2 : i % 2];
+      const mesh = new THREE.Mesh(this.shardGeometry, material);
+      const angle = (i / count) * TAU + randRange(-0.4, 0.4);
+      const out = randRange(0.45, 1) * cfg.speed;
+      mesh.position.set(0, randRange(0.5, 1.1), 0);
+      mesh.rotation.set(Math.random() * TAU, Math.random() * TAU, 0);
+      mesh.scale.setScalar(size * randRange(0.7, 1.2));
+      mesh.renderOrder = 7;
+      group.add(mesh);
+      pieces.push({ mesh, base: mesh.scale.x, vx: Math.sin(angle) * out, vz: Math.cos(angle) * out, vy: randRange(0.5, 1) * cfg.lift, spin: randRange(6, 14) });
+    }
+    this.scene.add(group);
+    this.effects.push({
+      object: group,
+      shards: true,
+      dispose: false, // geometry and materials are shared
+      life: cfg.life,
+      duration: cfg.life,
+      update(effect, dt) {
+        effect.life -= dt;
+        const scale = shardScale(clamp(1 - effect.life / effect.duration, 0, 1), cfg.fadeFrom);
+        for (const p of pieces) {
+          p.vy -= 16 * dt;
+          p.mesh.position.x += p.vx * dt;
+          p.mesh.position.y += p.vy * dt;
+          p.mesh.position.z += p.vz * dt;
+          if (p.mesh.position.y < 0.08) {
+            p.mesh.position.y = 0.08;
+            p.vy = Math.abs(p.vy) * 0.35;
+            p.vx *= 0.55;
+            p.vz *= 0.55;
+            p.spin *= 0.5;
+          }
+          p.mesh.rotation.x += p.spin * dt;
+          p.mesh.rotation.y += p.spin * 0.7 * dt;
+          p.mesh.scale.setScalar(Math.max(0.0001, p.base * scale));
+        }
+      }
+    });
+  }
+
+  // A3: a short hit stop and a small shake for kills, egg breaks and hits on the player (Config.feel).
+  feelHit(kind) {
+    if (!this.feelEnabled || this.state !== 'playing') return;
+    const feel = Config.feel;
+    const shake = (feel.shake[kind] ?? 0) * (feel.shake.scale ?? 1);
+    if (shake > 0) this.shake = Math.max(this.shake, shake);
+    const stop = feel.hitStop[kind] ?? 0;
+    if (stop <= 0) return;
+    if (kind !== 'playerHit' && this.elapsed - this.lastHitStopAt < feel.hitStop.minGap) return;
+    this.lastHitStopAt = this.elapsed;
+    this.hitStopTimer = Math.min(feel.hitStop.maxSeconds, Math.max(this.hitStopTimer, stop));
+  }
+
+  onPlayerHurt() {
+    if (!this.feelEnabled) {
+      this.shake = Math.max(this.shake, 0.18);
+      return;
+    }
+    if (Config.feel.damageEdge.enabled) this.damageEdgeTimer = Config.feel.damageEdge.seconds;
+    this.feelHit('playerHit');
+  }
+
   onEggDestroyed(egg, source) {
     this.scene.remove(egg.object);
     if (egg.isMother) {
       this.playSfx('eggBreak', { volume: 0.9 });
+      if (Config.audio.bossDownVoice) this.playVoice('bossDown', { volume: 0.95 });
       this.spawnBurstEffect(egg.position, 9, 0xffd56b);
       this.finish(true, 'Mother egg destroyed');
       return;
     }
     this.eggsDestroyed += 1;
+    recordEggBreak(this.runStats);
+    this.feelHit('eggBreak');
     this.playSfx('eggBreak', { volume: 0.68, cooldown: 0.05 });
     this.spawnXp(egg.position, Config.egg.xp);
     if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
@@ -2517,7 +2896,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.thirstStats.drains += 1;
     if (!this.thirstHintShown) {
       this.thirstHintShown = true;
-      this.showMessage(`${getBossName(this.stage)}が卵を吸っている\n吸われる前に壊せば回復させない。鳥や魚で先に食べよう`, 3.2);
+      this.showMessage(`${getBossName(this.stage)}が卵を吸っている\n吸われる前に壊せば回復させない。鳥や魚で先に食べよう`, 3.2, MessagePriority.important);
     } else {
       this.showMessage('卵が吸われている！', 1.4);
     }
@@ -2546,7 +2925,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (!this.pursuerHintShown) {
       this.pursuerHintShown = true;
       this.showMessage(`${getBossName(this.stage)}が立ち止まって卵を産んでいる
-殻が開いているあいだだけ攻撃が効く`, 3.2);
+殻が開いているあいだだけ攻撃が効く`, 3.2, MessagePriority.important);
     }
     this.spawnRingEffect(mother.position, 3.6, 0xffe066, 0.85, Math.min(0.6, seconds));
     this.playSfx('motherCharge', { volume: 0.5, cooldown: 0.4 });
@@ -2567,7 +2946,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   onFloodgateBite(mother, bites, needed) {
     this.floodgateStats.bites += 1;
     this.spawnRingEffect(mother.position, 3.4, 0x5fd0ff, 0.7, 0.4);
-    this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
+    if (Config.audio.newSfx) this.playSfx('fishBite', { volume: 0.85, cooldown: 0.1 });
+    else this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
     this.showMessage(`噛みついた ${bites}/${needed}`, 0.9);
   }
 
@@ -2577,7 +2957,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnBurstEffect(mother.position, 6, 0x9ff3ff);
     this.spawnRingEffect(mother.position, 4.2, 0xffe066, 0.9, 0.6);
     this.playSfx('motherRelease', { volume: 0.7, cooldown: 0.4 });
-    this.showMessage(`${getBossName(this.stage)}が浮上して気絶した！ 今のうちに人間形態で撃とう`, Math.min(3, seconds));
+    this.showMessage(`${getBossName(this.stage)}が浮上して気絶した！ 今のうちに人間形態で撃とう`, Math.min(3, seconds), MessagePriority.important);
   }
 
   onFloodgateSubmerge(mother) {
@@ -2590,7 +2970,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (!this.floodgateHintShown) {
       this.floodgateHintShown = true;
       this.showMessage(`${getBossName(this.stage)}は水に潜っていて攻撃が効かない
-魚形態で3回噛みつくと浮上する`, 3.4);
+魚形態で3回噛みつくと浮上する`, 3.4, MessagePriority.important);
     }
     this.floodgateStats.streams += 1;
     const { direction, points } = floodgateStreamPoints(mother.position, this.player.position, count, cfg.streamStart, cfg.streamSpacing);
@@ -2625,15 +3005,187 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnSwarmThreads(members);
   }
 
+  // White lotus core (src/bosses.js, E15 phases 1-2): the core at the chosen spot and six smaller petals around it.
+  // Petals that would sit in the water or a building are pulled inward.
+  spawnWhiteLotus(center) {
+    const cfg = Config.boss.whiteLotusCore;
+    const limit = Config.map.radius - 3;
+    const blocked = (point) => Math.hypot(point.x, point.z) > limit || this.isBlockedByBuilding(point, 2)
+      || (this.isWaterStage && !this.isWaterStageLand(point, 1));
+    const rotation = Math.random() * TAU;
+    // On the flooded final map the player cannot take bird form in the water (it becomes fish), so the shockwave
+    // could not be dodged there: put the core on land where every petal also stands on land, as far from the player as possible.
+    if (this.isWaterStage) center = this.findLotusCenter(cfg, rotation, blocked) ?? center;
+    const core = this.spawnEgg(center.clone(), true);
+    core.maxHp *= this.stage.motherHpScale * cfg.coreHpShare;
+    core.hp = core.maxHp;
+    const points = swarmPositions(center, cfg.petalCount, cfg.petalSpread, rotation, blocked);
+    const petals = points.map((point) => {
+      const petal = this.spawnEgg(new THREE.Vector3(point.x, 0, point.z), true);
+      petal.maxHp *= this.stage.motherHpScale * cfg.petalHpShare;
+      petal.hp = petal.maxHp;
+      petal.baseModelScale.multiplyScalar(cfg.petalScale);
+      petal.ring.scale.setScalar(cfg.petalScale + 0.1);
+      return petal;
+    });
+    if (this.tripoEnemyModelsEnabled) {
+      core.useCreatureModel(this.cloneGameplayModel('lotusCoreTripo'));
+      for (const petal of petals) {
+        if (petal.useCreatureModel(this.cloneGameplayModel('lotusPetalTripo'))) petal.baseModelScale.multiplyScalar(cfg.petalScale);
+      }
+    }
+    const lotus = linkLotus(core, petals, cfg.petalSpecies.map((type) => this.lotusSpeciesAvailable(type) ? type : 'chaser'));
+    this.lotusStats = lotus.stats;
+  }
+
+  findLotusCenter(cfg, rotation, blocked) {
+    let best = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < 60; i++) {
+      const point = this.randomWaterStageLandPoint(0.7);
+      if (blocked(point)) continue;
+      let onLand = 0;
+      for (let p = 0; p < cfg.petalCount; p++) {
+        const angle = rotation + p / cfg.petalCount * TAU;
+        if (!blocked({ x: point.x + Math.sin(angle) * cfg.petalSpread, z: point.z + Math.cos(angle) * cfg.petalSpread })) onLand++;
+      }
+      const score = onLand * 100000 + horizontalDistanceSq(point, this.player.position);
+      if (score > bestScore) { best = point; bestScore = score; }
+    }
+    return best;
+  }
+
+  // A petal's species only appears if that species is switched on (Config.enemy.<type>.enabled).
+  lotusSpeciesAvailable(type) {
+    return Config.enemy[type]?.enabled !== false;
+  }
+
+  // A petal hatches its species beside itself, even over the enemy cap. Returns the enemy (the flock's first bird).
+  spawnLotusBrood(petal, type) {
+    const position = petal.position.clone();
+    if (type === 'swarmbird') return this.hatchSwarmFlock({ position, dead: false });
+    const enemy = this.spawnEnemy(type, position, null, { ignoreCap: true });
+    if (enemy?.type === 'splitshell') this.onSplitshellSpawned();
+    if (enemy) this.spawnRingEffect(petal.position, 2.4, 0xfff2f6, 0.6, 0.45);
+    return enemy;
+  }
+
+  onLotusPetalBroken(petal, broken, opened) {
+    const cfg = Config.boss.whiteLotusCore;
+    this.scene.remove(petal.object);
+    this.playSfx('eggBreak', { volume: 0.8, cooldown: 0.1 });
+    this.spawnBurstEffect(petal.position, 5, 0xfff2f6);
+    if (opened) {
+      petal.lotus.stats.openedAt = Math.round(this.elapsed);
+      this.spawnBurstEffect(petal.lotus.core.position, 9, 0xffe066);
+      this.playSfx('motherCharge', { volume: 0.85, cooldown: 0.3 });
+      this.showMessage('白蓮の核が開いた！ 衝撃波と吸い込みが交互に来る\n衝撃波は鳥形態、吸い込みは人間形態でしのぐ', 3.6, MessagePriority.important);
+    } else if (broken < cfg.openAfterPetals) {
+      this.showMessage(`花弁を壊した（${broken}/${cfg.openAfterPetals}）`, 1.6);
+    }
+  }
+
+  // The open core's attacks. The shockwave reuses the mother egg's ground wave; the inhale pulls (applyLotusInhale).
+  onLotusAttack(core, event) {
+    const egg = Config.egg;
+    const cfg = Config.boss.whiteLotusCore;
+    // shockwaveState mirrors the mother egg so the bot (scripts/bot-play.mjs) sees the warning too.
+    if (event === 'shockwaveWarning') {
+      core.shockwaveState = 'warning';
+      this.hud.showBossWarning(cfg.shockwaveWarning, this.player?.form);
+      this.spawnMotherShockwaveWarning(core.position, egg.motherShockwaveRange, cfg.shockwaveWarning);
+      this.playSfx('motherCharge', { volume: 0.92, cooldown: 0.4 });
+    } else if (event === 'shockwave') {
+      core.shockwaveState = 'idle';
+      this.spawnMotherShockwave(core.position, egg.motherShockwaveRange, egg.motherShockwaveDamage, egg.motherShockwaveDuration);
+      this.playSfx('motherRelease', { volume: 0.94, cooldown: 0.4 });
+    } else if (event === 'inhaleWarning') {
+      this.showMessage('WARNING\n白蓮の核が息を吸う\n鳥形態だと引き寄せられる。人間形態で踏みとどまれ', cfg.inhaleWarning + 0.4, MessagePriority.warning);
+      this.spawnRingEffect(core.position, cfg.inhaleRadius * 0.5, 0xfff2f6, 0.5, cfg.inhaleWarning);
+      this.playSfx('motherCharge', { volume: 0.8, cooldown: 0.4 });
+    } else if (event === 'inhaleStart') {
+      this.lotusInhaleRingTimer = 0;
+    }
+  }
+
+  // During the inhale: the player is drawn toward the core (strongly in bird form) and bitten when touching it.
+  applyLotusInhale(core, dt) {
+    const cfg = Config.boss.whiteLotusCore;
+    const lotus = core.lotus;
+    const player = this.player;
+    this.lotusInhaleRingTimer = (this.lotusInhaleRingTimer ?? 0) - dt;
+    if (this.lotusInhaleRingTimer <= 0) {
+      this.lotusInhaleRingTimer = 0.45;
+      this.spawnRingEffect(core.position, cfg.inhaleRadius * 0.35, 0xfff2f6, 0.35, 0.4);
+    }
+    const dx = core.position.x - player.position.x;
+    const dz = core.position.z - player.position.z;
+    const distance = Math.hypot(dx, dz);
+    const pull = lotusInhalePull(distance, player.form, dt, cfg);
+    if (pull > 0) {
+      const next = new THREE.Vector3(player.position.x + dx / distance * pull, player.position.y, player.position.z + dz / distance * pull);
+      if (!this.isBlockedByBuilding(next, 0.8)) {
+        player.position.x = next.x;
+        player.position.z = next.z;
+      }
+    }
+    lotus.inhaleBiteTimer -= dt;
+    if (distance <= cfg.inhaleBiteRadius && lotus.inhaleBiteTimer <= 0) {
+      lotus.inhaleBiteTimer = cfg.inhaleBiteInterval;
+      lotus.stats.bites += 1;
+      player.takeDamage(cfg.inhaleDamage);
+    }
+  }
+
+  // White lotus phase 3 (E16): the core hatches the shadow, a black copy of the chosen character (Enemy type 'shadow').
+  spawnLotusShadow(core) {
+    const enemy = this.spawnEnemy('shadow', core.position.clone(), null, { ignoreCap: true });
+    if (!enemy) return null;
+    this.lotusShadow = enemy;
+    if (this.lotusStats) this.lotusStats.shadow = { hits: 0, damageTaken: 0, deflected: 0, mirrored: 0, downAt: null };
+    this.spawnBurstEffect(core.position, 7, 0x5a2a8a);
+    this.playSfx('motherCharge', { volume: 0.9, cooldown: 0.3 });
+    this.showMessage('核から、黒い影法師が孵った\nこちらの形態を少し遅れて真似る。逆の形態のときだけ攻撃が通る', 4, MessagePriority.important);
+    return enemy;
+  }
+
+  onShadowMirror(shadow) {
+    if (this.lotusStats?.shadow) this.lotusStats.shadow.mirrored += 1;
+  }
+
+  onShadowDeflect() {
+    if (this.lotusStats?.shadow) this.lotusStats.shadow.deflected += 1;
+    this.showMessage('同じ形態の影法師には効かない。形態を変えた直後を狙え', 1.6);
+  }
+
+  onShadowHit(shadow, damage) {
+    const stats = this.lotusStats?.shadow;
+    if (!stats || damage <= 0) return;
+    stats.hits += 1;
+    stats.damageTaken += Math.round(damage);
+  }
+
+  onShadowDown(shadow) {
+    const cfg = Config.enemy.shadow;
+    if (this.lotusStats?.shadow) this.lotusStats.shadow.downAt = Math.round(this.elapsed);
+    if (this.lotusStats) this.lotusStats.shadowDownAt = Math.round(this.elapsed);
+    const player = this.player;
+    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * cfg.healOnDefeatRatio);
+    this.spawnBurstEffect(shadow.position, 8, 0xffc94a);
+    this.playSfx('eggBreak', { volume: 0.9, cooldown: 0.1 });
+    this.showMessage('影法師がほどけた。核の守りが消えた', 2.4, MessagePriority.important);
+  }
+
   // A sister fell: the threads to her turn red and a ring under her shrinks until she stands up again.
   onSwarmMemberDown(mother, standing, seconds) {
     this.playSfx('eggBreak', { volume: 0.8, cooldown: 0.1 });
     this.spawnBurstEffect(mother.position, 5, 0xffd56b);
-    this.showMessage(`群れの母が1体倒れた\n${seconds}秒以内に残り${standing}体を倒せ`, 2.4);
+    this.showMessage(`群れの母が1体倒れた\n${seconds}秒以内に残り${standing}体を倒せ`, 2.4, MessagePriority.important);
   }
 
   onSwarmMemberRevive(mother) {
-    this.playSfx('motherCharge', { volume: 0.7, cooldown: 0.3 });
+    if (Config.audio.newSfx) this.playSfx('swarmRise', { volume: 0.8, cooldown: 0.3 });
+    else this.playSfx('motherCharge', { volume: 0.7, cooldown: 0.3 });
     this.spawnRingEffect(mother.position, 4.2, 0xff5a5a, 0.85, 0.6);
     this.showMessage('群れの母が起き上がった', 1.6);
   }
@@ -2771,7 +3323,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   showMimicHint() {
     if (this.mimicHintShown) return;
     this.mimicHintShown = true;
-    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2);
+    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2, MessagePriority.important);
   }
 
   onPlayerStunned(position, seconds) {
@@ -2781,7 +3333,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnParticleBurst(position, 46, 0xb47aff, 4.2, 0.6, 0.7);
     this.playSfx('eggBreak', { volume: 0.86, cooldown: 0.1 });
     this.shake = Math.max(this.shake, 0.45);
-    this.showMessage('擬態卵！ 動けない', seconds);
+    this.showMessage('擬態卵！ 動けない', seconds, MessagePriority.warning);
     if (Config.egg.mimic.stunMarker) this.spawnStunMarker(seconds);
   }
 
@@ -2955,6 +3507,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       });
     }
     this.spawnParticleBurst(position, type === 'spawner' ? 14 : 10, type === 'spawner' ? 0xffd6b3 : 0x93c5bb, 1.25, 0.38, 0.5);
+    if (showSprite && this.feedbackFxEnabled) this.spawnKillShards(position, type);
   }
 
   spawnDust(position, color) {
@@ -3062,12 +3615,61 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       upgrade.apply(this);
       this.takenUpgrades.set(upgrade.id, (this.takenUpgrades.get(upgrade.id) ?? 0) + 1);
       this.state = 'playing';
-      this.showMessage(upgrade.title);
+      const gained = this.refreshSynergies();
+      if (gained.length) this.showMessage(`相乗効果「${gained.map(entry => entry.title).join('」「')}」`, 2.4);
+      else this.showMessage(upgrade.title);
     });
   }
 
-  showMessage(text, seconds = 1.25) {
-    this.hud.showMessage(text, seconds);
+  // A6: synergies between upgrades (Config.synergy, ?synergy=0 turns them off).
+  get synergyConfig() {
+    if (this._synergyConfig === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('synergy');
+      const enabled = fromUrl === null ? Boolean(Config.synergy?.enabled) : fromUrl !== '0';
+      this._synergyConfig = { ...Config.synergy, enabled };
+    }
+    return this._synergyConfig;
+  }
+
+  // A7: result-screen stats and the quick retry (Config.results, ?results=0 turns them off).
+  get resultsConfig() {
+    if (this._resultsConfig === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('results');
+      const enabled = fromUrl === null ? Boolean(Config.results?.enabled) : fromUrl !== '0';
+      this._resultsConfig = { ...Config.results, enabled };
+    }
+    return this._resultsConfig;
+  }
+
+  // B3-9: one line when HP first drops below Config.audio.lowHpVoiceRatio (at most once per lowHpVoiceCooldown seconds).
+  tryLowHpVoice(ratioBefore, ratioAfter) {
+    const { lowHpVoice, lowHpVoiceRatio, lowHpVoiceCooldown } = Config.audio;
+    if (!lowHpVoice || !(ratioBefore >= lowHpVoiceRatio && ratioAfter < lowHpVoiceRatio)) return false;
+    if (this.elapsed - (this.lastLowHpVoiceAt ?? -Infinity) < lowHpVoiceCooldown) return false;
+    this.lastLowHpVoiceAt = this.elapsed;
+    this.playVoice('lowHp', { volume: 0.95 });
+    return true;
+  }
+
+  onEnemyKilled() {
+    recordKill(this.runStats, this.elapsed, this.resultsConfig.streakWindow);
+  }
+
+  hasSynergy(id) {
+    return this.synergies.has(id);
+  }
+
+  // Recomputes the active synergies from the player's stats and returns the ones that just switched on.
+  refreshSynergies() {
+    const before = this.synergies;
+    this.synergies = new Set(activeSynergies(this.player, this.synergyConfig));
+    const gained = this.synergyConfig.list.filter(entry => this.synergies.has(entry.id) && !before.has(entry.id));
+    for (const entry of gained) this.synergyStats.activated.push({ id: entry.id, at: Math.round(this.elapsed ?? 0) });
+    return gained;
+  }
+
+  showMessage(text, seconds = 1.25, priority = MessagePriority.normal) {
+    return this.hud.showMessage(text, seconds, priority);
   }
 
   // Applies the upgrades chosen on clearing earlier chapters and returns how many were applied.
@@ -3104,6 +3706,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   startPlayerDeath(duration) {
     if (this.outcome) return;
     this.state = 'dying';
+    this.runStats.endedAt ??= this.elapsed;
     this.deathWorldActive = true;
     this.deathElapsed = 0;
     this.deathBlackoutStarted = false;
@@ -3118,6 +3721,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.outcome || (victory && this.player?.dead)) return;
     this.player?.releaseBind('end');
     this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
+    this.runStats.endedAt ??= this.elapsed;
     this.state = 'result';
     this.hud.hideLevelUp();
     this.deathWorldActive = !victory && this.player?.dead === true;
@@ -3133,8 +3737,10 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   // ゲームは再読み込みで作り直すため、次に始める章を渡してからページを読み直す。
+  // A retry after a defeat skips the pre-sortie dialogue (Config.results.quickRetry).
   launchChapter(stageId) {
-    requestLaunch(stageId, this.characterId);
+    const retry = stageId === this.stageId && !this.outcome?.victory && this.resultsConfig.enabled && this.resultsConfig.quickRetry;
+    requestLaunch(stageId, this.characterId, undefined, { retry });
     window.location.reload();
   }
 
@@ -3464,6 +4070,13 @@ function setupTitleScreen() {
   if (!titleScreen || !characterSelect || !startButton) return;
   const launch = takeLaunchRequest();
   if (launch) {
+    if (launch.retry) {
+      selectedStageId = launch.chapter;
+      titleScreen.classList.add('hidden');
+      characterSelect.classList.add('hidden');
+      startGameWithCharacter(launch.characterId);
+      return;
+    }
     beginChapter(launch.characterId, launch.chapter);
     return;
   }
