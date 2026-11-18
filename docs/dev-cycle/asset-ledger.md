@@ -426,3 +426,25 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | `assets/audio/sfx/time_warning.wav`（2.2 秒、-15.8 LUFS、操作） | last_minute_c_s37（3 秒） | A clock ticking fast four times then a single low gong hit | 採用: 鐘のような打音が 5 回（0・0.3・0.9・1.3・1.6 秒）鳴って引く。4 本のうち打音の間隔がそろい、頭に無音がない。**残り 30 秒**でボスがまだ立っているとき（`Config.audio.timeWarningSeconds`、0 で鳴らない。音量 0.7）。残り 1 分はボスの出現（180 秒）と同じ瞬間で、角笛と声 2 本に重なるので 30 秒に移した |
 | — | last_minute_s11〜51・last_minute_b_s11〜51（どちらも 2.5 秒） | An urgent alert signal, three quick tense metallic ticks then a short rising warning tone, countdown alarm ／ Three quick warning bell strikes, a small metal alarm bell ringing three times | **不採用: 8 本とも最初から最後まで同じ大きさの雑音**（0.1 秒ごとの音量が -20〜-27 dB で平ら）。プロンプトを短くしても直らず、長さを 3 秒にしたら直った |
 | — | ほかの候補（egg_hatch・boss_warning・last_minute_c の採用以外） | 同上 | 次点（候補として残す） |
+
+## 2026-11-18 引き継ぎ強化のアイコン（B4-2 の続き、生成なし）
+章のクリア後に選ぶ引き継ぎ強化 15 個（`ChapterRewards`）に、今は文字しか無かったのでアイコンを付けた。11-11 の方針どおり Forge では描かず、強化アイコンと同じ型（白い形＋シアンの差し色、透明背景 512×512）を Pillow で描いた。スクリプト: `scripts/assets/draw-reward-icons.py`（4 倍の大きさで描いて縮める）。見比べ: `docs/devlog/img/2026-11-18-reward-icons.png`（上段が既存の強化アイコン、下段が今回の 6 個）。
+表示は `Config.visuals.carryOverIcons`（false で元の文字だけ）。「この章で取った強化」の側は、その強化のアイコン（`cleanedUpgradeIcons` の差し替えも反映）を出す。
+
+| 引き継ぎ強化 | アイコン | 中身 |
+|---|---|---|
+| ポンプの守り（第1章） | `assets/ui/reward-icons/pumpGuard.png`（新） | 白い盾の中にシアンの水滴 |
+| 給水の列（第1章） | 既存 `hp.png` | 最大 HP |
+| 見回りの足（第1章） | 既存 `move.png` | 移動速度 |
+| シラユリの記録（第2章） | `reward-icons/shirayuriRecord.png`（新） | 開いた帳面とシアンのしおり |
+| 残された手順（第2章） | `reward-icons/leftProcedure.png`（新） | 砂時計（シアンの砂）。バーストの再使用時間 |
+| 研いだ種（第2章） | 既存 `damage.png` | 自動攻撃の威力 |
+| 水底の息（第3章） | 既存 `birdCost.png` | 変身の MP 消費 |
+| 深い呼吸（第3章） | 既存 `mp.png` | 最大 MP |
+| 水面を割る（第3章） | 既存 `dive.png` | 急降下 |
+| 根の誓い（第4章） | 既存 `regen.png` | 卵を食べたときの回復 |
+| 夜の鼓動（第4章） | 既存 `pulse.png` | 範囲パルス |
+| 芽吹く種（第4章） | 既存 `seeds.png`（掃除した版） | 種が 1 つ増える |
+| 運ばれた水（第5章） | `reward-icons/carriedWater.png`（新） | 白い卵にシアンのひび。母卵へのダメージ |
+| 踏みしめる足（第5章） | `reward-icons/firmSteps.png`（新） | 地面を踏むブーツと、かかとで止まるシアンの衝撃波 |
+| 見分ける目（第5章） | `reward-icons/seeingEye.png`（新） | 白い目とシアンの瞳。擬態卵の硬直 |

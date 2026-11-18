@@ -5,6 +5,12 @@ import { isFinalChapter } from './campaign.js';
 import { getBossName } from './bosses.js';
 import { xpBarState } from './reward-feedback.js';
 import { resultRows } from './run-stats.js';
+import { MessagePriority, MessageSlot } from './message-slot.js';
+
+function messagePriorityEnabled() {
+  const fromUrl = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('messagePriority');
+  return fromUrl === null ? Boolean(Config.messages?.priority) : fromUrl !== '0';
+}
 
 const UPGRADE_ICON_URLS = {
   damage: new URL('../assets/ui/upgrade-icons/damage.png', import.meta.url).href,
@@ -27,6 +33,24 @@ const CLEANED_UPGRADE_ICON_URLS = {
   speed: new URL('../assets/ui/upgrade-icons/speed-bold.png', import.meta.url).href,
   pierce: new URL('../assets/ui/upgrade-icons/pierce-bold.png', import.meta.url).href
 };
+
+const upgradeIconUrl = id => (Config.visuals.cleanedUpgradeIcons && CLEANED_UPGRADE_ICON_URLS[id]) || UPGRADE_ICON_URLS[id];
+
+// 引き継ぎ強化（ChapterRewards）のアイコン。合う強化アイコンがあればそれを使い、無い 6 個は
+// scripts/assets/draw-reward-icons.py で描いたもの（2026-11-18）。Config.visuals.carryOverIcons: false で出さない。
+const REWARD_ICON_URLS = {
+  pumpGuard: new URL('../assets/ui/reward-icons/pumpGuard.png', import.meta.url).href,
+  shirayuriRecord: new URL('../assets/ui/reward-icons/shirayuriRecord.png', import.meta.url).href,
+  leftProcedure: new URL('../assets/ui/reward-icons/leftProcedure.png', import.meta.url).href,
+  carriedWater: new URL('../assets/ui/reward-icons/carriedWater.png', import.meta.url).href,
+  firmSteps: new URL('../assets/ui/reward-icons/firmSteps.png', import.meta.url).href,
+  seeingEye: new URL('../assets/ui/reward-icons/seeingEye.png', import.meta.url).href
+};
+const REWARD_ICON_FROM_UPGRADE = {
+  waterLine: 'hp', patrolSteps: 'move', sharpSeeds: 'damage', deepBreath: 'birdCost', longBreath: 'mp',
+  breakSurface: 'dive', rootOath: 'regen', nightPulse: 'pulse', buddingSeed: 'seeds'
+};
+export const rewardIconUrl = id => REWARD_ICON_URLS[id] ?? (REWARD_ICON_FROM_UPGRADE[id] ? upgradeIconUrl(REWARD_ICON_FROM_UPGRADE[id]) : null);
 
 const UPGRADE_CATEGORIES = {
   damage: '攻撃', speed: '攻撃', seeds: '攻撃', pierce: '攻撃',
@@ -147,6 +171,10 @@ export class Hud {
     this.motherAlert = document.getElementById('motherAlert');
     this.tutorial = getTutorialGuide();
     this.messageTimer = 0;
+    this.messageSlot = new MessageSlot({
+      enabled: messagePriorityEnabled(),
+      resumeMinSeconds: Config.messages?.resumeMinSeconds ?? 0.8
+    });
     this.nextChapterButton = document.getElementById('nextChapterButton');
     this.retryButton = document.getElementById('retryButton');
     const motherTitle = this.motherPanel?.querySelector('.mother-title');
@@ -172,7 +200,9 @@ export class Hud {
 
   update(dt) {
     const player = this.game.player;
-    this.messageTimer = Math.max(0, this.messageTimer - dt);
+    const resumed = this.messageSlot.update(dt);
+    if (resumed) this.renderMessage(resumed.text, resumed.className);
+    this.messageTimer = this.messageSlot.remaining;
     this.updateDamageEdge(dt, player);
     if (this.messageTimer <= 0) this.centerMessage.classList.remove('show', 'boss-warning');
     this.setBar(this.hpBar, player.hp / player.maxHp);
@@ -243,17 +273,24 @@ export class Hud {
     element.style.width = `${clamp(ratio, 0, 1) * 100}%`;
   }
 
-  showMessage(text, seconds = 1.25) {
+  // A19: priority is MessagePriority.normal / important / warning. Returns false when a more important line keeps the slot.
+  showMessage(text, seconds = 1.25, priority = MessagePriority.normal, className = '') {
+    if (!this.messageSlot.offer(text, seconds, priority, className)) return false;
+    this.renderMessage(text, className);
+    this.messageTimer = seconds;
+    return true;
+  }
+
+  renderMessage(text, className = '') {
     this.centerMessage.classList.remove('boss-warning');
     this.centerMessage.textContent = text;
     this.centerMessage.classList.add('show');
-    this.messageTimer = seconds;
+    if (className) this.centerMessage.classList.add(className);
   }
 
   showBossWarning(seconds, form = 'human') {
     const hint = form === 'bird' ? '\u98db\u3093\u3067\u3044\u308c\u3070\u5730\u3092\u9019\u3046\u6ce2\u306f\u5c4a\u304b\u306a\u3044' : '\u9ce5\u5f62\u614b\u3067\u98db\u3079\u3070\u304b\u308f\u305b\u308b';
-    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds);
-    this.centerMessage.classList.add('boss-warning');
+    this.showMessage(`WARNING\n\u6bcd\u5375\u306e\u885d\u6483\u6ce2\n${hint}`, seconds, MessagePriority.warning, 'boss-warning');
   }
 
   nearestBossTarget() {
@@ -301,7 +338,7 @@ export class Hud {
       button.className = 'upgrade';
       button.type = 'button';
       button.setAttribute('aria-label', `${index + 1}番 ${UPGRADE_CATEGORIES[upgrade.id] ?? '強化'}：${upgrade.title}。${upgrade.body}`);
-      const iconUrl = (Config.visuals.cleanedUpgradeIcons && CLEANED_UPGRADE_ICON_URLS[upgrade.id]) || UPGRADE_ICON_URLS[upgrade.id];
+      const iconUrl = upgradeIconUrl(upgrade.id);
       if (iconUrl) {
         const icon = document.createElement('img');
         icon.className = 'upgrade-icon';
@@ -423,6 +460,18 @@ export class Hud {
         title.textContent = item.count > 1 ? `${item.title} ×${item.count}` : item.title;
         const body = document.createElement('span');
         body.textContent = group.kind === 'upgrade' ? `${item.body}（1回分を引き継ぐ）` : item.body;
+        const iconUrl = Config.visuals.carryOverIcons
+          ? (group.kind === 'upgrade' ? upgradeIconUrl(item.id) : rewardIconUrl(item.id))
+          : null;
+        if (iconUrl) {
+          const icon = document.createElement('img');
+          icon.className = 'carry-over-icon';
+          icon.src = iconUrl;
+          icon.alt = '';
+          icon.setAttribute('aria-hidden', 'true');
+          button.classList.add('with-icon');
+          button.append(icon);
+        }
         button.append(title, body);
         button.addEventListener('click', () => {
           this.game.chooseCarryOver(group.kind, item.id);

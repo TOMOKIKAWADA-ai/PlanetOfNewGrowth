@@ -28,6 +28,9 @@ export const Config = {
     tripoEnemyModels: true,
     // 強化アイコンの手直し版（2026-11-11 seeds の切り残しを消した版、2026-11-15 speed・pierce を太く描き直した版）。false で元の絵に戻る。
     cleanedUpgradeIcons: true,
+    // 章のクリア後に選ぶ引き継ぎ強化のアイコン（2026-11-18、B4-2。新しい 6 個は scripts/assets/draw-reward-icons.py、
+    // 残り 9 個は強化アイコンの流用）。false で元の文字だけの選択肢に戻る。
+    carryOverIcons: true,
     // 第1章の戦場に置く給水ポンプ（B1-7、2026-11-16。Blender で手作り、scripts/blender/build_chapter1_pump.py）。
     // 見た目だけの目印で、当たり判定も耐久値も無い（ポンプの耐久は A9 で保留中）。false（または URL に ?pump=0）で置かない。
     chapterPump: true,
@@ -92,6 +95,13 @@ export const Config = {
       lowHpRatio: 0.3, // below this HP ratio the edge pulses faintly
       lowHpStrength: 0.28
     }
+  },
+  // A19: 画面中央のメッセージの優先度（普通・大事な説明・警告）。低いものは高いものを上書きしない。
+  // 警告で途切れた説明は、警告のあとに残りの時間だけ出し直す。
+  // priority: false か URL の ?messagePriority=0 で、元の「後から来たものが常に上書き」に戻る。
+  messages: {
+    priority: true,
+    resumeMinSeconds: 0.8 // 途切れた説明の残りがこれより短ければ出し直さない
   },
   // A4: 撃破の破片、経験値の吸い込み、経験値バーとレベルアップ直前の予告。
   // enabled: false か URL の ?feedbackFx=0 で、すべて消えて元の見た目に戻る。

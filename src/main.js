@@ -26,6 +26,7 @@ import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
+import { MessagePriority } from './message-slot.js';
 import {
   createWaterStageTerrainMaterial,
   createWaterSurfaceMaterial,
@@ -611,7 +612,7 @@ class Game {
     this.clock.start();
     this.cameraRig.update(0, 0);
     const carriedLine = carried ? `\n引き継いだ強化 ${carried}` : '';
-    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${getBossName(this.stage)}を破壊せよ${carriedLine}`, 3);
+    this.hud.showMessage(`${this.stage.label} ${this.stage.title}\n増殖を抑え、${getBossName(this.stage)}を破壊せよ${carriedLine}`, 3, MessagePriority.important);
     if (Config.audio.battleVoices) this.playVoice('battleStart', { volume: 0.9 });
     this.updateBgmState();
     requestAnimationFrame(() => this.frame());
@@ -1681,9 +1682,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (Config.audio.newSfx) this.playSfx('bossWarning', { volume: 0.9 });
     if (Config.audio.cueVoices) this.playVoice('bossAppear', { volume: 0.9 });
     if (bossType.id === 'whiteLotusCore') this.showMessage(`白蓮の核が現れた。6枚の花弁が、これまでの新種を産む
-花弁を${Config.boss.whiteLotusCore.openAfterPetals}枚壊すと核が開く`, 3.8);
-    else if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6);
-    else this.showMessage('\u30dc\u30b9\u51fa\u73fe');
+花弁を${Config.boss.whiteLotusCore.openAfterPetals}枚壊すと核が開く`, 3.8, MessagePriority.important);
+    else if (bossType.spawnCount > 1) this.showMessage(`\u7fa4\u308c\u306e\u6bcd\u304c\u73fe\u308c\u305f\u3002\u5149\u306e\u7cf8\u3067\u3064\u306a\u304c\u3063\u305f\u4e09\u3064\u5b50\n1\u4f53\u3060\u3051\u5012\u3057\u3066\u3082\u3001${Config.boss.swarmMother.reviveSeconds}\u79d2\u4ee5\u5185\u306b\u6b8b\u308a\u3092\u5012\u3055\u306a\u3044\u3068\u8d77\u304d\u4e0a\u304c\u308b`, 3.6, MessagePriority.important);
+    else this.showMessage('\u30dc\u30b9\u51fa\u73fe', undefined, MessagePriority.important);
   }
 
   spawnEnemyFromEgg(egg) {
@@ -1764,7 +1765,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.footprintStats.spawned += 1;
     if (this.footprintHintShown) return;
     this.footprintHintShown = true;
-    this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6);
+    this.showMessage('足跡が孵った。あなたの通った道を遅れてなぞってくる\n同じ所を回らず、鳥で飛べば道が途切れる', 3.6, MessagePriority.important);
   }
 
   shouldHatchCrier() {
@@ -1779,7 +1780,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.crierStats.spawned += 1;
     if (this.crierHintShown) return;
     this.crierHintShown = true;
-    this.showMessage('鳴きが孵った。膨らんで鳴くと、周りの卵が早く孵る\n鳥形態の急降下なら一撃で潰せる', 3.6);
+    this.showMessage('鳴きが孵った。膨らんで鳴くと、周りの卵が早く孵る\n鳥形態の急降下なら一撃で潰せる', 3.6, MessagePriority.important);
   }
 
   // 鳴く前の予兆。体が膨らむのに合わせて、足元に届く範囲の輪を出す。
@@ -1823,7 +1824,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.handStats.spawned += 1;
     if (this.handHintShown) return;
     this.handHintShown = true;
-    this.showMessage('手が孵った。近づくと腕を伸ばして掴みかかる\n掴まれたら、鳥形態に変身すれば振りほどける', 3.6);
+    this.showMessage('手が孵った。近づくと腕を伸ばして掴みかかる\n掴まれたら、鳥形態に変身すれば振りほどける', 3.6, MessagePriority.important);
   }
 
   // 腕を伸ばしはじめた（予兆）。足元に届く範囲の輪を出す。
@@ -1842,7 +1843,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnRingEffect(this.player.position, 1.6, HAND_RING_COLOR, 0.8, 0.4);
     this.shake = Math.max(this.shake, 0.25);
     if (Config.audio.newSfx) this.playSfx('handGrab', { volume: 0.8, cooldown: 0.3 });
-    this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8);
+    this.showMessage(this.player.mp > 5 ? '掴まれた！ 変身で振りほどける' : '掴まれた！ MPが足りない', 1.8, MessagePriority.warning);
   }
 
   onPlayerReleased(hand, reason) {
@@ -1868,7 +1869,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.rootsuckerStats.spawned += 1;
     if (this.rootsuckerHintShown) return;
     this.rootsuckerHintShown = true;
-    this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6);
+    this.showMessage('吸水根が孵った。根を張ると、周りの地面が乾いていく\n乾いた円の中では、人間形態でもMPが回復しない', 3.6, MessagePriority.important);
   }
 
   shouldHatchSplitshell() {
@@ -1883,7 +1884,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.splitshellStats.spawned += 1;
     if (this.splitshellHintShown) return;
     this.splitshellHintShown = true;
-    this.showMessage('割れ殻が孵った。バースト技で倒すと二つに割れる\n普通の射撃で倒せば割れない', 3.6);
+    this.showMessage('割れ殻が孵った。バースト技で倒すと二つに割れる\n普通の射撃で倒せば割れない', 3.6, MessagePriority.important);
   }
 
   shouldHatchSwarmbirds() {
@@ -1911,7 +1912,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.swarmbirdStats.birds += flock.birds.length;
     if (!this.swarmbirdHintShown) {
       this.swarmbirdHintShown = true;
-      this.showMessage('群れ鳥が孵った。鳥形態になると、群れで襲ってくる\n人間形態でいるうちに撃ち落とす', 3.6);
+      this.showMessage('群れ鳥が孵った。鳥形態になると、群れで襲ってくる\n人間形態でいるうちに撃ち落とす', 3.6, MessagePriority.important);
     }
     return flock.birds[0];
   }
@@ -1930,7 +1931,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.swarmbirdStats.hunts += 1;
     if (this.swarmbirdHuntHintShown) return;
     this.swarmbirdHuntHintShown = true;
-    this.showMessage('群れ鳥が気づいた。人間形態に戻れば離れていく', 2.6);
+    this.showMessage('群れ鳥が気づいた。人間形態に戻れば離れていく', 2.6, MessagePriority.important);
   }
 
   // 実際に減った HP（無敵時間や防護膜で防いだ分は数えない）
@@ -1958,7 +1959,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnParticleBurst(shell.position, 18, SPLITSHELL_SHARD_COLOR, 2.2, 0.4, 0.7);
     if (this.splitHintShown) return;
     this.splitHintShown = true;
-    this.showMessage('割れ殻が二つに割れた。割れたほうは普通の射撃で倒す', 2.6);
+    this.showMessage('割れ殻が二つに割れた。割れたほうは普通の射撃で倒す', 2.6, MessagePriority.important);
   }
 
   onRootsuckerRooted(rootsucker) {
@@ -2842,7 +2843,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.thirstStats.drains += 1;
     if (!this.thirstHintShown) {
       this.thirstHintShown = true;
-      this.showMessage(`${getBossName(this.stage)}が卵を吸っている\n吸われる前に壊せば回復させない。鳥や魚で先に食べよう`, 3.2);
+      this.showMessage(`${getBossName(this.stage)}が卵を吸っている\n吸われる前に壊せば回復させない。鳥や魚で先に食べよう`, 3.2, MessagePriority.important);
     } else {
       this.showMessage('卵が吸われている！', 1.4);
     }
@@ -2871,7 +2872,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (!this.pursuerHintShown) {
       this.pursuerHintShown = true;
       this.showMessage(`${getBossName(this.stage)}が立ち止まって卵を産んでいる
-殻が開いているあいだだけ攻撃が効く`, 3.2);
+殻が開いているあいだだけ攻撃が効く`, 3.2, MessagePriority.important);
     }
     this.spawnRingEffect(mother.position, 3.6, 0xffe066, 0.85, Math.min(0.6, seconds));
     this.playSfx('motherCharge', { volume: 0.5, cooldown: 0.4 });
@@ -2903,7 +2904,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnBurstEffect(mother.position, 6, 0x9ff3ff);
     this.spawnRingEffect(mother.position, 4.2, 0xffe066, 0.9, 0.6);
     this.playSfx('motherRelease', { volume: 0.7, cooldown: 0.4 });
-    this.showMessage(`${getBossName(this.stage)}が浮上して気絶した！ 今のうちに人間形態で撃とう`, Math.min(3, seconds));
+    this.showMessage(`${getBossName(this.stage)}が浮上して気絶した！ 今のうちに人間形態で撃とう`, Math.min(3, seconds), MessagePriority.important);
   }
 
   onFloodgateSubmerge(mother) {
@@ -2916,7 +2917,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (!this.floodgateHintShown) {
       this.floodgateHintShown = true;
       this.showMessage(`${getBossName(this.stage)}は水に潜っていて攻撃が効かない
-魚形態で3回噛みつくと浮上する`, 3.4);
+魚形態で3回噛みつくと浮上する`, 3.4, MessagePriority.important);
     }
     this.floodgateStats.streams += 1;
     const { direction, points } = floodgateStreamPoints(mother.position, this.player.position, count, cfg.streamStart, cfg.streamSpacing);
@@ -3025,7 +3026,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       petal.lotus.stats.openedAt = Math.round(this.elapsed);
       this.spawnBurstEffect(petal.lotus.core.position, 9, 0xffe066);
       this.playSfx('motherCharge', { volume: 0.85, cooldown: 0.3 });
-      this.showMessage('白蓮の核が開いた！ 衝撃波と吸い込みが交互に来る\n衝撃波は鳥形態、吸い込みは人間形態でしのぐ', 3.6);
+      this.showMessage('白蓮の核が開いた！ 衝撃波と吸い込みが交互に来る\n衝撃波は鳥形態、吸い込みは人間形態でしのぐ', 3.6, MessagePriority.important);
     } else if (broken < cfg.openAfterPetals) {
       this.showMessage(`花弁を壊した（${broken}/${cfg.openAfterPetals}）`, 1.6);
     }
@@ -3046,7 +3047,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.spawnMotherShockwave(core.position, egg.motherShockwaveRange, egg.motherShockwaveDamage, egg.motherShockwaveDuration);
       this.playSfx('motherRelease', { volume: 0.94, cooldown: 0.4 });
     } else if (event === 'inhaleWarning') {
-      this.showMessage('WARNING\n白蓮の核が息を吸う\n鳥形態だと引き寄せられる。人間形態で踏みとどまれ', cfg.inhaleWarning + 0.4);
+      this.showMessage('WARNING\n白蓮の核が息を吸う\n鳥形態だと引き寄せられる。人間形態で踏みとどまれ', cfg.inhaleWarning + 0.4, MessagePriority.warning);
       this.spawnRingEffect(core.position, cfg.inhaleRadius * 0.5, 0xfff2f6, 0.5, cfg.inhaleWarning);
       this.playSfx('motherCharge', { volume: 0.8, cooldown: 0.4 });
     } else if (event === 'inhaleStart') {
@@ -3091,7 +3092,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.lotusStats) this.lotusStats.shadow = { hits: 0, damageTaken: 0, deflected: 0, mirrored: 0, downAt: null };
     this.spawnBurstEffect(core.position, 7, 0x5a2a8a);
     this.playSfx('motherCharge', { volume: 0.9, cooldown: 0.3 });
-    this.showMessage('核から、黒い影法師が孵った\nこちらの形態を少し遅れて真似る。逆の形態のときだけ攻撃が通る', 4);
+    this.showMessage('核から、黒い影法師が孵った\nこちらの形態を少し遅れて真似る。逆の形態のときだけ攻撃が通る', 4, MessagePriority.important);
     return enemy;
   }
 
@@ -3119,14 +3120,14 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     player.hp = Math.min(player.maxHp, player.hp + player.maxHp * cfg.healOnDefeatRatio);
     this.spawnBurstEffect(shadow.position, 8, 0xffc94a);
     this.playSfx('eggBreak', { volume: 0.9, cooldown: 0.1 });
-    this.showMessage('影法師がほどけた。核の守りが消えた', 2.4);
+    this.showMessage('影法師がほどけた。核の守りが消えた', 2.4, MessagePriority.important);
   }
 
   // A sister fell: the threads to her turn red and a ring under her shrinks until she stands up again.
   onSwarmMemberDown(mother, standing, seconds) {
     this.playSfx('eggBreak', { volume: 0.8, cooldown: 0.1 });
     this.spawnBurstEffect(mother.position, 5, 0xffd56b);
-    this.showMessage(`群れの母が1体倒れた\n${seconds}秒以内に残り${standing}体を倒せ`, 2.4);
+    this.showMessage(`群れの母が1体倒れた\n${seconds}秒以内に残り${standing}体を倒せ`, 2.4, MessagePriority.important);
   }
 
   onSwarmMemberRevive(mother) {
@@ -3269,7 +3270,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   showMimicHint() {
     if (this.mimicHintShown) return;
     this.mimicHintShown = true;
-    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2);
+    this.showMessage('脈の速い卵は擬態卵\n鳥で食べると動けなくなる。人間形態で撃とう', 3.2, MessagePriority.important);
   }
 
   onPlayerStunned(position, seconds) {
@@ -3279,7 +3280,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnParticleBurst(position, 46, 0xb47aff, 4.2, 0.6, 0.7);
     this.playSfx('eggBreak', { volume: 0.86, cooldown: 0.1 });
     this.shake = Math.max(this.shake, 0.45);
-    this.showMessage('擬態卵！ 動けない', seconds);
+    this.showMessage('擬態卵！ 動けない', seconds, MessagePriority.warning);
     if (Config.egg.mimic.stunMarker) this.spawnStunMarker(seconds);
   }
 
@@ -3527,8 +3528,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return gained;
   }
 
-  showMessage(text, seconds = 1.25) {
-    this.hud.showMessage(text, seconds);
+  showMessage(text, seconds = 1.25, priority = MessagePriority.normal) {
+    return this.hud.showMessage(text, seconds, priority);
   }
 
   // Applies the upgrades chosen on clearing earlier chapters and returns how many were applied.
