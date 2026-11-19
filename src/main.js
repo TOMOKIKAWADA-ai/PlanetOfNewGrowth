@@ -590,7 +590,8 @@ class Game {
     this.swarmFlocks = [];
     this.swarmbirdHintShown = false;
     this.swarmbirdHuntHintShown = false;
-    this.swarmbirdStats = { flocks: 0, birds: 0, hunts: 0, hits: 0, damage: 0 };
+    this.swarmbirdBurstHintShown = false;
+    this.swarmbirdStats = { flocks: 0, birds: 0, hunts: 0, hits: 0, damage: 0, burstKills: 0 };
     this.lotusStats = null;
     this.lotusShadow = null;
     // Upgrade id -> times taken in this chapter, offered as a carry-over choice on clear.
@@ -2009,7 +2010,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.swarmbirdStats.birds += flock.birds.length;
     if (!this.swarmbirdHintShown) {
       this.swarmbirdHintShown = true;
-      this.showMessage('群れ鳥が孵った。鳥形態になると、群れで襲ってくる\n人間形態でいるうちに撃ち落とす', 3.6, MessagePriority.important);
+      this.showMessage('群れ鳥が孵った。鳥形態になると、群れで襲ってくる\n人間形態で撃ち落とすか、バーストで一掃する', 3.6, MessagePriority.important);
     }
     return flock.birds[0];
   }
@@ -2029,6 +2030,27 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.swarmbirdHuntHintShown) return;
     this.swarmbirdHuntHintShown = true;
     this.showMessage('群れ鳥が気づいた。人間形態に戻れば離れていく', 2.6, MessagePriority.important);
+  }
+
+  // バーストを撃った瞬間、半径 burstClearRange の中の群れ鳥を一掃する（キャラのバーストの形は問わない）。
+  clearSwarmbirdsByBurst(center) {
+    const range = Config.enemy.swarmbird.burstClearRange ?? 0;
+    if (!(range > 0)) return 0;
+    let cleared = 0;
+    for (const flock of this.swarmFlocks) {
+      for (const bird of flock.birds) {
+        if (bird.dead || horizontalDistanceSq(bird.position, center) > range * range) continue;
+        bird.takeDamage(bird.hp + 1, center, true, false);
+        if (bird.dead) cleared += 1;
+      }
+    }
+    if (!cleared) return 0;
+    this.swarmbirdStats.burstKills += cleared;
+    if (!this.swarmbirdBurstHintShown) {
+      this.swarmbirdBurstHintShown = true;
+      this.showMessage('バーストで群れ鳥を一掃した', 2, MessagePriority.important);
+    }
+    return cleared;
   }
 
   // 実際に減った HP（無敵時間や防護膜で防いだ分は数えない）

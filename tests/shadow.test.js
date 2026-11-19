@@ -8,7 +8,21 @@ import { Config } from '../src/config.js';
 const cfg = Config.boss.whiteLotusCore;
 const shadowCfg = Config.enemy.shadow;
 
-test('the shadow hatches once, when shadowAtRemaining seconds are left', () => {
+// The shadow is switched off for now (2026-11-19); these tests turn it on to check the code kept for later.
+function withShadowOn(fn) {
+  return () => {
+    const was = shadowCfg.enabled;
+    shadowCfg.enabled = true;
+    try { fn(); } finally { shadowCfg.enabled = was; }
+  };
+}
+
+test('the shadow stays away while it is switched off', () => {
+  if (shadowCfg.enabled) return;
+  assert.equal(lotusShadowDue({ shadowHatched: false }, Config.map.playSeconds, Config.map.playSeconds), false);
+});
+
+test('the shadow hatches once, when shadowAtRemaining seconds are left', withShadowOn(() => {
   const lotus = { shadowHatched: false };
   const play = Config.map.playSeconds;
   assert.equal(lotusShadowDue(lotus, play - cfg.shadowAtRemaining - 0.1, play), false);
@@ -16,9 +30,9 @@ test('the shadow hatches once, when shadowAtRemaining seconds are left', () => {
   lotus.shadowHatched = true;
   assert.equal(lotusShadowDue(lotus, play - 1, play), false);
   assert.equal(lotusShadowDue(null, play, play), false);
-});
+}));
 
-test('the core hatches the shadow through the game and records the time', () => {
+test('the core hatches the shadow through the game and records the time', withShadowOn(() => {
   const spawned = [];
   const game = { state: 'playing', elapsed: 0, spawnLotusShadow(core) { const s = { dead: false }; spawned.push(s); return s; }, onLotusAttack() {}, applyLotusInhale() {} };
   const core = { game, dead: false, hp: 100, maxHp: 100 };
@@ -33,7 +47,7 @@ test('the core hatches the shadow through the game and records the time', () => 
   assert.equal(spawned.length, 1);
   assert.equal(lotus.shadow, spawned[0]);
   assert.equal(lotus.stats.shadowAt, Math.round(game.elapsed));
-});
+}));
 
 test('while the shadow lives the core takes less damage; petals are never guarded', () => {
   const core = { lotusRole: 'core', lotus: { shadow: { dead: false } } };
