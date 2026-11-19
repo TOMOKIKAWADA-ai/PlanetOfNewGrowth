@@ -219,6 +219,11 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
   };
 
   function steer() {
+    // Caught by a vine: wiggle the stick left/right about 7 times a second, a human mashing pace.
+    if (player.bindTimer > 0) {
+      input.setTouchMovement(Math.floor(game.elapsed * 7) % 2 ? 1 : -1, 0);
+      return;
+    }
     const p = player.position;
     let mx = 0;
     let mz = 0;
@@ -450,6 +455,7 @@ function summarize(game, stats) {
     mimic: stats.mimic.seen || stats.mimic.shot ? { ...stats.mimic } : null,
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed), reach: stats.thirstReach ?? [] } : null,
     pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
+    vine: game.vineStats?.windups ? { ...game.vineStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
     criers: game.crierStats?.spawned ? { ...game.crierStats } : null,
     hands: game.handStats?.spawned ? { ...game.handStats, heldSeconds: Math.round(game.handStats.heldSeconds * 10) / 10 } : null,
@@ -518,7 +524,7 @@ try {
     result.errors = errors;
     result.carry = carrySpec || null;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}${result.vine ? `vine windups/binds ${result.vine.windups}/${result.vine.binds} mash/cut/timeout ${result.vine.mashEscapes}/${result.vine.cuts}/${result.vine.timeouts}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     const video = page.video();
     await context.close();

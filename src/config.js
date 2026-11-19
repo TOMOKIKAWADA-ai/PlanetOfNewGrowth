@@ -164,6 +164,8 @@ export const Config = {
     battleVoices: true,
     // Pause between the end of the dying scream and the last line.
     deathVoiceGap: 1.2,
+    // 縛り蔓の声（捕まった瞬間・連打中の力み・振りほどいたとき）。false で出さない（捕まったときは被弾の声になる）。
+    vineVoices: true,
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
     // 2026-11-03: crier's cry, hand grab, rootsucker rooting (false = mother_release for the cry, no sound for the other two).
     // 2026-11-17: egg hatching nearby, a horn when the boss appears, ticks and a gong when little time is left (false = no sound, as before).
@@ -571,13 +573,14 @@ export const Config = {
       range: 21,
       fireInterval: 3.6,
       warningSeconds: 1.15,
-      beamSeconds: 0.8,
+      warningLockSeconds: 0.25,
       warningTurnRate: 4.5,
-      beamTurnRate: 2.4,
       groundTrackingLagSeconds: 0.45,
-      hitInterval: 0.42,
-      humanHitRadius: 0.85,
-      birdHitRadius: 1.8,
+      bulletSpeed: 30,
+      bulletRadius: 0.26,
+      bulletLife: 2.2,
+      homingTurnRate: 4.5,
+      birdHitBonus: 0.65,
       // 2026-11-16 ユーザー「狙撃タイプは一体まで」: 同時にいる狙撃手は 1 体まで（元は 2 と、210 秒からは 6）
       maxAliveBeforeRush: 1,
       maxAliveDuringRush: 1,
@@ -599,6 +602,37 @@ export const Config = {
       nearEggLimit: 3,
       eggCheckRange: 11,
       destinationSeconds: 4.8
+    },
+    // 縛り蔓（第4章から）: 近づくと人間形態の足元に緑の輪を出し、輪が閉じると地面から細いツタが伸びて数秒しばる。
+    // 鳥形態と水の上は地面から届かないので捕まらない。しばっている間は本体が地面に潜って撃てないので、
+    // 移動キー・スティック・ボタンの連打で振りほどく（予兆の間に倒せば出てこない）。enabled: false で出なくなる。
+    vine: {
+      enabled: true,
+      fromChapter: 1,
+      speed: 2.6,
+      damage: 6,
+      xp: 9,
+      trackSeconds: 0.5, // 予兆の最初のこの時間だけ、輪がプレイヤーを少し遅れて追う。残りは止まる
+      trackLag: 0.3,
+      grabRadius: 1.5,
+      regrabImmunity: 2.5, // ほどけた直後、この時間は捕まらない
+      burrowDepth: 1.5, // しばっている間、本体が地面に沈む深さ（ツタの先だけ地上に残る）
+      limpSeconds: 1.6, // 捕まったまま倒れたとき、ぐったりしてから結果へ進むまでの時間（倒れるアニメーションの代わり）
+      // 試合の中でも、同時に出る数は introAt から fullAt にかけて 1 体から maxAlive まで増える。
+      fullAt: 180,
+      // 章ごとの強さ（第1章から順に。上の共通の値に重ねる）。第1章はめったに出ず、数回の連打ですぐ抜けられる。
+      //   hp・cooldown（次の輪までの秒）・range（輪を出す距離）・windupSeconds（輪が閉じるまで）・
+      //   leadMax（先読みする距離。小さいほど、まっすぐ走っていてもよけやすい）・
+      //   bindSeconds（何もしなければしばられる時間）・mashSeconds（連打1回で縮む時間）・bindDamage・
+      //   spawnChance（卵から追跡型が孵るとき、代わりに縛り蔓になる割合）・maxAlive・introAt（この時刻に1体を近くへ出して見せる）
+      chapters: [
+        { hp: 40, cooldown: 7.5, range: 9, windupSeconds: 1.45, leadMax: 1.5, bindSeconds: 1.5, mashSeconds: 0.3, bindDamage: 2, spawnChance: 0.05, maxAlive: 1, introAt: 60 },
+        { hp: 44, cooldown: 6.5, range: 9, windupSeconds: 1.3, leadMax: 2.5, bindSeconds: 2.0, mashSeconds: 0.27, bindDamage: 3, spawnChance: 0.09, maxAlive: 2, introAt: 50 },
+        { hp: 48, cooldown: 5.5, range: 9.5, windupSeconds: 1.2, leadMax: 3, bindSeconds: 2.5, mashSeconds: 0.24, bindDamage: 4, spawnChance: 0.13, maxAlive: 2, introAt: 45 },
+        { hp: 52, cooldown: 5, range: 10, windupSeconds: 1.1, leadMax: 3.5, bindSeconds: 3.0, mashSeconds: 0.22, bindDamage: 5, spawnChance: 0.17, maxAlive: 3, introAt: 40 },
+        { hp: 56, cooldown: 4.5, range: 10, windupSeconds: 1.0, leadMax: 4, bindSeconds: 3.5, mashSeconds: 0.2, bindDamage: 6, spawnChance: 0.22, maxAlive: 4, introAt: 35 },
+        { hp: 62, cooldown: 4, range: 10.5, windupSeconds: 0.95, leadMax: 4.5, bindSeconds: 4.0, mashSeconds: 0.18, bindDamage: 7, spawnChance: 0.26, maxAlive: 5, introAt: 30 }
+      ]
     },
     dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
     tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },

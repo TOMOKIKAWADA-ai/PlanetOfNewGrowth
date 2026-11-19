@@ -14,6 +14,10 @@ const KEYBOARD_ACTION_KEYS = {
   restart: ['KeyR']
 };
 
+// レバガチャで数える入力。一時停止・再開始・PSボタン・タッチパッドは数えない。
+const MASH_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyQ', 'KeyE', 'Space'];
+const MASH_IGNORED_BUTTONS = [8, 9, 12, 13, 14, 15, 16, 17];
+
 const GAMEPAD_DIRECTIONS = {
   up: 12,
   down: 13,
@@ -53,6 +57,10 @@ export class InputState {
     this.touchMoveZ = 0;
     this.touchActions = new Set();
     this.touchPressedActions = new Set();
+    this.touchSector = -1;
+    this.touchMashEvents = 0;
+    // 連打のキーは押した回数を数える（フレームの間に押して離した速い連打も取りこぼさない）。
+    this.keyMashEvents = 0;
     this.gamepadId = '';
     this.controllerConnected = false;
     this.gamepadDeadzone = 0.18;
@@ -70,6 +78,7 @@ export class InputState {
         event.preventDefault();
       }
       this.keys.add(event.code);
+      if (!event.repeat && MASH_KEYS.includes(event.code)) this.keyMashEvents++;
     }, true);
     target.addEventListener('keyup', (event) => {
       this.keys.delete(event.code);
@@ -101,11 +110,17 @@ export class InputState {
     this.previousGamepadButtons = new Set(this.gamepadButtons);
     this.previousGamepadDirections = new Set(this.gamepadDirections);
     this.touchPressedActions.clear();
+    this.touchMashEvents = 0;
+    this.keyMashEvents = 0;
   }
 
   setTouchMovement(x, z) {
     this.touchMoveX = applyDeadzone(x, 0.1);
     this.touchMoveZ = applyDeadzone(z, 0.1);
+    // スティックを大きく倒した向き（上下左右）が変わるたびに、レバガチャ1回と数える。
+    const sector = Math.hypot(x, z) > 0.5 ? Math.round(Math.atan2(z, x) / (Math.PI / 2)) & 3 : -1;
+    if (sector !== -1 && sector !== this.touchSector) this.touchMashEvents++;
+    this.touchSector = sector;
   }
 
   pressTouchAction(action) {
@@ -221,6 +236,18 @@ export class InputState {
     if (now < (this.menuRepeatAt.get(direction) ?? Infinity)) return false;
     this.menuRepeatAt.set(direction, now + 170);
     return true;
+  }
+
+  // レバガチャ: このフレームに新しく入った移動方向とボタンの数（ツタに捕まったときの振りほどき）。
+  mashCount() {
+    let count = this.touchMashEvents;
+    for (const action of this.touchPressedActions) if (action !== 'pause') count++;
+    if (!this.hasGamepad) return count + this.keyMashEvents;
+    for (const index of this.gamepadButtons) {
+      if (!MASH_IGNORED_BUTTONS.includes(index) && this.gamepadPressed(index)) count++;
+    }
+    for (const direction of Object.keys(GAMEPAD_DIRECTIONS)) if (this.directionPressed(direction)) count++;
+    return count;
   }
 
   movementX() {

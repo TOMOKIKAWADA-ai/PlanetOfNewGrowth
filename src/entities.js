@@ -6,7 +6,6 @@ import {
   clamp,
   clampToCircle,
   horizontalDistanceSq,
-  horizontalPointSegmentDistanceSq,
   normalizeXZ,
   randRange,
   randomPointInCircle,
@@ -16,6 +15,7 @@ import {
 import { Config } from './config.js';
 import { getBossType, isMotherCharging, motherBeatSqueeze, pickDrainedDiveTarget, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { VineWarning, createVineEnemyModel } from './vines.js';
 import { advanceFootprint } from './footprints.js';
 import { fullWaterScale } from './synergies.js';
 
@@ -196,6 +196,14 @@ const tempVec = new THREE.Vector3();
 const tempVec2 = new THREE.Vector3();
 const poseEuler = new THREE.Euler();
 const poseQuat = new THREE.Quaternion();
+// 縛り蔓に捕まったときのもがき（Player.applyStrugglePose）。体の向きを基準にした軸: 左が +X、上が +Y、前が +Z。
+const BODY_LEFT = new THREE.Vector3(1, 0, 0);
+const BODY_UP = new THREE.Vector3(0, 1, 0);
+const BODY_FORWARD = new THREE.Vector3(0, 0, 1);
+const struggleAxis = new THREE.Vector3();
+const struggleQuat = new THREE.Quaternion();
+const struggleParentQuat = new THREE.Quaternion();
+const struggleBodyQuat = new THREE.Quaternion();
 const SNIPER_VISUAL_SCALE = 1.12;
 const SNIPER_COLOR = 0xff1515;
 const FOOTPRINT_COLOR = 0xbcd8f2;
@@ -241,6 +249,7 @@ const ENEMY_LOD_SPECS = {
   tadpole: { color: 0x263f54, radius: 0.3, height: 0.48, segments: 10 },
   dragonfly: { color: 0x3a1214, radius: 0.48, height: 0.72, segments: 6 },
   frog: { color: 0x3b3a30, radius: 0.72, height: 1.15, segments: 8 },
+  vine: { color: 0x6b4d2a, radius: 0.5, height: 1.5, segments: 6 },
   footprint: { color: FOOTPRINT_COLOR, radius: 0.44, height: 1.22, segments: 5 },
   crier: { color: CRIER_COLOR, radius: 0.5, height: 1.0, segments: 7 },
   hand: { color: HAND_COLOR, radius: 0.46, height: 1.3, segments: 5 },
@@ -263,12 +272,13 @@ const ENEMY_LOD_MATERIALS = Object.fromEntries(
 const SNIPER_BEAM_GEOMETRY = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
 const SNIPER_BEAM_MATERIALS = {
   warning: new THREE.MeshBasicMaterial({ color: 0xffb45a, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
-  glow: new THREE.MeshBasicMaterial({ color: 0xff4866, transparent: true, opacity: 0.32, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false }),
-  core: new THREE.MeshBasicMaterial({ color: 0xfff2db, transparent: true, opacity: 0.94, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
+  lock: new THREE.MeshBasicMaterial({ color: 0xfff2db, transparent: true, opacity: 0.94, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false })
 };
 const SNIPER_MARKER_GEOMETRY = new THREE.TorusGeometry(0.42, 0.07, 6, 16);
 const SNIPER_MARKER_MATERIAL = new THREE.MeshBasicMaterial({ color: SNIPER_COLOR, toneMapped: false });
 const SNIPER_BEAM_UP = new THREE.Vector3(0, 1, 0);
+const PROJECTILE_HOMING_DESIRED = new THREE.Vector3();
+const PROJECTILE_HOMING_CURRENT = new THREE.Vector3();
 const EGG_LOD_GEOMETRY = new THREE.DodecahedronGeometry(0.7, 0);
 const EGG_LOD_MATERIAL = new THREE.MeshBasicMaterial({ color: 0x180c0d });
 // Primitive shapes; Config.pickups.models swaps some of them for generated meshes at load (installPickupModel).
@@ -392,6 +402,21 @@ export class Player {
     this.pickupMagnetTimer = 0;
     this.speedBoostTimer = 0;
     this.stunTimer = 0;
+    // 縛り蔓に捕まっている残り時間（Config.enemy.vine）。連打で縮む。
+    this.bindTimer = 0;
+    this.bindDuration = 0;
+    this.bindSource = null;
+    this.bindMashes = 0;
+    this.bindImmuneTimer = 0;
+    this.struggleWeight = 0; // もがきの重み（捕まると 1 へ、ほどけると 0 へ）
+    this.struggleBoost = 0; // 連打した直後に強くなる分
+    this.struggleTime = 0;
+    this.limpInVines = false; // 捕まったまま倒れた（ツタに支えられてぐったりする）
+    this.limpTime = 0;
+    // もがき・ぐったりで回した骨と、回す前の向き。次のフレームのアニメーション更新の前に戻す
+    // （待機アニメーションには首・太もも・足の動きがないので、戻さないと回転が積み重なる）。
+    this.overlaySavedPose = new Map();
+    this.overlayTouchedBones = new Set();
     // 手（E11）に掴まれているあいだ: 掴んでいる敵と残り時間。
     this.grabbedBy = null;
     this.grabTimer = 0;
@@ -1343,7 +1368,7 @@ export class Player {
   }
 
   update(dt, input) {
-    if (input.actionPressed('transform') && !(this.stunTimer > 0)) this.toggleForm();
+    if (input.actionPressed('transform') && !(this.stunTimer > 0) && !(this.bindTimer > 0)) this.toggleForm();
     this.autoTimer = Math.max(0, this.autoTimer - dt);
     this.specialTimer = Math.max(0, this.specialTimer - dt);
     this.invincibleTimer = Math.max(0, this.invincibleTimer - dt);
@@ -1356,9 +1381,11 @@ export class Player {
     this.pickupMagnetTimer = Math.max(0, this.pickupMagnetTimer - dt);
     this.speedBoostTimer = Math.max(0, this.speedBoostTimer - dt);
     this.stunTimer = Math.max(0, this.stunTimer - dt);
+    this.bindImmuneTimer = Math.max(0, this.bindImmuneTimer - dt);
+    this.updateBind(dt, input);
     this.updateGrab(dt);
 
-    if (this.stunTimer <= 0) this.updateMovement(dt, input);
+    if (this.stunTimer <= 0 && !(this.bindTimer > 0)) this.updateMovement(dt, input);
     this.updateFormResources(dt);
     this.updateDive(dt);
     this.updateCombat(dt, input);
@@ -1441,7 +1468,7 @@ export class Player {
 
   updateCombat(dt, input) {
     if (this.form === 'human') {
-      if (input.actionPressed('burst')) this.tryBurst();
+      if (input.actionPressed('burst') && !(this.bindTimer > 0)) this.tryBurst();
       this.tryAutoShoot();
       this.trySpecialEggShot();
       this.updatePulse(dt);
@@ -1821,6 +1848,45 @@ export class Player {
     this.game.onPlayerStunned(this.position, seconds);
   }
 
+  // ツタは地面から伸びるので、飛んでいる鳥と水の上には届かない。
+  canBeBound() {
+    return !this.dead && this.form !== 'bird' && this.diveState === 'ready' && !(this.bindTimer > 0)
+      && this.bindImmuneTimer <= 0 && this.phaseTimer <= 0 && !this.game.isWaterPosition(this.position);
+  }
+
+  bind(source, seconds) {
+    if (!this.canBeBound()) return false;
+    this.bindTimer = seconds;
+    this.bindDuration = seconds;
+    this.bindSource = source;
+    this.bindMashes = 0;
+    this.game.onPlayerBound(source, seconds);
+    return true;
+  }
+
+  updateBind(dt, input) {
+    if (!(this.bindTimer > 0)) return;
+    const mashes = input.mashCount();
+    if (mashes > 0) {
+      this.bindMashes += mashes;
+      this.bindTimer -= mashes * this.game.vineConfig.mashSeconds;
+      this.struggleBoost = 1;
+      this.game.onBindMash(mashes);
+    }
+    this.bindTimer -= dt;
+    if (this.bindSource?.dead) this.releaseBind('cut');
+    else if (this.bindTimer <= 0) this.releaseBind(this.bindMashes > 0 ? 'mash' : 'timeout');
+  }
+
+  // reason: 'mash'（振りほどいた）, 'timeout', 'cut'（本体を倒した）, 'death'
+  releaseBind(reason) {
+    if (!this.bindSource && !(this.bindTimer > 0)) return;
+    this.bindTimer = 0;
+    this.bindSource = null;
+    this.bindImmuneTimer = this.game.vineConfig.regrabImmunity;
+    this.game.onPlayerBindReleased(reason);
+  }
+
   findMotherForDive() {
     let best = null;
     let bestDistance = Config.player.birdMotherDetectRange ** 2;
@@ -1859,6 +1925,7 @@ export class Player {
     let best = null;
     let bestDistance = Infinity;
     for (const enemy of candidates) {
+      if (enemy.burrowed) continue;
       const distance = horizontalDistanceSq(this.position, enemy.position);
       if (distance < bestDistance) {
         bestDistance = distance;
@@ -1907,7 +1974,9 @@ export class Player {
       this.startDeath();
       return;
     }
-    if (!this.game.tryLowHpVoice?.(hpBefore / this.maxHp, this.hp / this.maxHp)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
+    // 捕まっている間は縛り蔓の声（Game.onPlayerBound / onBindMash）を出すので、被弾の声は重ねない。
+    const vineVoiceActive = this.bindTimer > 0 && Config.audio.vineVoices;
+    if (!vineVoiceActive && !this.game.tryLowHpVoice?.(hpBefore / this.maxHp, this.hp / this.maxHp)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
     this.playOneShotAnimation('react');
     if (this.hp <= 0) this.game.finish(false, 'HPが尽きました');
   }
@@ -1915,6 +1984,8 @@ export class Player {
   startDeath() {
     if (this.dead) return;
     this.dead = true;
+    const heldByVine = this.bindTimer > 0;
+    this.releaseBind('death');
     this.game.playDeathVoices();
     this.form = 'human';
     this.diveState = 'ready';
@@ -1926,8 +1997,25 @@ export class Player {
     this.group.position.y = this.visualHeight;
     this.startDroneFall();
     this.game.cameraRig?.startTransition('human');
-    const duration = this.playOneShotAnimation('dying');
+    const duration = heldByVine && this.usesExternalAnimation ? this.startLimpInVines() : this.playOneShotAnimation('dying');
     this.game.startPlayerDeath(duration + Config.visuals.playerDeathResultDelay);
+  }
+
+  // 倒れるアニメーションの代わりに、待機の姿勢で止めて力を抜く（applyLimpPose）。ツタは体に残る。
+  // 止めた待機を毎フレーム骨へ書き戻させる（終わった被弾の一回再生のままだと、重ねた回転が積み重なる）。
+  startLimpInVines() {
+    const hold = this.modelActions.idle;
+    if (!hold) return this.playOneShotAnimation('dying');
+    this.limpInVines = true;
+    this.limpTime = 0;
+    for (const [key, action] of Object.entries(this.modelActions)) {
+      action.enabled = key === 'idle';
+      action.setEffectiveWeight(key === 'idle' ? 1 : 0);
+    }
+    hold.play();
+    hold.paused = true;
+    this.activeModelAction = 'idle';
+    return this.game.vineConfig.limpSeconds;
   }
 
   updateDeath(dt) {
@@ -2018,11 +2106,13 @@ export class Player {
   }
 
   updateVisualPose(dt) {
-    const moving = this.game.input.movementActive();
+    // 捕まっている・硬直している間はキーを押しても走るアニメーションにしない（連打は移動キーでもする）。
+    const moving = this.game.input.movementActive() && !(this.bindTimer > 0) && !(this.stunTimer > 0);
     const bird = this.form === 'bird';
     const fish = this.form === 'fish';
     this.oneShotAnimationTimer = Math.max(0, this.oneShotAnimationTimer - dt);
     this.updatePlayerAnimationState(moving);
+    this.restoreOverlayPose();
     if (this.modelMixer) this.modelMixer.update(dt);
     this.group.visible = true;
     this.group.rotation.y = this.faceAngle;
@@ -2054,7 +2144,94 @@ export class Player {
           this.resetProceduralPlayerPose();
         }
       }
+      this.applyStrugglePose(dt);
+      this.applyLimpPose(dt);
     }
+  }
+
+  restoreOverlayPose() {
+    for (const bone of this.overlayTouchedBones) bone.quaternion.copy(this.overlaySavedPose.get(bone));
+    this.overlayTouchedBones.clear();
+  }
+
+  // 捕まったまま倒れたとき: ツタに支えられて立ったまま、首が落ち、背中が丸まり、腕が垂れ、膝が折れる。
+  // 一度少し深く沈んでから落ち着く。
+  applyLimpPose(dt) {
+    if (!this.limpInVines || !this.usesExternalAnimation) return;
+    this.limpTime += dt;
+    const t = clamp(this.limpTime / 0.9, 0, 1);
+    const w = smooth01(t) + Math.sin(t * Math.PI) * 0.15;
+    this.group.updateMatrixWorld(true);
+    for (const name of ['mixamorigSpine', 'mixamorigSpine1', 'mixamorigSpine2']) {
+      this.rotateBoneInBodyFrame(name, BODY_LEFT, 0.22 * w);
+      this.rotateBoneInBodyFrame(name, BODY_FORWARD, 0.05 * w);
+    }
+    this.rotateBoneInBodyFrame('mixamorigNeck', BODY_LEFT, 0.3 * w);
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_LEFT, 0.55 * w);
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_FORWARD, 0.25 * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftShoulder', BODY_FORWARD, -0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigRightShoulder', BODY_FORWARD, 0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftArm', BODY_LEFT, -0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigRightArm', BODY_LEFT, -0.12 * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftForeArm', BODY_LEFT, -0.15 * w);
+    this.rotateBoneInBodyFrame('mixamorigRightForeArm', BODY_LEFT, -0.15 * w);
+    for (const side of ['Left', 'Right']) {
+      this.rotateBoneInBodyFrame(`mixamorig${side}UpLeg`, BODY_LEFT, -0.3 * w);
+      this.rotateBoneInBodyFrame(`mixamorig${side}Leg`, BODY_LEFT, 0.55 * w);
+      this.rotateBoneInBodyFrame(`mixamorig${side}Foot`, BODY_LEFT, -0.25 * w);
+    }
+    this.model.position.y -= 0.12 * w;
+  }
+
+  // 縛り蔓に捕まっている間のもがき。再生中のアニメーションの上に重ねる。体を左右にひねり、
+  // 腕で交互にツタを引きはがそうとし、首を振る。連打した瞬間に大きく、速くなる。
+  // 骨の向きは3人のモデルで違うので、体の向きを基準にした軸で回す（Mixamo の骨名で探す）。
+  applyStrugglePose(dt) {
+    const bound = this.bindTimer > 0 && !this.dead;
+    this.struggleWeight = clamp(this.struggleWeight + dt * (bound ? 7 : -4), 0, 1);
+    this.struggleBoost = Math.max(0, this.struggleBoost - dt * 3.5);
+    if (this.struggleWeight <= 0 || !this.usesExternalAnimation) return;
+    const boost = this.struggleBoost;
+    this.struggleTime += dt * (1 + boost * 1.4);
+    const t = this.struggleTime;
+    const w = this.struggleWeight * (0.6 + 0.4 * boost);
+    const sway = Math.sin(t * 4.4);
+    const pullLeft = Math.max(0, sway);
+    const pullRight = Math.max(0, -sway);
+    this.group.updateMatrixWorld(true);
+    for (const name of ['mixamorigSpine', 'mixamorigSpine1', 'mixamorigSpine2']) {
+      this.rotateBoneInBodyFrame(name, BODY_UP, sway * 0.13 * w);
+      this.rotateBoneInBodyFrame(name, BODY_FORWARD, Math.sin(t * 4.4 + 1.2) * 0.05 * w);
+      this.rotateBoneInBodyFrame(name, BODY_LEFT, 0.05 * this.struggleWeight);
+    }
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_UP, Math.sin(t * 7.3) * 0.32 * w);
+    this.rotateBoneInBodyFrame('mixamorigHead', BODY_LEFT, -(0.12 + boost * 0.25) * this.struggleWeight);
+    this.rotateBoneInBodyFrame('mixamorigLeftShoulder', BODY_FORWARD, (0.12 + pullLeft * 0.18) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightShoulder', BODY_FORWARD, -(0.12 + pullRight * 0.18) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftArm', BODY_FORWARD, (0.45 + pullLeft * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightArm', BODY_FORWARD, -(0.45 + pullRight * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftArm', BODY_LEFT, -(0.35 + pullRight * 0.3) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightArm', BODY_LEFT, -(0.35 + pullLeft * 0.3) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftForeArm', BODY_LEFT, -(0.8 + pullRight * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightForeArm', BODY_LEFT, -(0.8 + pullLeft * 0.5) * w);
+    this.rotateBoneInBodyFrame('mixamorigLeftLeg', BODY_LEFT, (0.08 + pullLeft * 0.16) * w);
+    this.rotateBoneInBodyFrame('mixamorigRightLeg', BODY_LEFT, (0.08 + pullRight * 0.16) * w);
+  }
+
+  rotateBoneInBodyFrame(boneName, axis, angle) {
+    const bone = this.bones[this.boneAliases.get(boneName)];
+    if (!bone?.parent || angle === 0) return;
+    if (!this.overlayTouchedBones.has(bone)) {
+      if (!this.overlaySavedPose.has(bone)) this.overlaySavedPose.set(bone, new THREE.Quaternion());
+      this.overlaySavedPose.get(bone).copy(bone.quaternion);
+      this.overlayTouchedBones.add(bone);
+    }
+    bone.parent.updateWorldMatrix(true, false);
+    bone.parent.getWorldQuaternion(struggleParentQuat).invert();
+    this.group.getWorldQuaternion(struggleBodyQuat);
+    struggleAxis.copy(axis).applyQuaternion(struggleBodyQuat).applyQuaternion(struggleParentQuat).normalize();
+    struggleQuat.setFromAxisAngle(struggleAxis, angle);
+    bone.quaternion.premultiply(struggleQuat);
   }
 
   get birdDiveDamage() {
@@ -2487,7 +2664,6 @@ export class Enemy {
     this.pendingShotTarget = new THREE.Vector3();
     this.beamState = 'idle';
     this.beamTimer = 0;
-    this.beamHitTimer = 0;
     this.beamAim = 0;
     this.beamTrackedTarget = new THREE.Vector3();
     this.beamEnd = new THREE.Vector3();
@@ -2501,6 +2677,18 @@ export class Enemy {
     this.matureTimer = (type === 'dragonflyLarva' || type === 'tadpole') ? this.stats.matureSeconds : Infinity;
     this.jumpTimer = type === 'frog' ? randRange(1.2, Config.enemy.frog.jumpInterval) : 0;
     this.jumpPhase = 0;
+    // 縛り蔓: 'idle' → 'windup'（足元に輪）→ 当たれば 'binding'（ほどけるまでその場に根を張る）
+    this.vineState = 'idle';
+    this.vineTimer = 0;
+    this.vineTarget = new THREE.Vector3();
+    this.vineAnchor = new THREE.Vector3();
+    this.vineAim = new THREE.Vector3();
+    this.vineLastPlayer = new THREE.Vector3();
+    this.vinePlayerVelocity = new THREE.Vector3();
+    this.vineWarning = null;
+    this.vineParts = null;
+    this.vinePhase = Math.random() * TAU;
+    if (type === 'vine') this.fireTimer = randRange(1.5, 3);
     this.updateAccumulator = 0;
     this.distanceSqToPlayer = Infinity;
     this.collisionRadius = (ENEMY_LOD_SPECS[type]?.radius ?? 0.48) + 0.16;
@@ -2532,6 +2720,7 @@ export class Enemy {
   }
 
   get stats() {
+    if (this.type === 'vine') return this.game.vineConfig;
     if (Config.enemy[this.type]) return Config.enemy[this.type];
     if (this.type === 'shooter') return Config.enemy.shooter;
     if (this.type === 'guardian') return Config.enemy.guardian;
@@ -2540,6 +2729,7 @@ export class Enemy {
   }
 
   createModel(type) {
+    if (type === 'vine') return this.createLodModel(createVineEnemyModel(), type);
     const tripo = TRIPO_ENEMY_MODELS[type];
     const tripoModel = tripo && this.game.tripoEnemyModelsEnabled ? this.game.cloneGameplayModel(tripo.key) : null;
     if (tripoModel) return this.prepareTripoModel(tripoModel, type, tripo);
@@ -3087,8 +3277,7 @@ export class Enemy {
       return mesh;
     };
     this.beamWarning = makeBeam('SniperWarning', SNIPER_BEAM_MATERIALS.warning, 0.055);
-    this.beamGlow = makeBeam('SniperBeamGlow', SNIPER_BEAM_MATERIALS.glow, 0.45);
-    this.beamCore = makeBeam('SniperBeamCore', SNIPER_BEAM_MATERIALS.core, 0.11);
+    this.beamLock = makeBeam('SniperWarningLock', SNIPER_BEAM_MATERIALS.lock, 0.09);
     this.object.add(this.beam);
   }
 
@@ -3261,6 +3450,7 @@ export class Enemy {
     else if (this.type === 'sniper') this.updateSniper(dt);
     else if (this.type === 'shooter') this.updateShooter(dt);
     else if (this.type === 'guardian') this.updateGuardian(dt);
+    else if (this.type === 'vine') this.updateVine(dt);
     else if (this.type === 'footprint') this.updateFootprint(dt);
     else if (this.type === 'crier') this.updateCrier(dt);
     else if (this.type === 'hand') this.updateHand(dt);
@@ -3285,11 +3475,14 @@ export class Enemy {
       this.game.damageBuilding(blockedBuilding, Math.max(3, this.stats.damage * 0.25), this.position);
     }
     clampToCircle(this.position, Config.map.radius - 1.2);
+    // しばっている間は根を張っている（押されてもツタの付け根が離れない）。
+    if (this.vineState === 'binding') this.position.copy(this.vineAnchor);
     this.distanceSqToPlayer = horizontalDistanceSq(this.position, this.game.player.position);
     // 産卵獣の体（と、それを使う仮の鳴き）は後ろ向きに作られている
     const backwards = this.type === 'spawner' || (this.type === 'crier' && !this.tripoModel);
     this.model.rotation.y = angleToXZ(this.position, this.game.player.position) + (backwards ? Math.PI : 0);
     if (this.modelActions.walk) this.updateLocomotionAnimation(dt);
+    else if (this.type === 'vine') this.animateVineModel(dt);
     else this.model.position.y = (this.model.userData.baseY ?? 0) + Math.abs(Math.sin(this.game.elapsed * (this.type === 'spawner' ? 12 : 7))) * 0.06;
     this.updateContactDamage();
     this.updateHpBar();
@@ -3545,38 +3738,31 @@ export class Enemy {
     }
     if (this.beamState === 'idle') return;
 
-    if (player.form === 'bird') {
-      this.beamTrackedTarget.copy(player.position);
-    } else {
-      const follow = 1 - Math.exp(-dt / stats.groundTrackingLagSeconds);
-      this.beamTrackedTarget.lerp(player.position, follow);
-    }
-    const desiredAngle = angleToXZ(this.position, this.beamTrackedTarget);
-    const turnRate = this.beamState === 'warning' ? stats.warningTurnRate : stats.beamTurnRate;
-    this.beamAim += clamp(signedAngleDifference(desiredAngle, this.beamAim), -turnRate * dt, turnRate * dt);
+    // The warning line tracks the player, then locks briefly so the single shot is readable.
     this.beamTimer -= dt;
-    if (this.beamState === 'warning' && this.beamTimer <= 0) {
-      this.beamState = 'firing';
-      this.beamTimer = stats.beamSeconds;
-      this.beamHitTimer = 0;
-      this.playModelOneShot('attack');
-    } else if (this.beamState === 'firing' && this.beamTimer <= 0) {
-      this.beamState = 'idle';
-      this.beam.visible = false;
-      return;
+    const locked = this.beamTimer <= stats.warningLockSeconds;
+    if (!locked) {
+      if (player.form === 'bird') {
+        this.beamTrackedTarget.copy(player.position);
+      } else {
+        const follow = 1 - Math.exp(-dt / stats.groundTrackingLagSeconds);
+        this.beamTrackedTarget.lerp(player.position, follow);
+      }
+      const desiredAngle = angleToXZ(this.position, this.beamTrackedTarget);
+      const turnRate = stats.warningTurnRate;
+      this.beamAim += clamp(signedAngleDifference(desiredAngle, this.beamAim), -turnRate * dt, turnRate * dt);
     }
+    this.updateSniperBeamVisual(Math.min(distance, stats.range), player.visualHeight, locked);
+    if (this.beamTimer > 0) return;
 
-    this.updateSniperBeamVisual(Math.min(distance, stats.range), player.visualHeight);
-    if (this.beamState !== 'firing') return;
-    this.beamHitTimer = Math.max(0, this.beamHitTimer - dt);
-    const hitRadius = player.form === 'bird' ? stats.birdHitRadius : stats.humanHitRadius;
-    if (this.beamHitTimer === 0 && horizontalPointSegmentDistanceSq(player.position, this.position, this.beamEnd) <= hitRadius ** 2) {
-      player.takeDamage(stats.damage);
-      this.beamHitTimer = stats.hitInterval;
-    }
+    this.beamState = 'idle';
+    this.beam.visible = false;
+    this.playModelOneShot('attack');
+    this.beamEnd.y = player.visualHeight + 1;
+    this.game.spawnSniperProjectile(this.position, this.beamEnd, stats);
   }
 
-  updateSniperBeamVisual(horizontalLength, playerHeight) {
+  updateSniperBeamVisual(horizontalLength, playerHeight, locked) {
     const dx = Math.sin(this.beamAim) * horizontalLength;
     const dz = Math.cos(this.beamAim) * horizontalLength;
     this.beamEnd.set(this.position.x + dx, 0, this.position.z + dz);
@@ -3584,9 +3770,9 @@ export class Enemy {
     const length = Math.max(0.01, this.beamDirection.length());
     this.beam.quaternion.setFromUnitVectors(SNIPER_BEAM_UP, this.beamDirection.normalize());
     this.beam.visible = true;
-    this.beamWarning.visible = this.beamState === 'warning';
-    this.beamGlow.visible = this.beamCore.visible = this.beamState === 'firing';
-    for (const mesh of [this.beamWarning, this.beamGlow, this.beamCore]) {
+    this.beamWarning.visible = !locked;
+    this.beamLock.visible = locked;
+    for (const mesh of [this.beamWarning, this.beamLock]) {
       mesh.position.y = length * 0.5;
       mesh.scale.set(mesh.userData.radius, length, mesh.userData.radius);
     }
@@ -3646,6 +3832,105 @@ export class Enemy {
     this.playModelOneShot('attack');
   }
 
+  // 縛り蔓: 近づいて、人間形態の足元に輪を出し、輪が閉じたら地面からツタを伸ばしてしばる（Config.enemy.vine）。
+  updateVine(dt) {
+    const stats = this.game.vineConfig;
+    const player = this.game.player;
+    // プレイヤーの速さ（なめらかにしたもの）。輪を先読みで置くのに使う。
+    tempVec.subVectors(player.position, this.vineLastPlayer).divideScalar(Math.max(dt, 1e-3)).setY(0);
+    if (tempVec.lengthSq() > 400) tempVec.set(0, 0, 0);
+    this.vinePlayerVelocity.lerp(tempVec, 1 - Math.exp(-dt / 0.15));
+    this.vineLastPlayer.copy(player.position);
+    if (this.vineState === 'binding') {
+      if (player.bindSource === this) return;
+      this.vineState = 'idle';
+      this.fireTimer = stats.cooldown;
+    }
+    if (this.vineState === 'windup') {
+      this.vineTimer -= dt;
+      if (stats.windupSeconds - this.vineTimer < stats.trackSeconds) {
+        tempVec.copy(this.vinePlayerVelocity).multiplyScalar(Math.max(0, this.vineTimer));
+        if (tempVec.lengthSq() > stats.leadMax ** 2) tempVec.setLength(stats.leadMax);
+        this.vineAim.copy(player.position).add(tempVec).setY(0);
+        this.vineTarget.lerp(this.vineAim, 1 - Math.exp(-dt / stats.trackLag));
+        this.vineTarget.y = 0;
+      }
+      this.vineWarning?.update(this.vineTarget, clamp(1 - this.vineTimer / stats.windupSeconds, 0, 1), this.game.elapsed);
+      if (this.vineTimer <= 0) this.strikeVine();
+      return;
+    }
+    const distance = Math.sqrt(horizontalDistanceSq(this.position, player.position));
+    if (distance > stats.range * 0.7) this.moveToward(player.position, dt, this.speed);
+    if (this.fireTimer <= 0 && distance <= stats.range && player.canBeBound()) this.beginVineWindup();
+  }
+
+  beginVineWindup() {
+    const stats = this.game.vineConfig;
+    this.vineState = 'windup';
+    this.vineTimer = stats.windupSeconds;
+    this.vineTarget.copy(this.game.player.position).setY(0);
+    this.vineWarning = new VineWarning(this.game.scene, stats.grabRadius);
+    this.vineWarning.update(this.vineTarget, 0, this.game.elapsed);
+    this.game.onVineWindup(this);
+  }
+
+  strikeVine() {
+    const stats = this.game.vineConfig;
+    const player = this.game.player;
+    this.removeVineWarning();
+    this.vineState = 'idle';
+    this.fireTimer = stats.cooldown;
+    const caught = horizontalDistanceSq(player.position, this.vineTarget) <= stats.grabRadius ** 2 && player.bind(this, stats.bindSeconds);
+    this.game.spawnVineEruption(this.vineTarget, caught);
+    if (!caught) return;
+    this.vineState = 'binding';
+    this.vineAnchor.copy(this.position);
+    player.takeDamage(stats.bindDamage);
+  }
+
+  // しばっている縛り蔓は本体を地面に潜らせている。撃っても当たらず、狙いからも外れる（抜けるには連打）。
+  get burrowed() {
+    return this.vineState === 'binding';
+  }
+
+  removeVineWarning() {
+    this.vineWarning?.dispose();
+    this.vineWarning = null;
+  }
+
+  // ふだんはツタがゆらゆら揺れ、予兆では後ろへ反ってつぼみが光り、しばっている間は前へ引っぱる。
+  animateVineModel(dt) {
+    const root = this.getModelAnimationRoot();
+    if (!root?.visible) return;
+    if (!this.vineParts) {
+      const head = root.getObjectByName('VineHead');
+      const bud = head?.getObjectByName('VineBud');
+      // 光り方は敵ごとに違うので、つぼみの素材だけ複製する（die で破棄）。
+      if (bud) bud.material = bud.material.clone();
+      this.vineParts = { stalks: [0, 1, 2].map((i) => root.getObjectByName(`VineStalk${i}`)).filter(Boolean), head, bud };
+    }
+    const time = this.game.elapsed + this.vinePhase;
+    const windup = this.vineState === 'windup' ? clamp(1 - this.vineTimer / this.game.vineConfig.windupSeconds, 0, 1) : 0;
+    const binding = this.vineState === 'binding';
+    const tremble = binding ? Math.sin(time * 38) * 0.05 : windup * Math.sin(time * 30) * 0.06;
+    this.vineParts.stalks.forEach((stalk, i) => {
+      const sway = Math.sin(time * 1.6 + i * 2.1) * 0.12;
+      const lean = binding ? 0.42 : -0.38 * windup;
+      stalk.rotation.x = lean + sway * (1 - windup) + tremble;
+      stalk.rotation.z = Math.sin(time * 1.2 + i) * 0.08;
+    });
+    if (this.vineParts.head) {
+      const head = this.vineParts.head;
+      head.position.y = 1.12 + windup * 0.25 + Math.sin(time * 2) * 0.03;
+      head.position.z = binding ? 0.35 : 0.12 - windup * 0.2;
+      head.rotation.x = binding ? 0.5 : -windup * 0.5;
+    }
+    root.scale.y = 1 + windup * 0.12 + (binding ? Math.sin(time * 12) * 0.03 : 0);
+    const sinkTarget = binding ? -this.game.vineConfig.burrowDepth : 0;
+    this.model.position.y += (sinkTarget - this.model.position.y) * Math.min(1, dt * 8);
+    if (this.vineParts.bud) this.vineParts.bud.material.emissiveIntensity = windup * 1.8;
+  }
+
   moveToward(target, dt, speed) {
     normalizeXZ(tempVec, target.x - this.position.x, target.z - this.position.z);
     this.position.x += tempVec.x * speed * dt;
@@ -3679,7 +3964,7 @@ export class Enemy {
 
   updateContactDamage() {
     const player = this.game.player;
-    if (player.phaseTimer > 0) return;
+    if (player.phaseTimer > 0 || this.burrowed) return;
     if (this.type === 'shadow') {
       this.updateShadowContact(player);
       return;
@@ -3701,7 +3986,7 @@ export class Enemy {
   }
 
   updateHpBar() {
-    this.hpBar.visible = this.hp < this.maxHp && this.distanceSqToPlayer <= Config.performance.enemyHpBarDistance ** 2;
+    this.hpBar.visible = this.hp < this.maxHp && !this.burrowed && this.distanceSqToPlayer <= Config.performance.enemyHpBarDistance ** 2;
     if (!this.hpBar.visible) return;
     const fg = this.hpBar.getObjectByName('fg');
     if (fg) fg.scale.x = clamp(this.hp / this.maxHp, 0, 1);
@@ -3710,7 +3995,7 @@ export class Enemy {
 
   // バースト技（アカメの爆発・ツキミのビーム・キイチゴの斬撃）は burstReward: false で呼ぶ
   takeDamage(amount, origin = null, strongKnock = false, burstReward = true) {
-    if (this.dead) return;
+    if (this.dead || this.burrowed) return;
     if (!burstReward && this.burstImmuneTimer > 0) return;
     if (this.type === 'shadow' && !this.shadowCanBeHit()) return;
     this.hp -= amount;
@@ -3728,6 +4013,8 @@ export class Enemy {
     if (this.dead) return;
     this.dead = true;
     this.object.visible = false;
+    this.removeVineWarning();
+    this.vineParts?.bud?.material.dispose();
     if (reward) this.spawnDeathCorpse();
     if (reward) {
       this.game.playSfx('enemyDie', { volume: 0.72, cooldown: 0.035 });
@@ -3819,6 +4106,8 @@ export class Projectile {
     this.radius = spec.radius ?? this.radius;
     this.pierce = spec.pierce ?? 0;
     this.pierceGain = spec.pierceGain ?? 0;
+    this.homingTurnRate = spec.homingTurnRate ?? 0;
+    this.birdHitBonus = spec.birdHitBonus ?? 0;
     this.hitSet.clear();
     this.spriteFrames = spec.spriteFrames ?? [];
     this.spriteFrameRate = spec.spriteFrameRate ?? 24;
@@ -3846,6 +4135,7 @@ export class Projectile {
   update(dt) {
     if (!this.active) return;
     this.life -= dt;
+    if (this.homingTurnRate > 0) this.updateHoming(dt);
     this.previousPosition.copy(this.position);
     this.position.addScaledVector(this.velocity, dt);
     this.mesh.rotation.y += dt * 12;
@@ -3870,6 +4160,29 @@ export class Projectile {
     if (this.kind === 'enemy') this.checkPlayerHit();
     else if (this.kind === 'eggSpecial') this.checkEggHit();
     else this.checkEnemyHit();
+  }
+
+  updateHoming(dt) {
+    const player = this.game.player;
+    // Homing only locks onto a flying bird; once the player is on foot the shot flies straight for good.
+    if (player.form !== 'bird' || player.dead) {
+      this.homingTurnRate = 0;
+      return;
+    }
+    const speed = this.velocity.length();
+    PROJECTILE_HOMING_DESIRED.set(
+      player.position.x - this.position.x,
+      player.visualHeight + 1.1 - this.position.y,
+      player.position.z - this.position.z
+    );
+    if (speed < 0.001 || PROJECTILE_HOMING_DESIRED.lengthSq() < 0.001) return;
+    PROJECTILE_HOMING_DESIRED.normalize();
+    PROJECTILE_HOMING_CURRENT.copy(this.velocity).divideScalar(speed);
+    const angle = Math.acos(clamp(PROJECTILE_HOMING_CURRENT.dot(PROJECTILE_HOMING_DESIRED), -1, 1));
+    if (angle < 1e-4) return;
+    const t = Math.min(1, (this.homingTurnRate * dt) / angle);
+    PROJECTILE_HOMING_CURRENT.lerp(PROJECTILE_HOMING_DESIRED, t).normalize();
+    this.velocity.copy(PROJECTILE_HOMING_CURRENT).multiplyScalar(speed);
   }
 
   configureTrail(useSprite, spec) {
@@ -3932,7 +4245,7 @@ export class Projectile {
   checkPlayerHit() {
     const player = this.game.player;
     if (player.invincibleTimer > 0) return;
-    const hitRadius = this.radius + 0.55;
+    const hitRadius = this.radius + 0.55 + (player.form === 'bird' ? this.birdHitBonus : 0);
     const dx = this.position.x - player.position.x;
     const dz = this.position.z - player.position.z;
     const playerHitY = player.visualHeight + 1.1;
@@ -3946,7 +4259,7 @@ export class Projectile {
   checkEnemyHit() {
     const enemies = this.game.enemyGrid.query(this.position, this.radius + 0.85, this.game.scratchEnemies);
     for (const enemy of enemies) {
-      if (this.hitSet.has(enemy)) continue;
+      if (this.hitSet.has(enemy) || enemy.burrowed) continue;
       this.game.playSfx('projectileHit', { volume: 0.42, cooldown: 0.035 });
       enemy.takeDamage(this.damage, this.position);
       this.hitSet.add(enemy);
