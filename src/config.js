@@ -410,7 +410,9 @@ export const Config = {
     // unless the player is in bird form. Set chapter 2's boss to 'motherEgg' to remove it.
     pursuer: {
       speed: 2.5,
-      stopDistance: 1.6,
+      // 2026-11-19 1.6 → 2.9: Tripo の体（長首翼獣）は中心から頭の先まで約 2.7 あり、1.6 ではプレイヤーに頭がめり込んでいた。
+      // 触れるとダメージ（contactRadius 3.1）より内側なので、立ち止まっていれば今までどおり当たる
+      stopDistance: 2.9,
       bodyRadius: 2.2,
       mapMargin: 6,
       firstLayDelay: 5,
