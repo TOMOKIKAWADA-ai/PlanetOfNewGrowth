@@ -42,6 +42,11 @@ const chase = args.chase !== '0';
 // --thirst 1 makes the bot go for the eggs the thirst mother (chapter 5) is draining and break them in bird form on land
 // or fish form in water, to deny her heal (A20, 2026-11-19). Off by default so the numbers stay comparable with older runs.
 const thirstDeny = args.thirst === '1';
+// --fly 0 brings back the old, sparing use of bird form (take off only at 70% MP with 3 eggs near, never just for the boss).
+// The default (2026-11-19, the user: the bot hardly uses bird form in the video) takes off at 45% MP with 2 eggs near,
+// or to dive on a boss within 12. On a water map the eased rule only applies on land, where a transform gives a bird
+// (in the water it would give a fish), and during the boss only to dive on the boss.
+const fly = args.fly !== '0';
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
@@ -58,7 +63,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny }) {
+function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny, fly }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -68,7 +73,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
   const player = game.player;
   if (startAt > game.elapsed) game.elapsed = startAt;
   const stats = {
-    samples: [], upgrades: [], damageTaken: 0, maxEggs: 0, maxEnemies: 0, birdSeconds: 0,
+    samples: [], upgrades: [], damageTaken: 0, maxEggs: 0, maxEnemies: 0, birdSeconds: 0, airSeconds: 0,
     transforms: 0, bursts: 0, frames: 0, realStart: performance.now(), motherSpawnedAt: null
   };
   stats.eggKills = {};
@@ -331,6 +336,15 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     const flood = mother?.floodgate;
     const nearMother = mother && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2 < 49;
     const drain = drainTarget();
+    const onLand = !game.isWaterStage || !game.isWaterPosition(player.position);
+    const bossClose = mother && !mother.swarmDown && !flood
+      && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2 < 144;
+    // On a water map, while a boss is up, fly only to dive on it (the eggs are left to the human-form shots): flying for
+    // eggs there cost chapters 3 and 6 wins. On land maps flying for eggs during the boss keeps the damage taken down
+    // (chapter 4: 82 against 198 without it). Never next to the floodgate mother: the rule below turns a bird back to
+    // human there, and taking off again made it flap 160 times a run.
+    const takeOffForBird = onLand && player.mp > player.maxMp * 0.45 && !(flood && nearMother)
+      && (bossClose || (nearbyEggs >= 2 && !(mother && game.isWaterStage)));
     if (player.form === 'human') {
       if (drain && drain.d2 < 26 * 26 && player.mp > 5 && !shockwaveComing) {
         // A drained egg is close: take off (or dive in) to break it before the drain ends.
@@ -356,6 +370,10 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
         stats.bursts++;
         mark('burst');
         press('burst');
+      } else if (fly && takeOffForBird && !mimicClose) {
+        // Bird form on land: dive on the boss when it is close, or on two eggs or more.
+        stats.transforms++;
+        press('transform');
       } else if (player.mp > player.maxMp * 0.7 && nearbyEggs >= 3 && !mimicClose) {
         stats.transforms++;
         press('transform');
@@ -390,6 +408,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     steer();
     decide();
     if (player.form !== 'human') stats.birdSeconds += dt;
+    if (player.form === 'bird') stats.airSeconds += dt;
     if (player.hp < lastHp) {
       stats.damageTaken += lastHp - player.hp;
       if (game.motherEgg) stats.damageAfterMother += lastHp - player.hp;
@@ -469,6 +488,7 @@ function summarize(game, stats) {
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,
     birdSeconds: Math.round(stats.birdSeconds),
+    airSeconds: Math.round(stats.airSeconds),
     transforms: stats.transforms,
     bursts: stats.bursts,
     upgrades: stats.upgrades,
@@ -516,7 +536,7 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny, fly });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
@@ -541,7 +561,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, startAt, carry: carrySpec || null,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, fly, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

@@ -285,7 +285,9 @@ export const Config = {
     birdTurnRate: Math.PI * 0.82,
     birdBoundaryTurnRate: Math.PI * 1.2,
     humanRegenMp: 6,
-    birdMpCost: 14,
+    // 鳥形態で毎秒減る MP。2026-11-19 ユーザー「鳥形態をあまり使っていないように見える」「鳥のMPを見直して」で 14 → 10
+    // （14 だと満タンからでも 7 秒ほどで落ちる）。14 で元どおり。
+    birdMpCost: 10,
     fishSpeed: 8.4,
     fishMpCost: 9,
     fishEggRange: 3.2,
