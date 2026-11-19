@@ -1,0 +1,51 @@
+{
+  "speakers": {
+    "tsukimi": {
+      "caption": "",
+      "seed": 1401,
+      "refs": [
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_04_doubt-s1301.wav",
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_06_call-s1301.wav"
+      ]
+    },
+    "akame": {
+      "caption": "",
+      "seed": 2401,
+      "refs": [
+        "assets_src/voice/refs/akame/akame-ref_02_report-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_04_refuse-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_05_care-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_06_call-s2202.wav"
+      ]
+    },
+    "kiichigo": {
+      "caption": "",
+      "seed": 3401,
+      "refs": [
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_01_calm-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_04_cheer-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_06_call-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_07_tired-s3303.wav"
+      ]
+    }
+  },
+  "lines": [
+    { "id": "bound_01", "speaker": "tsukimi", "text": "きゃっ！？", "style": "足元から急にツタが巻き付いてきて、驚いて短く悲鳴を上げる。", "seeds": [1401, 1402, 1403] },
+    { "id": "bound_02", "speaker": "tsukimi", "text": "やっ、はなして……！", "style": "体にツタが巻き付いて動けなくなり、怯えながら声を上げる。", "seeds": [1401, 1402, 1403] },
+    { "id": "struggle_01", "speaker": "tsukimi", "text": "んっ……ほどけない……！", "style": "巻き付いたツタを振りほどこうと、精一杯力を込めて息を詰める。", "seeds": [1401, 1402, 1403] },
+    { "id": "struggle_02", "speaker": "tsukimi", "text": "う、うぅっ……！", "style": "ツタに締め付けられながら、必死に身をよじって力む。", "seeds": [1401, 1402, 1403] },
+    { "id": "escape_01", "speaker": "tsukimi", "text": "はぁ……ほどけた……", "style": "やっとツタを振りほどき、息を切らしながらほっとする。", "seeds": [1401, 1402, 1403] },
+
+    { "id": "bound_01", "speaker": "akame", "text": "なっ……！", "style": "足元から急にツタが巻き付いてきて、短く驚きの声を上げる。", "seeds": [2401, 2402, 2403] },
+    { "id": "bound_02", "speaker": "akame", "text": "からみつく……！", "style": "体にツタが巻き付いて動けなくなり、歯を食いしばって低く言う。", "seeds": [2401, 2402, 2403] },
+    { "id": "struggle_01", "speaker": "akame", "text": "このっ……！", "style": "巻き付いたツタを力ずくで引きちぎろうと、短く力む。", "seeds": [2401, 2402, 2403] },
+    { "id": "struggle_02", "speaker": "akame", "text": "ぐっ……はなれろ……！", "style": "ツタに締め付けられながら、苛立ちを抑えて低く力む。", "seeds": [2401, 2402, 2403] },
+    { "id": "escape_01", "speaker": "akame", "text": "……抜けた。", "style": "ツタを振りほどき、息を整えて短く言い切る。", "seeds": [2401, 2402, 2403] },
+
+    { "id": "bound_01", "speaker": "kiichigo", "text": "うわっ！？ なにこれ！", "style": "足元から急にツタが巻き付いてきて、驚いて大きな声を上げる。", "seeds": [3401, 3402, 3403] },
+    { "id": "bound_02b", "speaker": "kiichigo", "text": "ちょっと、はなしてってば！", "style": "体にツタが巻き付いて動けなくなり、慌ててじたばたしながら声を上げる。", "seeds": [3401, 3402, 3403] },
+    { "id": "struggle_01", "speaker": "kiichigo", "text": "んぎぎ……っ！", "style": "巻き付いたツタを振りほどこうと、歯を食いしばって全力で力む。", "seeds": [3401, 3402, 3403] },
+    { "id": "struggle_02", "speaker": "kiichigo", "text": "もうっ、しつこい！", "style": "ツタに締め付けられながら、じたばたもがいて文句を言う。", "seeds": [3401, 3402, 3403] },
+    { "id": "escape_01", "speaker": "kiichigo", "text": "よしっ、脱出！", "style": "ツタを振りほどき、得意げに明るく言う。", "seeds": [3401, 3402, 3403] }
+  ]
+}

@@ -25,6 +25,7 @@ import { createRunStats, recordEggBreak, recordKill } from './run-stats.js';
 import { shardScale } from './reward-feedback.js';
 import { SpatialGrid } from './spatial-grid.js';
 import { TouchControls } from './touch-controls.js';
+import { VineBindVisual, createVineEruption, updateVineEruption, vineAliveCap, vineStatsForChapter } from './vines.js';
 import { getTutorialGuide, Hud, pickUpgradeChoices } from './ui.js';
 import { MessagePriority } from './message-slot.js';
 import {
@@ -161,6 +162,15 @@ const VOICE_URLS = {
     burst: [new URL('../assets/audio/voice/tsukimi/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/tsukimi/battle_start_01.mp3', import.meta.url).href],
     death: [new URL('../assets/audio/voice/tsukimi/death_01.mp3', import.meta.url).href],
+    bound: [
+      new URL('../assets/audio/voice/tsukimi/bound_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/tsukimi/bound_02.mp3', import.meta.url).href
+    ],
+    struggle: [
+      new URL('../assets/audio/voice/tsukimi/struggle_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/tsukimi/struggle_02.mp3', import.meta.url).href
+    ],
+    escape: [new URL('../assets/audio/voice/tsukimi/escape_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/tsukimi/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href],
@@ -176,6 +186,15 @@ const VOICE_URLS = {
     burst: [new URL('../assets/audio/voice/akame/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/akame/battle_start_01.mp3', import.meta.url).href],
     death: [new URL('../assets/audio/voice/akame/death_01.mp3', import.meta.url).href],
+    bound: [
+      new URL('../assets/audio/voice/akame/bound_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/akame/bound_02.mp3', import.meta.url).href
+    ],
+    struggle: [
+      new URL('../assets/audio/voice/akame/struggle_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/akame/struggle_02.mp3', import.meta.url).href
+    ],
+    escape: [new URL('../assets/audio/voice/akame/escape_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/akame/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href],
@@ -191,6 +210,15 @@ const VOICE_URLS = {
     burst: [new URL('../assets/audio/voice/kiichigo/burst_01.mp3', import.meta.url).href],
     battleStart: [new URL('../assets/audio/voice/kiichigo/battle_start_01.mp3', import.meta.url).href],
     death: [new URL('../assets/audio/voice/kiichigo/death_01.mp3', import.meta.url).href],
+    bound: [
+      new URL('../assets/audio/voice/kiichigo/bound_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/kiichigo/bound_02.mp3', import.meta.url).href
+    ],
+    struggle: [
+      new URL('../assets/audio/voice/kiichigo/struggle_01.mp3', import.meta.url).href,
+      new URL('../assets/audio/voice/kiichigo/struggle_02.mp3', import.meta.url).href
+    ],
+    escape: [new URL('../assets/audio/voice/kiichigo/escape_01.mp3', import.meta.url).href],
     bossAppear: [new URL('../assets/audio/voice/kiichigo/boss_appear_01.mp3', import.meta.url).href],
     levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href],
@@ -523,6 +551,14 @@ class Game {
     this.mimicEggsActive = Config.egg.mimic.enabled && this.stageId >= Config.egg.mimic.fromChapter;
     this.mimicHintShown = false;
     this.mimicStuns = 0;
+    // 縛り蔓は第1章から出る。章が進むほど数が増え、輪が速く閉じ、長くしばる（Config.enemy.vine.chapters）。
+    this.vineConfig = vineStatsForChapter(this.stageId);
+    this.vinesActive = Config.enemy.vine.enabled && this.stageId >= Config.enemy.vine.fromChapter;
+    this.vineIntroduced = false;
+    this.vineHintShown = false;
+    this.vineBindVisual = null;
+    this.vineVoice = null; // 再生中の縛り蔓の声（重ならないように、終わってから次を出す）
+    this.vineStats = { spawned: 0, windups: 0, binds: 0, mashEscapes: 0, cuts: 0, timeouts: 0, mashes: 0 };
     this.thirstHintShown = false;
     this.thirstStats = { drains: 0, eggsConsumed: 0, eggsDenied: 0, healed: 0 };
     this.pursuerHintShown = false;
@@ -1436,6 +1472,12 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       if (this.pacingEnabled && Config.pacing.announce && beat.at < Config.pacing.untilSeconds
         && this.hud.messageTimer <= 0) this.showMessage(Config.pacing.announceText, 1.4);
     }
+    // 縛り蔓の章では、最初の1体を見える距離に出して紹介する。
+    if (this.vinesActive && !this.vineIntroduced && this.elapsed >= this.vineConfig.introAt) {
+      this.vineIntroduced = true;
+      const point = this.findEnemySpawnPosition(11, 15);
+      if (point) this.spawnEnemy('vine', point);
+    }
     if (!this.pacingEnabled) return;
     // A5: small extra waves in the quiet valleys, then a surge / lull in how fast eggs hatch.
     const ripples = Config.pacing.ripples;
@@ -1520,6 +1562,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.updateStageBeats();
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
+      this.updateVineBind(dt);
       if (this.playerTrail) this.updatePlayerTrail(dt);
       if (this.rootsuckersActive) this.updateDryGround(dt);
       if (this.swarmFlocks.length) this.updateSwarmFlocks(dt);
@@ -1590,6 +1633,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.hintTimer <= 0) this.hint = '';
     this.shake = Math.max(0, this.shake - dt * 1.7);
     this.updateSpawnPause(dt);
+    this.updateVineBind(dt);
     if (!this.motherSpawned && this.elapsed >= Config.map.motherSpawnSeconds) this.spawnMotherEgg();
     this.enemyGrid.rebuild(this.enemies);
     for (const egg of this.eggs) egg.update(dt);
@@ -1756,6 +1800,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     else if (this.shouldHatchRootsucker()) type = 'rootsucker';
     else if (this.shouldHatchSplitshell()) type = 'splitshell';
     else if (this.shouldHatchSwarmbirds()) return this.hatchSwarmFlock(egg);
+    else if (type === 'chaser' && this.canSpawnVine() && Math.random() < this.vineConfig.spawnChance) type = 'vine';
     const enemy = this.spawnEnemy(type, egg.position, egg);
     // 割れて出た半分は数えないので、卵から孵ったときだけ（spawnEnemy ではなくここで）
     if (enemy?.type === 'splitshell') this.onSplitshellSpawned();
@@ -1774,6 +1819,13 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     return firing < limit;
   }
 
+  canSpawnVine() {
+    if (!this.vinesActive || this.elapsed < this.vineConfig.introAt) return false;
+    let alive = 0;
+    for (const enemy of this.enemies) if (!enemy.dead && enemy.type === 'vine') alive++;
+    return alive < vineAliveCap(this.vineConfig, this.elapsed);
+  }
+
   // ignoreCap: enemies a boss sends itself (the floodgate mother's tadpole lines) appear even when the field is full.
   spawnEnemy(type, position, homeEgg = null, { ignoreCap = false } = {}) {
     if (!ignoreCap && !this.canSpawnEnemy()) return null;
@@ -1787,6 +1839,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     }
     const offset = randomPointInCircle(2.1, 0.7).add(position);
     const enemy = new Enemy(this, type, offset, homeEgg);
+    if (type === 'vine') this.vineStats.spawned += 1;
     this.scene.add(enemy.object);
     this.enemies.push(enemy);
     this.spawnDust(offset, this.isWaterPosition(offset) ? 0x70d9e8 : type === 'spawner' ? 0xffe36a : 0x82ffaa);
@@ -3335,6 +3388,93 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (Config.egg.mimic.stunMarker) this.spawnStunMarker(seconds);
   }
 
+  onVineWindup() {
+    this.vineStats.windups += 1;
+    if (this.vineHintShown || this.player.form !== 'human') return;
+    this.vineHintShown = true;
+    this.showMessage('縛り蔓！ 緑の輪から出よう\n鳥形態なら地面のツタは届かない', 2.8);
+  }
+
+  spawnVineEruption(position, caught) {
+    const group = createVineEruption(position);
+    this.scene.add(group);
+    const duration = caught ? 0.3 : 0.7;
+    this.effects.push({
+      object: group,
+      life: duration + 0.1,
+      duration,
+      dispose: false,
+      update(effect, dt) {
+        effect.life -= dt;
+        updateVineEruption(group, effect.duration + 0.1 - effect.life, effect.duration);
+      }
+    });
+    this.spawnParticleBurst(position, 16, 0x8a6a3a, 1.4, 0.35);
+    this.playSfx('eggBreak', { volume: caught ? 0.8 : 0.5, cooldown: 0.1 });
+  }
+
+  onPlayerBound(source) {
+    this.vineStats.binds += 1;
+    this.vineHintShown = true;
+    this.vineBindVisual?.dispose();
+    this.vineBindVisual = new VineBindVisual(this.scene, this.player.position, source.position);
+    this.playVineVoice('bound');
+    this.spawnParticleBurst(this.player.position, 22, 0x6fae45, 1.6, 0.4);
+    this.shake = Math.max(this.shake, 0.4);
+  }
+
+  onBindMash(count) {
+    this.vineStats.mashes += count;
+    // 力む声は、前の声が終わってから少し間を空けて出す。
+    if (!this.vineVoice || this.vineVoice.paused) this.playVineVoice('struggle', { cooldown: 2.2 });
+    this.vineBindVisual?.struggle();
+    this.hud.pulseBindMeter();
+    this.playSfx('projectileHit', { volume: 0.35, cooldown: 0.06 });
+    if (Math.random() < 0.5) this.spawnParticleBurst(this.player.position, 4, 0x6fae45, 0.9, 0.25);
+  }
+
+  playVineVoice(eventName, options = {}) {
+    if (!Config.audio.vineVoices) return;
+    this.vineVoice = this.playVoice(eventName, { volume: 0.9, ...options }) ?? this.vineVoice;
+  }
+
+  updateVineBind(dt) {
+    const visual = this.vineBindVisual;
+    if (!visual) return;
+    const player = this.player;
+    // 捕まったまま倒れたあとは、緩んでいたツタが締まり直す。
+    const loosen = visual.holding
+      ? visual.loosen * Math.exp(-dt * 4)
+      : player.bindDuration > 0 ? clamp(1 - player.bindTimer / player.bindDuration, 0, 1) : 1;
+    visual.update(dt, loosen);
+  }
+
+  // reason: 'mash' / 'timeout' / 'cut' / 'death' / 'end'
+  onPlayerBindReleased(reason) {
+    if (reason === 'mash') this.vineStats.mashEscapes += 1;
+    else if (reason === 'cut') this.vineStats.cuts += 1;
+    else if (reason === 'timeout') this.vineStats.timeouts += 1;
+    // 叫び声（死亡）や、ほどけた声と重ならないように止める。
+    this.vineVoice?.pause();
+    this.vineVoice = null;
+    if (reason !== 'death' && reason !== 'end') this.playVineVoice('escape');
+    // 捕まったまま倒れたら、ツタは体に巻き付いたまま残す（Player.startLimpInVines）。
+    if (reason === 'death' && this.vineBindVisual) {
+      this.vineBindVisual.holding = true;
+      return;
+    }
+    this.vineBindVisual?.dispose();
+    this.vineBindVisual = null;
+    if (reason === 'end') return;
+    const position = this.player.position;
+    this.spawnParticleBurst(position, 30, 0x9c7743, 2.2, 0.45);
+    this.spawnParticleBurst(position, 14, 0x6fae45, 2.6, 0.5);
+    this.spawnRingEffect(position, 2.4, 0xc8e98a, 0.6, 0.3);
+    this.playSfx('eggBreak', { volume: 0.7, cooldown: 0.1 });
+    if (reason === 'mash') this.showMessage('振りほどいた！', 0.9);
+    else if (reason === 'cut') this.showMessage('ツタがほどけた', 0.9);
+  }
+
   // 鳥形態のカメラは遠いので、足元の輪より目立つ印を頭上に回す。硬直が解けるまでプレイヤーに付いていく。
   spawnStunMarker(seconds) {
     const player = this.player;
@@ -3630,6 +3770,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   finish(victory, body) {
     if (this.outcome || (victory && this.player?.dead)) return;
+    this.player?.releaseBind('end');
     this.outcome = { victory, body: victory ? CHAPTER_RESULTS[this.stageId] ?? body : body };
     this.runStats.endedAt ??= this.elapsed;
     this.state = 'result';

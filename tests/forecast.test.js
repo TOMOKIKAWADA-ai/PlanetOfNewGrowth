@@ -22,7 +22,8 @@ test('a new species is forecast only on the chapter it first appears and only wh
   // 第5章は吸水根（E13）も同じ章から出る
   const sameChapter = Config.enemy.rootsucker.fromChapter === from ? ['吸水根'] : [];
   assert.deepEqual(buildForecast(STAGES[from]).species.map(s => s.name), ['擬態卵', ...sameChapter]);
-  assert.equal(buildForecast(STAGES[1]).species.length, 0);
+  // 第1章は縛り蔓だけ
+  assert.deepEqual(buildForecast(STAGES[1]).species.map(s => s.name), ['縛り蔓']);
   if (STAGES[from + 1]) assert.equal(buildForecast(STAGES[from + 1]).species.length, 0);
   Config.egg.mimic.enabled = false;
   try {

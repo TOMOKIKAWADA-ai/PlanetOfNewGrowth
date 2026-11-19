@@ -438,6 +438,58 @@ body,
   opacity: 1;
 }
 
+.bind-meter {
+  position: absolute;
+  left: 50%;
+  top: 66%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 240px;
+  padding: 10px 16px 12px;
+  border: 2px solid #9fe36a;
+  border-radius: 8px;
+  background: rgba(10, 18, 8, 0.74);
+  color: #eaffc9;
+  text-align: center;
+  pointer-events: none;
+}
+
+.bind-meter b {
+  font-size: 19px;
+  color: #d8ff9a;
+}
+
+.bind-meter span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.bind-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.bind-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #9c7743, #b6e36a);
+}
+
+.bind-meter.jolt {
+  animation: bind-jolt 140ms ease-out;
+}
+
+@keyframes bind-jolt {
+  30% { transform: translateX(calc(-50% - 5px)) rotate(-1.5deg); }
+  70% { transform: translateX(calc(-50% + 5px)) rotate(1.5deg); }
+}
+
 .screen {
   position: fixed;
   inset: 0;

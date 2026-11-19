@@ -15,6 +15,14 @@ const NEW_SPECIES = Object.freeze([
     enabled: () => Config.egg.mimic.enabled
   }),
   Object.freeze({
+    id: 'vine',
+    name: '縛り蔓',
+    trait: '足元に緑の輪を出し、地面から細いツタを伸ばして数秒しばる',
+    form: '輪から出るか、鳥形態で浮く。捕まったら連打で振りほどく',
+    chapter: () => Config.enemy.vine.fromChapter,
+    enabled: () => Config.enemy.vine.enabled
+  }),
+  Object.freeze({
     id: 'footprint',
     name: '足跡',
     trait: '通った道を、数秒遅れでなぞって歩く',
