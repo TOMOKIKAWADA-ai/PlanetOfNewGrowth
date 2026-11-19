@@ -396,10 +396,14 @@ export const Config = {
       firstDelay: 7,
       interval: 12,
       retryDelay: 2.5,
-      drainSeconds: 3.4,
+      // 2026-11-19 A20: 3.4 秒では吸われる卵（ボスから 20〜30）に鳥でも間に合わなかったので 5 秒に。
+      // 範囲を 14 に狭めると、ボスのそばの卵はすぐ無くなり、吸い込み自体がほとんど起きなかったので 22 のまま。
+      drainSeconds: 5,
       range: 22,
       count: 4,
-      healRatioPerEgg: 0.035
+      healRatioPerEgg: 0.035,
+      // 2026-11-19 A20: 吸っている間、鳥の急降下はボスより先に吸われている卵を狙う。false で前の「ボス優先」に戻る。
+      diveAtDrainedEggs: true
     },
     // Chapter 2's pursuer walks after the player and stops every layInterval seconds to lay an egg behind it.
     // Only while laying is its shell open (openDamageScale); otherwise hits do closedDamageScale. Touching it hurts
@@ -767,10 +771,11 @@ export const Config = {
     orbSpeed: 9
   },
   pickups: {
-    // Generated meshes for dropped items (PICKUP_MODELS in src/main.js; see docs/dev-cycle/asset-ledger.md). The Hunyuan3D
-    // meshes (2026-10-26/29) were removed on 2026-10-29 over its license; to be remade with Tripo. enabled: false keeps primitives.
+    // Meshes for dropped items (PICKUP_MODELS in src/main.js; see docs/dev-cycle/asset-ledger.md). The Hunyuan3D meshes
+    // (2026-10-26/29) were removed on 2026-10-29 over its license; since 2026-11-19 they are hand-built in Blender.
+    // enabled: false (or ?pickupModels=0) keeps the old primitives.
     models: {
-      enabled: false,
+      enabled: true,
       size: 0.72
     },
     spawnOffsetRadius: 1.35,

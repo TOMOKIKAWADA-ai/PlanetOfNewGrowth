@@ -201,10 +201,22 @@ const VOICE_URLS = {
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
 // Installed once per page: the geometries are shared module state, and a new game (next chapter) reuses them.
 let pickupModelsInstalled = false;
-// Pickup type -> GLB from scripts/assets/blender/prep-pickups.py, e.g.
-//   hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href
-// Empty since 2026-10-29: the Hunyuan3D meshes were removed over its license, and the Tripo versions are not made yet.
-const PICKUP_MODELS = {};
+// Pickup type -> GLB. Since 2026-11-19 these are hand-built in Blender (scripts/blender/build_pickups.py, no generated
+// images or models). Config.pickups.models.enabled: false or ?pickupModels=0 keeps the old primitives.
+const PICKUP_MODELS = {
+  hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href,
+  mp: new URL('../assets/pickups/pickup_mp.glb', import.meta.url).href,
+  burst: new URL('../assets/pickups/pickup_burst.glb', import.meta.url).href,
+  magnet: new URL('../assets/pickups/pickup_magnet.glb', import.meta.url).href,
+  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href,
+  speed: new URL('../assets/pickups/pickup_speed.glb', import.meta.url).href
+};
+function pickupModelsEnabled() {
+  const fromUrl = new URLSearchParams(window.location.search).get('pickupModels');
+  if (fromUrl === '0') return false;
+  if (fromUrl === '1') return true;
+  return Config.pickups.models.enabled;
+}
 const GAMEPLAY_MODELS = {
   darkseedEgg: {
     url: new URL('../assets/eggs/darkseed.glb', import.meta.url).href,
@@ -1116,7 +1128,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
           console.warn(`Failed to load gameplay model: ${key}`, error);
         }
       }));
-      if (Config.pickups.models.enabled && !pickupModelsInstalled) {
+      if (pickupModelsEnabled() && !pickupModelsInstalled) {
         pickupModelsInstalled = true;
         await Promise.all(Object.entries(PICKUP_MODELS).map(async ([type, url]) => {
           try {

@@ -147,6 +147,23 @@ export function pickDrainTargets(eggs, center, range, count) {
   return candidates.slice(0, count).map((entry) => entry.egg);
 }
 
+// 鳥の急降下の的（A20、2026-11-19）: 渇きの母が吸っている間は、ボスより先に吸われている卵を狙う。
+// ボスは吸われる卵のすぐそばにいるので、ボス優先のままでは「鳥で先に食べる」ができなかった。
+export function pickDrainedDiveTarget(bosses, position, range) {
+  const rangeSq = range * range;
+  let best = null;
+  let bestDistanceSq = rangeSq;
+  for (const boss of bosses) {
+    if (boss.dead || boss.thirst?.state !== 'draining') continue;
+    for (const egg of boss.thirst.targets) {
+      if (egg.dead || egg.claimed) continue;
+      const distanceSq = (egg.position.x - position.x) ** 2 + (egg.position.z - position.z) ** 2;
+      if (distanceSq <= bestDistanceSq) { best = egg; bestDistanceSq = distanceSq; }
+    }
+  }
+  return best;
+}
+
 export function drainHealAmount(maxHp, consumedCount, healRatioPerEgg) {
   return maxHp * healRatioPerEgg * consumedCount;
 }

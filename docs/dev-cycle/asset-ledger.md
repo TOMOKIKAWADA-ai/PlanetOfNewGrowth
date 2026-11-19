@@ -544,3 +544,19 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 表示: `src/vendor/anime25d-player.js`（Anime2.5DRig v2.0.0 の変形・髪の揺れ・まばたきを移植、MIT）。`Config.story.avatarEngine: 'mesh'` で前の Mesh Avatar Studio に、`avatarPortraits: false` で静止画に戻る。
 表情: アバターは通常の表情だけ。笑顔・怒り・悲しみ・驚きは描き分けた静止画を出す（眉は前髪に隠れ、目は元の絵のパーツが上にあるので、変形ではほとんど表情が変わらなかった）。
 ライセンス: 上の表の Anime2.5DRig・See-through・GPT Image（Codex）。
+
+## 2026-11-19 拾うアイテム 6 種（B1-1、Blender で手作り、生成なし）
+2026-10-29 に Hunyuan3D の利用条件で外してから、拾うアイテムは元の多面体だった。空きメモリが 5.6 GB で Forge（元絵）が使えない日だったので、10-26・10-29 に選んだ形の案（赤い実・水滴の種・琥珀の欠片・つぼみ・馬蹄の石・矢じりの実）を、Blender のスクリプトで球・円錐・管から手作りした。画像生成も 3D 生成も使っていないので、利用条件の心配はない。
+スクリプト: `scripts/blender/build_pickups.py`（6 個で約 10 秒）。書き出しの約束は `prep-pickups.py` と同じ（1 つのメッシュ、中心が原点、最長辺 1、マテリアルなし。色はゲーム側の `PICKUP_SPECS`）。確認画像: `docs/devlog/img/2026-11-19-pickups-blender.png`（上段が横から、下段が斜め上から）。
+組み込み: `PICKUP_MODELS`（`src/main.js`）に 6 つの URL、`Config.pickups.models.enabled: true`。false か URL の `?pickupModels=0` で元の多面体に戻る。
+
+| ファイル | 種類 | 形 | 三角形 |
+|---|---|---|---|
+| `assets/pickups/pickup_hp.glb` | HP回復 | 少しつぶれた丸い実。上にくぼみ、短い軸と葉 1 枚 | 488 |
+| `assets/pickups/pickup_mp.glb` | MP回復 | 上がとがった水滴の種。腹に細い継ぎ目の輪 | 704 |
+| `assets/pickups/pickup_burst.glb` | Burst欠片 | 六角の結晶 1 本と、斜めの小さな結晶 2 本（面を平らに塗る） | 154 |
+| `assets/pickups/pickup_shield.glb` | 防護膜 | 厚い花弁 5 枚で包んだ閉じたつぼみと短い茎 | 1036 |
+| `assets/pickups/pickup_magnet.glb` | 吸引石 | 太い馬蹄形の石。立てて作り、ゲームが寝かせて上から U に見せる | 884 |
+| `assets/pickups/pickup_speed.glb` | 加速 | 三つの稜のある矢じり形の実。ゲームが横に寝かせて速く回す | 468 |
+
+Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊んで見てから決める（判断待ち）。

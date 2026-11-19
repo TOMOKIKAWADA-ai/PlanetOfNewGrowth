@@ -14,7 +14,7 @@ import {
   smooth01
 } from './math.js';
 import { Config } from './config.js';
-import { getBossType, isMotherCharging, motherBeatSqueeze, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
+import { getBossType, isMotherCharging, motherBeatSqueeze, pickDrainedDiveTarget, shadowFormOf, shadowMirrorStep, shadowVulnerable } from './bosses.js';
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { advanceFootprint } from './footprints.js';
 import { fullWaterScale } from './synergies.js';
@@ -1696,7 +1696,10 @@ export class Player {
       if (this.diveCooldown > 0 || this.stunTimer > 0) return;
       const target = this.findNearestEgg(Config.player.birdEggDetectRange, false);
       const motherTarget = this.findMotherForDive();
-      this.startDive(this.findShadowForDive() ?? motherTarget ?? this.findCrierForDive() ?? target);
+      const drained = Config.boss.thirstMother.diveAtDrainedEggs
+        ? pickDrainedDiveTarget(this.game.bossEggs ?? [], this.position, Config.player.birdEggDetectRange)
+        : null;
+      this.startDive(this.findShadowForDive() ?? drained ?? motherTarget ?? this.findCrierForDive() ?? target);
     } else if (this.diveState === 'warning') {
       this.diveTimer -= dt;
       if (!this.diveTarget || this.diveTarget.dead) {

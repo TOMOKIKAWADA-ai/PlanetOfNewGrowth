@@ -149,3 +149,20 @@ test('a tadpole line runs from the floodgate mother toward the player', async ()
   assert.deepEqual(points, [{ x: 3, z: 0 }, { x: 4.5, z: 0 }, { x: 6, z: 0 }]);
   assert.deepEqual(floodgateStreamPoints({ x: 2, z: 2 }, { x: 2, z: 2 }, 1, 3, 1).points, [{ x: 2, z: 5 }]);
 });
+
+// A20（2026-11-19）: 渇きの母が吸っている間の鳥の急降下は、届く範囲で一番近い「吸われている卵」を狙う。
+test('pickDrainedDiveTarget picks the nearest drained egg in reach, only while draining', async () => {
+  const { pickDrainedDiveTarget } = await import('../src/bosses.js');
+  const egg = (x, z, extra = {}) => ({ position: { x, z }, dead: false, claimed: false, ...extra });
+  const near = egg(2, 0);
+  const far = egg(4, 0);
+  const outOfReach = egg(9, 0);
+  const claimed = egg(1, 0, { claimed: true });
+  const draining = { dead: false, thirst: { state: 'draining', targets: [far, near, outOfReach, claimed] } };
+  assert.equal(pickDrainedDiveTarget([draining], { x: 0, z: 0 }, 4.5), near);
+  near.dead = true;
+  assert.equal(pickDrainedDiveTarget([draining], { x: 0, z: 0 }, 4.5), far);
+  const idle = { dead: false, thirst: { state: 'idle', targets: [far] } };
+  assert.equal(pickDrainedDiveTarget([idle], { x: 0, z: 0 }, 4.5), null);
+  assert.equal(pickDrainedDiveTarget([{ dead: false }], { x: 0, z: 0 }, 4.5), null);
+});
