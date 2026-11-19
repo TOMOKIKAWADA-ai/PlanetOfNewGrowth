@@ -18,9 +18,11 @@ export const Config = {
     playerGlowOutline: false,
     playerUseUnlitMaterial: false,
     playerUnlitColor: 0xb8b4ad,
-    birdModelHeight: 3.44,
+    birdModelLength: 2.05,
     birdModelYaw: 0,
     birdModelPitch: Math.PI * 0.5,
+    fishModelLength: 2.4,
+    fishModelPitch: Math.PI * 0.5,
     droneModelHeight: 0.28,
     motherEggModelHeight: 4.2,
     // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と
@@ -396,10 +398,14 @@ export const Config = {
       firstDelay: 7,
       interval: 12,
       retryDelay: 2.5,
-      drainSeconds: 3.4,
+      // 2026-11-19 A20: 3.4 秒では吸われる卵（ボスから 20〜30）に鳥でも間に合わなかったので 5 秒に。
+      // 範囲を 14 に狭めると、ボスのそばの卵はすぐ無くなり、吸い込み自体がほとんど起きなかったので 22 のまま。
+      drainSeconds: 5,
       range: 22,
       count: 4,
-      healRatioPerEgg: 0.035
+      healRatioPerEgg: 0.035,
+      // 2026-11-19 A20: 吸っている間、鳥の急降下はボスより先に吸われている卵を狙う。false で前の「ボス優先」に戻る。
+      diveAtDrainedEggs: true
     },
     // Chapter 2's pursuer walks after the player and stops every layInterval seconds to lay an egg behind it.
     // Only while laying is its shell open (openDamageScale); otherwise hits do closedDamageScale. Touching it hurts
@@ -452,7 +458,9 @@ export const Config = {
       // 2026-11-16 ユーザー「bot がクリアできるくらいまで」: 起き上がりまで 10 → 25 秒、起き上がりの HP 0.6 → 0.3
       reviveSeconds: 25,
       reviveHpRatio: 0.3,
-      handoverDelay: 3
+      handoverDelay: 3,
+      // 彼岸花の体（Tripo）を地面から浮かせる高さ。倒れている間は地面まで沈む
+      hoverHeight: 1.2
     },
     // Final chapter's white lotus core (E15 phases 1-2, E16 phase 3). Six petals ring the core (petalSpread away), each with
     // petalHpShare of the stage's mother HP. Every petal keeps hatching one earlier chapter's new species
@@ -502,6 +510,9 @@ export const Config = {
     motherShockwaveDamage: 68,
     // Warning cues for dodging by bird form: an outline at the exact range and a ring closing in until impact.
     motherShockwaveTimingRing: true,
+    // 骨のない母卵（母卵・渇きの母の繭）の拍動。ふだんはゆっくり縮んで膨らみ、技の溜め（衝撃波の予告・卵を吸う間）は
+    // 速く大きくなる。衝撃波を放つ瞬間は大きく膨らむ（releaseSwell）。rate は 1 秒あたりの拍数、amount は縮む割合。
+    motherBeat: { rate: 0.9, chargeRate: 3.6, amount: 0.035, chargeAmount: 0.1, releaseSwell: 0.16 },
     matureSeconds: 8,
     hatchMin: 9.5,
     hatchMax: 14,
@@ -556,6 +567,7 @@ export const Config = {
       xp: 9,
       animationFade: 0.08,
       walkAnimationSpeed: 2.0,
+      hpBarHeight: 2.3,
       range: 21,
       fireInterval: 3.6,
       warningSeconds: 1.15,
@@ -621,8 +633,9 @@ export const Config = {
     },
     dragonflyLarva: { hp: 18, speed: 1.82, damage: 3, xp: 4, matureSeconds: 28 },
     tadpole: { hp: 15, speed: 1.5, damage: 2, xp: 4, matureSeconds: 32 },
-    dragonfly: { hp: 46, speed: 7.27, damage: 15, birdDamageMultiplier: 2.2, xp: 10 },
-    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13 },
+    // hoverHeight: 地面から浮かせる高さ（翼獣のモデルは羽ばたきながら飛ぶ）
+    dragonfly: { hp: 46, speed: 7.27, damage: 15, birdDamageMultiplier: 2.2, xp: 10, hoverHeight: 0.85, walkAnimationSpeed: 7.0, hpBarHeight: 2.75, corpseSinkDepth: 0.6 },
+    frog: { hp: 92, speed: 1.55, damage: 34, jumpInterval: 3.2, jumpRange: 7.5, xp: 13, walkAnimationSpeed: 1.4, hpBarHeight: 2.35, corpseSinkDepth: 0.9 },
     // 足跡（E8、第2章の新種）。プレイヤーの通った道を delaySeconds 遅れでなぞる（src/footprints.js）。
     // 鳥形態で飛んだ区間は道が途切れ、そこに来た足跡は見失って lostSpeed でゆっくり寄ってくる。
     // 卵から孵る敵の chance がこの種類になる。enabled: false で出なくなる。
@@ -791,10 +804,11 @@ export const Config = {
     orbSpeed: 9
   },
   pickups: {
-    // Generated meshes for dropped items (PICKUP_MODELS in src/main.js; see docs/dev-cycle/asset-ledger.md). The Hunyuan3D
-    // meshes (2026-10-26/29) were removed on 2026-10-29 over its license; to be remade with Tripo. enabled: false keeps primitives.
+    // Meshes for dropped items (PICKUP_MODELS in src/main.js; see docs/dev-cycle/asset-ledger.md). The Hunyuan3D meshes
+    // (2026-10-26/29) were removed on 2026-10-29 over its license; since 2026-11-19 they are hand-built in Blender.
+    // enabled: false (or ?pickupModels=0) keeps the old primitives.
     models: {
-      enabled: false,
+      enabled: true,
       size: 0.72
     },
     spawnOffsetRadius: 1.35,
@@ -1002,7 +1016,7 @@ export const ChapterRewards = {
     { id: 'breakSurface', title: '水面を割る', body: '急降下のダメージ＋30％。', apply(game) { game.player.diveDamageScale *= 1.3; } }
   ],
   4: [
-    { id: 'rootOath', title: '根の誓い', body: '鳥形態で卵を食べたときの回復が2倍になる。', apply(game) { game.player.eggHealScale *= 2; } },
+    { id: 'rootOath', title: '根の誓い', body: '鳥形態・魚形態で卵を食べたときの回復が2倍になる。', apply(game) { game.player.eggHealScale *= 2; } },
     { id: 'nightPulse', title: '夜の鼓動', body: '範囲パルスLv1を持って出撃する。', apply(game) { getUpgrade('pulse').apply(game); } },
     { id: 'buddingSeed', title: '芽吹く種', body: '周りに浮く種が1つ増え、同時に撃つ弾が増える。', apply(game) { getUpgrade('seeds').apply(game); } }
   ],

@@ -39,6 +39,9 @@ const bossRange = Number(args.bossRange ?? 5);
 // --chase 0 turns off the stronger pull back to a far-away boss (A18): without it the crowd pushes the bot 40-90 away
 // from the boss for 20-30 s at a time and the boss's HP stands still.
 const chase = args.chase !== '0';
+// --thirst 1 makes the bot go for the eggs the thirst mother (chapter 5) is draining and break them in bird form on land
+// or fish form in water, to deny her heal (A20, 2026-11-19). Off by default so the numbers stay comparable with older runs.
+const thirstDeny = args.thirst === '1';
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
@@ -55,7 +58,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase }) {
+function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -80,6 +83,27 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
   stats.mimic = { seen: 0, diveAborts: 0, shot: 0 };
   const seenMimics = new WeakSet();
   let lastMimicAbortAt = -Infinity;
+  // The eggs the thirst mother is draining right now (only when --thirst 1). Nearest first.
+  const drainTarget = () => {
+    if (!thirstDeny) return null;
+    const drainer = (game.bossEggs ?? []).find(body => !body.dead && body.thirst?.state === 'draining');
+    if (!drainer) return null;
+    let best = null;
+    let bestD2 = Infinity;
+    for (const egg of drainer.thirst.targets) {
+      if (egg.dead) continue;
+      const d2 = (egg.position.x - player.position.x) ** 2 + (egg.position.z - player.position.z) ** 2;
+      if (d2 < bestD2) { bestD2 = d2; best = egg; }
+    }
+    if (best && game.thirstStats.drains !== lastDrain) {
+      // Distance to the nearest drained egg when the drain starts, to see whether the eggs are reachable at all.
+      lastDrain = game.thirstStats.drains;
+      stats.thirstReach.push(Math.round(Math.sqrt(bestD2) * 10) / 10);
+    }
+    return best ? { egg: best, d2: bestD2 } : null;
+  };
+  let lastDrain = null;
+  stats.thirstReach = [];
   const spawnMotherShockwave = game.spawnMotherShockwave;
   game.spawnMotherShockwave = function (...args) {
     stats.shockwaves.fired++;
@@ -224,6 +248,8 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
       if (d2 < motherBest) { motherBest = d2; mother = body; }
     }
     let target = mother;
+    const drain = drainTarget();
+    if (drain) { target = drain.egg; mother = null; }
     if (!target) {
       let best = Infinity;
       for (const egg of game.eggs) {
@@ -304,8 +330,14 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     const mimicClose = mimicAware && game.elapsed - lastMimicAbortAt < 2.5;
     const flood = mother?.floodgate;
     const nearMother = mother && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2 < 49;
+    const drain = drainTarget();
     if (player.form === 'human') {
-      if (flood?.state === 'submerged' && nearMother && game.isWaterPosition(player.position) && player.mp > 8) {
+      if (drain && drain.d2 < 26 * 26 && player.mp > 5 && !shockwaveComing) {
+        // A drained egg is close: take off (or dive in) to break it before the drain ends.
+        stats.transforms++;
+        mark('thirstDeny');
+        press('transform');
+      } else if (flood?.state === 'submerged' && nearMother && game.isWaterPosition(player.position) && player.mp > 8) {
         stats.transforms++;
         press('transform');
       } else if (shake && player.grabbedBy && player.mp > 5) {
@@ -338,7 +370,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
       press('transform');
     } else if (player.form === 'bird' && flood?.state === 'submerged' && nearMother && player.diveState === 'ready') {
       press('transform');
-    } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready' && !shockwaveComing) {
+    } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready' && !shockwaveComing && !drain) {
       press('transform');
     }
   }
@@ -421,7 +453,7 @@ function summarize(game, stats) {
     events: stats.events,
     mimicStuns: game.mimicStuns ?? 0,
     mimic: stats.mimic.seen || stats.mimic.shot ? { ...stats.mimic } : null,
-    thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed) } : null,
+    thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed), reach: stats.thirstReach ?? [] } : null,
     pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
     vine: game.vineStats?.windups ? { ...game.vineStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
@@ -484,7 +516,7 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
@@ -509,7 +541,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, startAt, carry: carrySpec || null,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

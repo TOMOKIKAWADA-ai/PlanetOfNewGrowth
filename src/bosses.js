@@ -1,5 +1,6 @@
 // 章ごとのボスの種類。ステージ設定（src/campaign.js の STAGES）の `boss` でここの種類を選ぶ。
-// ボスの体は今のところすべて母卵の卵（Egg の isMother）を使い、動きだけを種類ごとに差し替える。
+// ボスの体は母卵の卵（Egg の isMother）。bodyKey があれば、見た目だけその体（src/main.js の GAMEPLAY_MODELS。Tripo で作成）に替える
+// （ringScale は足元の輪の大きさ）。アニメのある体は動きに合わせて idle・walk・attack などを流す（src/entities.js の Egg）。
 // 新しいボスは docs/enemy-boss-design.md の表に沿って、ここに1種ずつ足す。
 import { Config } from './config.js';
 
@@ -18,6 +19,8 @@ export const BOSS_TYPES = Object.freeze({
   thirstMother: Object.freeze({
     id: 'thirstMother',
     name: '渇きの母',
+    // 薔薇の繭。骨が無いので母卵と同じように拍動する
+    bodyKey: 'thirstMotherBody',
     forecast: '周りの卵を吸って回復する。光の管でつながった卵を、鳥や魚で先に食べよう',
     update(egg, dt) {
       egg.updateMotherShockwave(dt);
@@ -29,6 +32,9 @@ export const BOSS_TYPES = Object.freeze({
   pursuer: Object.freeze({
     id: 'pursuer',
     name: '追い手',
+    // 黒衣の長首翼獣。歩くと walk、産卵で止まると首と翼を持ち上げて胸を開く（attack）
+    bodyKey: 'pursuerBody',
+    ringScale: 1.7,
     forecast: 'ゆっくり追ってくる。立ち止まって卵を産むあいだだけ殻が開く。止まった瞬間に撃とう',
     update(egg, dt) {
       updatePursuer(egg, dt);
@@ -42,6 +48,9 @@ export const BOSS_TYPES = Object.freeze({
   floodgateMother: Object.freeze({
     id: 'floodgateMother',
     name: '水門の母',
+    // 茎の生えたクラゲ。沈むと赤い傘だけが水面に出て、浮上すると surface のあと stun でふらつく
+    bodyKey: 'floodgateMotherBody',
+    ringScale: 1.2,
     forecast: '潜っているあいだは攻撃が効かない。魚形態で3回噛みつくと浮上して気絶する',
     prefersWater: true,
     update(egg, dt) {
@@ -59,6 +68,9 @@ export const BOSS_TYPES = Object.freeze({
   swarmMother: Object.freeze({
     id: 'swarmMother',
     name: '群れの母',
+    // 浮遊する彼岸花（3体）。倒れると花を閉じて沈み（die）、起き上がると開く（revive）
+    bodyKey: 'swarmMotherBody',
+    ringScale: 1.1,
     forecast: `光の糸でつながった三つ子。1体だけ倒しても、${Config.boss.swarmMother.reviveSeconds}秒以内に残りを倒さないと起き上がる`,
     spawnCount: Config.boss.swarmMother.count,
     update(egg, dt) {
@@ -91,6 +103,19 @@ export const BOSS_TYPES = Object.freeze({
 
 export const DEFAULT_BOSS = 'motherEgg';
 
+// 骨のない母卵の拍動の形（-1〜1 くらい）。phase は拍の位相（1 拍 = 2π）、charge は技の溜め（0〜1）。
+// 正は横に膨らむ、負は横に縮んで縦に伸びる。ドクン・ドクンと二段で打ち、溜め中は大きく打つ。
+export function motherBeatSqueeze(phase, charge) {
+  const cfg = Config.egg.motherBeat;
+  const amount = cfg.amount + (cfg.chargeAmount - cfg.amount) * charge;
+  return (Math.sin(phase) + 0.45 * Math.sin(phase * 2 + 0.6)) / 1.45 * amount;
+}
+
+// 技を溜めている間（衝撃波の予告、渇きの母が卵を吸っている間）。拍動が速く強くなる。
+export function isMotherCharging(egg) {
+  return egg.shockwaveState === 'warning' || egg.thirst?.state === 'draining';
+}
+
 // まだ作っていないボス（白蓮の核など）を指定した章は、母卵の動きで戦う。
 export function getBossType(id) {
   return BOSS_TYPES[id] ?? BOSS_TYPES[DEFAULT_BOSS];
@@ -120,6 +145,23 @@ export function pickDrainTargets(eggs, center, range, count) {
   }
   candidates.sort((a, b) => a.distanceSq - b.distanceSq);
   return candidates.slice(0, count).map((entry) => entry.egg);
+}
+
+// 鳥の急降下の的（A20、2026-11-19）: 渇きの母が吸っている間は、ボスより先に吸われている卵を狙う。
+// ボスは吸われる卵のすぐそばにいるので、ボス優先のままでは「鳥で先に食べる」ができなかった。
+export function pickDrainedDiveTarget(bosses, position, range) {
+  const rangeSq = range * range;
+  let best = null;
+  let bestDistanceSq = rangeSq;
+  for (const boss of bosses) {
+    if (boss.dead || boss.thirst?.state !== 'draining') continue;
+    for (const egg of boss.thirst.targets) {
+      if (egg.dead || egg.claimed) continue;
+      const distanceSq = (egg.position.x - position.x) ** 2 + (egg.position.z - position.z) ** 2;
+      if (distanceSq <= bestDistanceSq) { best = egg; bestDistanceSq = distanceSq; }
+    }
+  }
+  return best;
 }
 
 export function drainHealAmount(maxHp, consumedCount, healRatioPerEgg) {

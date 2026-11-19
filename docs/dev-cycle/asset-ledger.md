@@ -477,6 +477,80 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | 踏みしめる足（第5章） | `reward-icons/firmSteps.png`（新） | 地面を踏むブーツと、かかとで止まるシアンの衝撃波 |
 | 見分ける目（第5章） | `reward-icons/seeingEye.png`（新） | 白い目とシアンの瞳。擬態卵の硬直 |
 
+## 2026-10-26 敵とボスの3Dモデル（Tripo）
+ユーザーの指示「enemy_draft/turnarounds の敵を Tripo で3D化し、今のゲームに合うか判断して適材適所で実装する」。三面図10枚から4体を選んで生成。
+ツール: Tripo Studio（Smart Mesh **P2.0**、Multiview: 三面図を前・左・後ろ・右の4枚に切り分けて入力、**Quad 2000 面**＝ゲームでは約 3300〜4000 三角形、テクスチャあり）→ GLB（テクスチャ 2k）で書き出し → Blender 5.1 で骨とモーションを付ける（`scripts/blender/build_<名前>_animations.py`）。
+費用: 1体 100 クレジット＋テクスチャ 20 クレジット。4体で 480（残り 2720）。
+元の三面図: `enemy_draft/turnarounds/`、切り分けた4枚: `enemy_draft/tripo_views/<番号>/`、書き出したままの GLB: `assets_src/tripo/`（git 対象外）。
+
+| ファイル | 元の三面図 | ゲームでの役 | 三角形 | 採用 |
+|---|---|---|---|---|
+| `assets/enemies/ivory_dragonfly_rtp.glb` → `ivory_dragonfly_anim.glb` | 04 白骨のトンボ人形 | スナイパー（`sniper`。今までは射撃の敵の色違い） | 3497 | 採用。モーション5種（attack は右腕を突き出す狙撃） |
+| `assets/enemies/bat_rat_rtp.glb` → `bat_rat_anim.glb` | 10 赤い翼の獣 | 水辺の飛ぶ敵（`dragonfly`。今までは円錐） | 3972 | 採用。宙に浮かせ（`hoverHeight` 0.85）、idle・walk は羽ばたき。死ぬと地面に落ちる |
+| `assets/enemies/armored_beetle_rtp.glb` → `armored_beetle_anim.glb` | 01 葉を背負った甲殻獣 | 水辺の跳ねる敵（`frog`。今までは円錐） | 3303 | 採用。attack はゲームの跳躍 0.75 秒に合わせた跳びかかり |
+| `assets/mother/rose_cocoon_rtp.glb` | 05 薔薇の繭 | 第5章のボス「渇きの母」の体（今までは母卵と同じ） | 3194 | 採用。動かないので骨なし |
+| — | 02・03・06・07・08・09 | — | — | 未生成。07 は細い脚が上からの視点で見えにくいので不採用。02・06・08・09・03 はまだ無い敵（鳴き・吸水根・水門の母・手・影法師・守護者の別形）の候補として保留 |
+
+元に戻すには `src/main.js` の `GAMEPLAY_MODELS` から該当の行を消す（スナイパーは射撃の敵の色違い、飛ぶ敵・跳ねる敵は円錐、渇きの母は母卵に戻る）。
+
+### 2026-10-27 追加: 第2章・第4章のボス
+ユーザーの指示「一枚目を群れの母に　２枚目を追い手に　tripoとblenderで作って実装して」。設定は上と同じ（P2.0・Multiview・Quad 2000 面・テクスチャあり）。2体で 240 クレジット（残り 2480）。
+
+| ファイル | 元の三面図 | ゲームでの役 | 三角形 | 採用 |
+|---|---|---|---|---|
+| `assets/mother/bat_neck_beast_rtp.glb` → `bat_neck_beast_anim.glb` | 20 黒衣の長首翼獣 | 第2章のボス「追い手」（`pursuerBody`） | 3562 | 採用。Tripo が色を読めず灰色の板になった頭の左右のひげ（155 面）は消した。モーション5種（attack は 2.6 秒の産卵: 首と翼を持ち上げて胸を開く） |
+| `assets/mother/spider_lily_rtp.glb` → `spider_lily_anim.glb` | 16 浮遊する彼岸花 | 第4章のボス「群れの母」の体（`swarmMotherBody`、3体） | 2466 | 採用。灰色になった所を塗り直した（花の高さは赤、触手は骨の白）。モーション6種（die は倒れて復活を待つ姿、revive で起き上がる） |
+| `assets/enemies/tadpole_rtp.glb` → `tadpole_anim.glb` | 水の生き物の三面図（2026-10-28）オタマジャクシ | 水の敵 tadpole（`tadpoleEnemy`。水門の母が流す列もこれ） | 3028 | 採用。Quad 1500 面（約 3000 三角形）。尾を振って泳ぐ idle / walk、突っ込む attack、腹を上にする die（`build_tadpole_animations.py`） |
+| `assets/enemies/dragonfly_nymph_rtp.glb` → `dragonfly_nymph_anim.glb` | 同 ヤゴ | 水の敵 dragonflyLarva（`larvaEnemy`） | 3130 | 採用。Quad 1500 面。三脚歩行の walk、下あごを突き出す attack、ひっくり返る die（`build_dragonfly_nymph_animations.py`）。三面図の横の絵の尾毛が後ろの絵に重なっていたので、切り分けは手で範囲を決めた |
+| `assets/eggs/eye_eggs.glb` | 同 水中の目玉卵 | 水中の卵（`aquaticEgg`） | 3177 | 採用。Quad 1500 面。Tripo のテクスチャ生成がサーバーエラー（error.11000）で2回通らなかったので、色なしで書き出し、目の模様を Blender で描いた（`scripts/blender/paint_eye_eggs.py`）。骨なし |
+| `assets/mother/jellyfish_stalk_rtp.glb` → `jellyfish_stalk_anim.glb` | 06 茎の生えたクラゲ | 第3章のボス「水門の母」（`floodgateMotherBody`） | 3247 | 採用。最初は垂れ糸が円柱の壁になったので、糸を消した絵（`scripts/assets/strip-hanging-strings.py`）で作り直した（2回で 220 クレジット、残り 2260）。モーション6種（surface は浮上、stun は気絶のループ）。根は動かさない |
+
+元に戻すには `GAMEPLAY_MODELS` の `pursuerBody`・`swarmMotherBody`・`floodgateMotherBody` を消す。水の敵と水中の卵は `tadpoleEnemy`・`larvaEnemy`・`aquaticEgg` を消すと元の円錐と黒い種の卵に戻る（3体で 340 クレジット、残り 1920）（母卵の見た目に戻る。動きは第2章・第4章の `boss` を `motherEgg` にすると母卵に戻る）。
+
+## 2026-10-29 鳥形態の3Dモデル（キャラごと3体）
+ツール: Tripo Studio の Smart Mesh、AI Model P2.0、Multiview（前・左・右・後ろ）、Topology Quad 3000 面、テクスチャ 2k、GLB で書き出し。1体 100＋テクスチャ 20 クレジット、3体で 360（残り 1920 → 1560）。
+元絵: ユーザーがくれた三面図3枚（後ろ・右横・前）を切り分けたもの（`enemy_draft/tripo_views/<名前>/`、左は右の左右反転）。キャラとの対応は人型モデルの色から判断し、キャラ選択画面の立ち絵の色で確かめた。
+生の書き出し: `assets_src/tripo/2026-10-29-birds/`（git 対象外。リポジトリのものと同じファイル）。
+形: 3体とも立った姿で前が glTF の +Z、足元が y=0。幅 1 : 高さ 0.75 : 厚み 0.21（旧 `tsukimi_bird.glb` は幅 1.49 : 高さ 1.90 で、翼の比率がずっと小さい）。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/player/birds/kiichigo_bird.glb`（1.26MB） | 赤（キイチゴ） | 6,496 | 採用: キイチゴの鳥形態 |
+| `assets/player/birds/tsukimi_bird.glb`（1.24MB） | 紺に桜（ツキミ） | 6,564 | 採用: ツキミの鳥形態。旧 `assets/player/tsukimi_bird.glb`（197,320 三角形・9MB、生成元の記録なし）は置換済みで、リポジトリから外した（git の履歴にはある） |
+| `assets/player/birds/akame_bird.glb`（1.32MB） | 白と緑（アカメ） | 6,562 | 採用: アカメの鳥形態 |
+
+ゲームへの組み込み（2026-10-29 ユーザー「差し替える」）: `PLAYER_VISUALS` の各キャラに `birdUrl` を持たせ、`loadBirdVisual` が選んだキャラの鳥を読む。`Config.visuals.birdModelHeight` を 3.44 → 2.05 にして、翼の幅を旧モデルと同じ約 2.7 にそろえた。
+ライセンス: Tripo の利用規約（上の表。公開前に商用の条件を再確認）。
+
+## 2026-10-31 魚形態の3Dモデル（キャラごと3体、水中潜航形態・オヒルギ型）
+ツール: 鳥形態と同じ（Tripo Studio の Smart Mesh、P2.0、Multiview、Quad 3000 面、テクスチャ 2k、GLB）。1体 120 クレジット、3体で 360（残り 2560 → 2200。10-29 の 1560 から、生成前にクレジットが足されていた）。
+元絵: ユーザーがくれた三面図3枚（正面・側面・背面、1536×1024）。側面は顔が右を向くので右横とし、左横はその左右反転。題字とラベルを消し、3枚を同じ縮尺で 1024 四方に切り出した（切り出しの道具はスクラッチパッドのみ）。
+生の書き出し: `assets_src/tripo/2026-10-31-fish/`（git 対象外）。
+形: 3体とも立った姿で前が glTF の +Z、足元が y=0。幅 0.16 : 高さ 1 : 厚み 0.15 の細長い形。ゲームでは前へ倒し（`fishModelPitch` π/2）、頭を進む向きに、長さ 2.4（`fishModelLength`）にする。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/player/fish/kiichigo_fish.glb`（0.84MB） | 赤に白い花（キイチゴ） | 6,143 | 採用: キイチゴの魚形態。背面の白い花は一部しか出ていない |
+| `assets/player/fish/tsukimi_fish.glb`（0.97MB） | 紺に桜（ツキミ） | 6,399 | 採用: ツキミの魚形態。背面の桜は出ていない |
+| `assets/player/fish/akame_fish.glb`（1.02MB） | 白と緑（アカメ） | 6,260 | 採用: アカメの魚形態 |
+
+ゲームへの組み込み（2026-10-31 ユーザー「魚形態のグラフィックとしてほしい。tripoで作って、実装して」）: `PLAYER_VISUALS` の各キャラに `fishUrl` を持たせ、`loadFishVisual` が読めたら元の多面体の魚と入れ替える（読めなければ多面体のまま）。同時に、鳥も魚も「倒してから長さで合わせ、プレイヤーの位置を中心にする」（`fitLoadedModelLength`）ように直した。10-29 の鳥は高さで合わせてから倒していたため、体の中心がプレイヤーより約 1 前に出ていた。`birdModelHeight` は `birdModelLength`（2.05、くちばしから尾まで）に名前を変えた。
+ライセンス: Tripo の利用規約。
+
+## 2026-10-31 キイチゴとツキミのドローン
+ツール: Tripo Studio の Smart Mesh、P2.0、Quad 3000 面、テクスチャ 2k、GLB。1体 120 クレジット、2体で 240（残り 2200 → 1960）。
+元絵: ユーザーがくれた絵。キイチゴは赤い球体の2案のうち「上に白い花のほう」（ユーザー指定）の1枚から、正面1枚で生成。ツキミは設定画（1448×1086）の側面と正面を切り出し、側面は鼻先が左を向くので左横、右横はその左右反転にして Multiview（正面・左・右）で生成。設定画の背面には正面と同じコアが描かれていたので使わなかった（切り出しの道具はスクラッチパッドのみ）。
+生の書き出し: `assets_src/tripo/2026-10-31-drones/`（git 対象外）。
+形: 前が glTF の +Z、足元が y=0。アカメのドローン（`drone3dmodel.glb`、幅 0.98 : 高さ 0.54）とほぼ同じ比率なので、同じ `droneModelHeight`（0.28）で合わせる。
+
+| ファイル | 元絵 | 三角形 | 採用 |
+|---|---|---|---|
+| `assets/drones/kiichigo_drone.glb`（1.27MB） | 赤い球体、上に白い花（キイチゴ） | 6,055 | 採用: キイチゴのドローン。背面は絵がないので Tripo の推測（模様なし） |
+| `assets/drones/tsukimi_drone.glb`（1.11MB） | 紺の羽つき、桜（ツキミ） | 6,318 | 採用: ツキミのドローン |
+
+ゲームへの組み込み（2026-10-31 ユーザー「キイチゴとツキミのドローンを作ってほしい。今は言っているものはアカメ用」）: `GAMEPLAY_MODELS` に `tsukimiDrone`・`kiichigoDrone` を足し、`PLAYER_VISUALS` の各キャラの `droneModel` で選ぶ。アカメは `droneModel` を持たないので、これまでの `drone`（`drone3dmodel.glb`）のまま。
+ライセンス: Tripo の利用規約。
+
 ## 2026-11-06 会話画面の動く立ち絵を Anime2.5DRig に（ユーザーの指示「ゲームに実装している横向きのキャラクターも作ってほしい」「それをゲームにも実装してほしい」）
 
 紹介動画の口パクを Anime2.5DRig に作り直したところ Mesh Avatar Studio より出来がよかったので、会話画面の斜め向きの立ち絵（`assets/ui/characters/faces/<キャラ>/normal.png`）も同じ方法で作った。
@@ -496,3 +570,19 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 表示: `src/vendor/anime25d-player.js`（Anime2.5DRig v2.0.0 の変形・髪の揺れ・まばたきを移植、MIT）。`Config.story.avatarEngine: 'mesh'` で前の Mesh Avatar Studio に、`avatarPortraits: false` で静止画に戻る。
 表情: アバターは通常の表情だけ。笑顔・怒り・悲しみ・驚きは描き分けた静止画を出す（眉は前髪に隠れ、目は元の絵のパーツが上にあるので、変形ではほとんど表情が変わらなかった）。
 ライセンス: 上の表の Anime2.5DRig・See-through・GPT Image（Codex）。
+
+## 2026-11-19 拾うアイテム 6 種（B1-1、Blender で手作り、生成なし）
+2026-10-29 に Hunyuan3D の利用条件で外してから、拾うアイテムは元の多面体だった。空きメモリが 5.6 GB で Forge（元絵）が使えない日だったので、10-26・10-29 に選んだ形の案（赤い実・水滴の種・琥珀の欠片・つぼみ・馬蹄の石・矢じりの実）を、Blender のスクリプトで球・円錐・管から手作りした。画像生成も 3D 生成も使っていないので、利用条件の心配はない。
+スクリプト: `scripts/blender/build_pickups.py`（6 個で約 10 秒）。書き出しの約束は `prep-pickups.py` と同じ（1 つのメッシュ、中心が原点、最長辺 1、マテリアルなし。色はゲーム側の `PICKUP_SPECS`）。確認画像: `docs/devlog/img/2026-11-19-pickups-blender.png`（上段が横から、下段が斜め上から）。
+組み込み: `PICKUP_MODELS`（`src/main.js`）に 6 つの URL、`Config.pickups.models.enabled: true`。false か URL の `?pickupModels=0` で元の多面体に戻る。
+
+| ファイル | 種類 | 形 | 三角形 |
+|---|---|---|---|
+| `assets/pickups/pickup_hp.glb` | HP回復 | 少しつぶれた丸い実。上にくぼみ、短い軸と葉 1 枚 | 488 |
+| `assets/pickups/pickup_mp.glb` | MP回復 | 上がとがった水滴の種。腹に細い継ぎ目の輪 | 704 |
+| `assets/pickups/pickup_burst.glb` | Burst欠片 | 六角の結晶 1 本と、斜めの小さな結晶 2 本（面を平らに塗る） | 154 |
+| `assets/pickups/pickup_shield.glb` | 防護膜 | 厚い花弁 5 枚で包んだ閉じたつぼみと短い茎 | 1036 |
+| `assets/pickups/pickup_magnet.glb` | 吸引石 | 太い馬蹄形の石。立てて作り、ゲームが寝かせて上から U に見せる | 884 |
+| `assets/pickups/pickup_speed.glb` | 加速 | 三つの稜のある矢じり形の実。ゲームが横に寝かせて速く回す | 468 |
+
+Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊んで見てから決める（判断待ち）。

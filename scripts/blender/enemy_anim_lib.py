@@ -11,6 +11,7 @@
 import sys
 import math
 
+import bmesh
 import bpy
 import numpy as np
 from mathutils import Matrix, Quaternion, Vector
@@ -131,7 +132,7 @@ def stash_actions(arm, names):
         track.mute = True
 
 
-def export_glb(arm, dst):
+def export_glb(arm, dst, image_format='AUTO'):
     for o in bpy.data.objects:
         o.select_set(False)
     arm.select_set(True)
@@ -149,6 +150,7 @@ def export_glb(arm, dst):
         export_reset_pose_bones=True,
         export_cameras=False,
         export_lights=False,
+        export_image_format=image_format,
     )
     print('EXPORTED', dst, sorted(a.name for a in bpy.data.actions))
 
@@ -221,6 +223,122 @@ def rig_mesh(mesh, bone_specs, weights, max_influences=4):
     modifier = mesh.modifiers.new('Armature', 'ARMATURE')
     modifier.object = arm
     return arm
+
+
+def segment_distances(V, bone_specs):
+    """各頂点から各ボーンの線分までの距離 (頂点数, ボーン数)。"""
+    out = np.empty((len(V), len(bone_specs)))
+    for j, (_name, head, tail, _parent) in enumerate(bone_specs):
+        a, b = np.asarray(head, float), np.asarray(tail, float)
+        ab = b - a
+        t = np.clip(((V - a) @ ab) / max(ab @ ab, 1e-12), 0, 1)
+        out[:, j] = np.linalg.norm(V - (a + t[:, None] * ab), axis=1)
+    return out
+
+
+def distance_weights(mesh, V, bone_specs, power=4.0, side_margin=0.02, exclude=()):
+    """近いボーンほど強く効くウェイト。Tripo の P2.0 メッシュのように骨のないモデル用。
+
+    L_ / R_ のボーンは反対側（x が -side_margin より外）の頂点には効かせない（左右の脚がくっつかないように）。
+    exclude: ウェイトを与えないボーン名（親として置くだけの Root など）。
+    小さな破片は 1 つの塊として動かす。
+    """
+    D = segment_distances(V, bone_specs)
+    W = 1.0 / np.power(D + 0.01, power)
+    for j, (name, *_rest) in enumerate(bone_specs):
+        if name in exclude:
+            W[:, j] = 0
+        elif name.startswith('L_'):
+            W[V[:, 0] < -side_margin, j] = 0
+        elif name.startswith('R_'):
+            W[V[:, 0] > side_margin, j] = 0
+    W /= np.maximum(W.sum(axis=1, keepdims=True), 1e-12)
+    for piece in mesh_islands(mesh):
+        if np.ptp(V[piece], axis=0).max() < 0.06:
+            W[piece] = W[piece].mean(axis=0)
+    return W
+
+
+def base_color_image(mesh):
+    return next(n.image for n in mesh.data.materials[0].node_tree.nodes if n.type == 'TEX_IMAGE')
+
+
+def face_islands(mesh):
+    """面ごとの島の番号（辺でつながった塊）。"""
+    vertex_island = np.empty(len(mesh.data.vertices), int)
+    for k, piece in enumerate(mesh_islands(mesh)):
+        vertex_island[piece] = k
+    return np.array([vertex_island[poly.vertices[0]] for poly in mesh.data.polygons])
+
+
+def face_colors(mesh):
+    """面ごとのテクスチャの色（UV の中心で読む、0〜1）と、面の中心（ワールド座標）。
+
+    Tripo は絵から色を読めなかった所を灰色 (0.5, 0.5, 0.5) で塗るので、それを見分けるのに使う。
+    """
+    img = base_color_image(mesh)
+    w, h = img.size
+    px = np.array(img.pixels[:]).reshape(h, w, 4)[..., :3]
+    uv = mesh.data.uv_layers.active.data
+    colors, centers = [], []
+    for poly in mesh.data.polygons:
+        u = np.clip(np.mean([uv[i].uv for i in poly.loop_indices], axis=0), 0, 1)
+        colors.append(px[int(u[1] * (h - 1)), int(u[0] * (w - 1))])
+        centers.append(mesh.matrix_world @ poly.center)
+    return np.array(colors), np.array(centers)
+
+
+def is_unread_gray(colors, lo=0.38, hi=0.62, spread=0.05):
+    """Tripo が色を読めなかった灰色か（彩度がほぼなく、明るさが中くらい）。"""
+    colors = np.asarray(colors)
+    lum = colors.mean(axis=-1)
+    return (colors.max(axis=-1) - colors.min(axis=-1) < spread) & (lum > lo) & (lum < hi)
+
+
+def delete_faces(mesh, face_indices):
+    bm = bmesh.new()
+    bm.from_mesh(mesh.data)
+    bm.faces.ensure_lookup_table()
+    bmesh.ops.delete(bm, geom=[bm.faces[i] for i in face_indices], context='FACES')
+    bm.to_mesh(mesh.data)
+    bm.free()
+
+
+def repaint_faces(mesh, targets, gray_only=True, margin=2.5):
+    """targets: {面の番号: (r, g, b)}。UV 上でその面が使う画素を、明るさの濃淡を残して塗り替える。
+
+    gray_only なら、色を読めなかった灰色の画素だけを塗る（絵から読めた模様は残す）。
+    margin（画素）だけ面の外まで塗り、UV の継ぎ目に灰色の線が残らないようにする。
+    """
+    img = base_color_image(mesh)
+    w, h = img.size
+    px = np.array(img.pixels[:]).reshape(h, w, 4)
+    uv = mesh.data.uv_layers.active.data
+    for face, color in targets.items():
+        poly = mesh.data.polygons[face]
+        pts = np.array([uv[i].uv for i in poly.loop_indices]) * [w - 1, h - 1]
+        x0, y0 = np.maximum(np.floor(pts.min(axis=0) - margin).astype(int), 0)
+        x1, y1 = np.minimum(np.ceil(pts.max(axis=0) + margin).astype(int), [w - 1, h - 1])
+        gx, gy = np.meshgrid(np.arange(x0, x1 + 1), np.arange(y0, y1 + 1))
+        inside = np.zeros(gx.shape, bool)
+        for k in range(1, len(pts) - 1):
+            tri = pts[[0, k, k + 1]]
+            area = np.cross(tri[1] - tri[0], tri[2] - tri[0])
+            if abs(area) < 1e-9:
+                continue
+            ok = np.ones(gx.shape, bool)
+            for a, b in ((0, 1), (1, 2), (2, 0)):
+                edge = tri[b] - tri[a]
+                dist = (edge[0] * (gy - tri[a][1]) - edge[1] * (gx - tri[a][0])) / np.linalg.norm(edge)
+                ok &= dist * np.sign(area) >= -margin
+            inside |= ok
+        region = px[gy, gx, :3]
+        select = inside & is_unread_gray(region, lo=0.2, hi=0.8, spread=0.08) if gray_only else inside
+        shade = np.clip(region.mean(axis=-1) / 0.5, 0.6, 1.4)[..., None]
+        px[gy[select], gx[select], :3] = np.clip(np.asarray(color) * shade, 0, 1)[select]
+    img.pixels.foreach_set(px.astype(np.float32).ravel())
+    img.update()
+    img.pack()
 
 
 def smoothstep(edge0, edge1, x):

@@ -229,10 +229,22 @@ const VOICE_URLS = {
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
 // Installed once per page: the geometries are shared module state, and a new game (next chapter) reuses them.
 let pickupModelsInstalled = false;
-// Pickup type -> GLB from scripts/assets/blender/prep-pickups.py, e.g.
-//   hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href
-// Empty since 2026-10-29: the Hunyuan3D meshes were removed over its license, and the Tripo versions are not made yet.
-const PICKUP_MODELS = {};
+// Pickup type -> GLB. Since 2026-11-19 these are hand-built in Blender (scripts/blender/build_pickups.py, no generated
+// images or models). Config.pickups.models.enabled: false or ?pickupModels=0 keeps the old primitives.
+const PICKUP_MODELS = {
+  hp: new URL('../assets/pickups/pickup_hp.glb', import.meta.url).href,
+  mp: new URL('../assets/pickups/pickup_mp.glb', import.meta.url).href,
+  burst: new URL('../assets/pickups/pickup_burst.glb', import.meta.url).href,
+  magnet: new URL('../assets/pickups/pickup_magnet.glb', import.meta.url).href,
+  shield: new URL('../assets/pickups/pickup_shield.glb', import.meta.url).href,
+  speed: new URL('../assets/pickups/pickup_speed.glb', import.meta.url).href
+};
+function pickupModelsEnabled() {
+  const fromUrl = new URLSearchParams(window.location.search).get('pickupModels');
+  if (fromUrl === '0') return false;
+  if (fromUrl === '1') return true;
+  return Config.pickups.models.enabled;
+}
 const GAMEPLAY_MODELS = {
   darkseedEgg: {
     url: new URL('../assets/eggs/darkseed.glb', import.meta.url).href,
@@ -246,6 +258,16 @@ const GAMEPLAY_MODELS = {
   },
   drone: {
     url: new URL('../assets/drones/drone3dmodel.glb', import.meta.url).href,
+    height: Config.visuals.droneModelHeight,
+    centerXZ: true
+  },
+  tsukimiDrone: {
+    url: new URL('../assets/drones/tsukimi_drone.glb', import.meta.url).href,
+    height: Config.visuals.droneModelHeight,
+    centerXZ: true
+  },
+  kiichigoDrone: {
+    url: new URL('../assets/drones/kiichigo_drone.glb', import.meta.url).href,
     height: Config.visuals.droneModelHeight,
     centerXZ: true
   },
@@ -286,8 +308,30 @@ const GAMEPLAY_MODELS = {
   handTripo: tripoModel('hand', 2.0),
   rootsuckerTripo: tripoModel('rootsucker', 1.9),
   lotusCoreTripo: tripoModel('lotus_core', 4.6),
-  lotusPetalTripo: tripoModel('lotus_petal', 5.6)
+  lotusPetalTripo: tripoModel('lotus_petal', 5.6),
+  // 2026-10-26〜28 に Tripo で作った敵・水の生き物・ボスの体（docs/devlog/2026-10-26-enemy-3d.md ほか）。
+  // 骨とモーションは scripts/blender/build_<名前>_animations.py。消すと元の体（射撃敵の色違い・円錐・母卵）に戻る
+  sniperEnemy: tripoBody(new URL('../assets/enemies/ivory_dragonfly_anim.glb', import.meta.url).href, 2.05),
+  dragonflyEnemy: tripoBody(new URL('../assets/enemies/bat_rat_anim.glb', import.meta.url).href, 1.7),
+  frogEnemy: tripoBody(new URL('../assets/enemies/armored_beetle_anim.glb', import.meta.url).href, 2.0),
+  tadpoleEnemy: tripoBody(new URL('../assets/enemies/tadpole_anim.glb', import.meta.url).href, 1.0),
+  larvaEnemy: tripoBody(new URL('../assets/enemies/dragonfly_nymph_anim.glb', import.meta.url).href, 0.8),
+  aquaticEgg: tripoBody(new URL('../assets/eggs/eye_eggs.glb', import.meta.url).href, 1.8),
+  thirstMotherBody: tripoBody(new URL('../assets/mother/rose_cocoon_rtp.glb', import.meta.url).href, Config.visuals.motherEggModelHeight),
+  pursuerBody: tripoBody(new URL('../assets/mother/bat_neck_beast_anim.glb', import.meta.url).href, 6.4),
+  swarmMotherBody: tripoBody(new URL('../assets/mother/spider_lily_anim.glb', import.meta.url).href, 3.9),
+  floodgateMotherBody: tripoBody(new URL('../assets/mother/jellyfish_stalk_anim.glb', import.meta.url).href, 4.4)
 };
+
+function tripoBody(url, height) {
+  return {
+    url,
+    height,
+    centerXZ: true,
+    forceOpaque: true,
+    tripo: true
+  };
+}
 
 function tripoModel(name, height) {
   return {
@@ -1120,7 +1164,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
           console.warn(`Failed to load gameplay model: ${key}`, error);
         }
       }));
-      if (Config.pickups.models.enabled && !pickupModelsInstalled) {
+      if (pickupModelsEnabled() && !pickupModelsInstalled) {
         pickupModelsInstalled = true;
         await Promise.all(Object.entries(PICKUP_MODELS).map(async ([type, url]) => {
           try {
@@ -2337,7 +2381,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.spawnXp(egg.position, Config.egg.xp);
     if (source !== 'mimicBurst') this.spawnRandomPickup(egg.position, 'egg');
     this.player.addBurst(Config.player.burstGainEgg);
-    if (source === 'birdDive') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio * this.player.eggHealScale, 0, this.player.maxHp);
+    if (source === 'birdDive' || source === 'fishBite') this.player.hp = clamp(this.player.hp + this.player.maxHp * Config.egg.healOnBreakRatio * this.player.eggHealScale, 0, this.player.maxHp);
   }
 
   spawnProjectile(origin, target, spec) {
@@ -2911,6 +2955,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.thirstStats.healed += heal;
     if (consumed > 0) {
       mother.hitPulse = Math.max(mother.hitPulse, 0.03);
+      mother.beatSwell = 1;
       this.spawnRingEffect(mother.position, 4.4, 0x7fe9ff, 0.8, 0.5);
       this.spawnParticleBurst(mother.position, 40, 0x9ff3ff, 3.2, 0.6, 0.8);
       this.showMessage(`${getBossName(this.stage)}が回復した（卵 ${consumed} 個）`, 1.6);
@@ -2922,6 +2967,9 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   // Pursuer (src/bosses.js): stops, opens its shell and lays an egg behind itself (away from the player).
   onPursuerLayStart(mother, seconds) {
     this.pursuerStats.lays += 1;
+    // 翼獣の体は、止まっている間ずっと首と翼を持ち上げて胸を開く（attack を止まる長さに合わせる）
+    const layClip = mother.creatureActions?.attack?.getClip();
+    if (layClip) mother.playCreatureOneShot('attack', { timeScale: layClip.duration / seconds });
     if (!this.pursuerHintShown) {
       this.pursuerHintShown = true;
       this.showMessage(`${getBossName(this.stage)}が立ち止まって卵を産んでいる
@@ -2945,6 +2993,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   // Floodgate mother (src/bosses.js): bitten while submerged, surfaces stunned on the third bite, sends tadpole lines.
   onFloodgateBite(mother, bites, needed) {
     this.floodgateStats.bites += 1;
+    mother.playCreatureOneShot?.('hit');
     this.spawnRingEffect(mother.position, 3.4, 0x5fd0ff, 0.7, 0.4);
     if (Config.audio.newSfx) this.playSfx('fishBite', { volume: 0.85, cooldown: 0.1 });
     else this.playSfx('birdFeed', { volume: 0.8, cooldown: 0.1 });
@@ -2953,6 +3002,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 
   onFloodgateSurface(mother, seconds) {
     this.floodgateStats.bites += 1;
+    mother.playCreatureOneShot?.('surface');
     this.floodgateStats.surfaces += 1;
     this.spawnBurstEffect(mother.position, 6, 0x9ff3ff);
     this.spawnRingEffect(mother.position, 4.2, 0xffe066, 0.9, 0.6);
@@ -2973,6 +3023,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 魚形態で3回噛みつくと浮上する`, 3.4, MessagePriority.important);
     }
     this.floodgateStats.streams += 1;
+    mother.playCreatureOneShot?.('attack');
     const { direction, points } = floodgateStreamPoints(mother.position, this.player.position, count, cfg.streamStart, cfg.streamSpacing);
     for (const point of points) {
       const position = new THREE.Vector3(point.x, 0, point.z);

@@ -48,7 +48,7 @@ function createEnemy(type) {
   return { game, player, enemy: new Enemy(game, type, new THREE.Vector3()) };
 }
 
-for (const type of ['chaser', 'shooter', 'sniper', 'guardian', 'spawner']) {
+for (const type of ['chaser', 'shooter', 'sniper', 'guardian', 'spawner', 'dragonfly', 'frog']) {
   test(`${type} walks while moving and idles while standing still`, () => {
     const { enemy } = createEnemy(type);
     assert.equal(enemy.activeModelAction, enemy.modelActions.walk);
@@ -89,8 +89,30 @@ for (const type of ['chaser', 'shooter', 'sniper', 'guardian', 'spawner']) {
   });
 }
 
+test('the flying enemy hovers and its corpse falls to the ground before sinking', () => {
+  const { enemy, game } = createEnemy('dragonfly');
+  const root = enemy.getModelAnimationRoot();
+  const hover = Config.enemy.dragonfly.hoverHeight;
+  assert.ok(Math.abs(root.position.y - hover) < 1e-6);
+  enemy.takeDamage(enemy.maxHp);
+  const effect = game.effects[0];
+  for (let i = 0; i < 6; i++) effect.update(effect, 0.1);
+  assert.ok(Math.abs(root.position.y) < 1e-6);
+  while (effect.life > 0) effect.update(effect, 0.1);
+  assert.ok(enemy.model.position.y < -0.5);
+});
+
+test('the jumping enemy plays its attack clip when it leaps', () => {
+  const { enemy, player } = createEnemy('frog');
+  player.position.set(0, 0, 3);
+  enemy.jumpTimer = 0;
+  enemy.updateFrog(0.016);
+  assert.equal(enemy.activeModelAction, enemy.modelActions.attack);
+  assert.ok(enemy.jumpPhase > 0);
+});
+
 test('melee enemies attack on contact and return to their locomotion clip', () => {
-  for (const type of ['chaser', 'guardian']) {
+  for (const type of ['chaser', 'guardian', 'dragonfly']) {
     const { enemy, player } = createEnemy(type);
     player.position.set(0, 0, 0.5);
     enemy.distanceSqToPlayer = 0.25;
