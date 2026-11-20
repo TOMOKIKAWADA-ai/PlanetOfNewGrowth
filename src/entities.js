@@ -1571,6 +1571,7 @@ export class Player {
     if (this.game.characterId === 'tsukimi') this.performTsukimiBurst();
     else if (this.game.characterId === 'kiichigo') this.startKiichigoBurst();
     else this.performAkameBurst();
+    this.game.clearSwarmbirdsByBurst?.(this.position);
   }
 
   performAkameBurst() {

@@ -285,7 +285,9 @@ export const Config = {
     birdTurnRate: Math.PI * 0.82,
     birdBoundaryTurnRate: Math.PI * 1.2,
     humanRegenMp: 6,
-    birdMpCost: 14,
+    // 鳥形態で毎秒減る MP。2026-11-19 ユーザー「鳥形態をあまり使っていないように見える」「鳥のMPを見直して」で 14 → 10
+    // （14 だと満タンからでも 7 秒ほどで落ちる）。14 で元どおり。
+    birdMpCost: 10,
     fishSpeed: 8.4,
     fishMpCost: 9,
     fishEggRange: 3.2,
@@ -757,8 +759,11 @@ export const Config = {
     // プレイヤーが人間形態の間は、半径 orbitRadius・高さ orbitHeight で遠巻きに回るだけで襲わない（自動射撃で落とせる）。
     // 鳥形態になると noticeSeconds で気づき、diveSpeed で鳥の高さまで上がって集中して襲う（鳥形態でも当たる）。
     // 人間形態に戻ると、また遠巻きに戻る。卵から孵る敵の chance が群れになる。enabled: false で出なくなる。
+    // burstClearRange: バーストを撃った瞬間、この半径の中の群れ鳥を一掃する（3 キャラ共通、0 で元どおり）。
+    // 2026-11-19 ユーザー「群れ鳥はバーストを使うと一蹴できるようにする」。遠巻きに回る半径 orbitRadius より広くしてある。
     swarmbird: {
       enabled: true,
+      burstClearRange: 24,
       fromChapter: 2,
       fromElapsed: 60,
       chance: 0.08,
@@ -781,8 +786,9 @@ export const Config = {
     // late. Same form as the player: it can hit the player and takes no damage. Different form (just after the
     // player switched): it cannot hit and takes damage (shots while it flies, a bird dive while it walks).
     // Set enabled: false to remove it.
+    // 2026-11-19 ユーザー「影法師は一旦いらないかな」で false（コードは残してあり、true で戻る）。
     shadow: {
-      enabled: true,
+      enabled: false,
       hp: 260,
       speed: 6.1,
       birdSpeed: 12.4,
