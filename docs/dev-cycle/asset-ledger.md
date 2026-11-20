@@ -586,3 +586,15 @@ GLB の置き場所: `assets_src/tripo/2026-11-09-enemies/<名前>.glb`（git �
 | `assets/pickups/pickup_speed.glb` | 加速 | 三つの稜のある矢じり形の実。ゲームが横に寝かせて速く回す | 468 |
 
 Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊んで見てから決める（判断待ち）。
+
+## 2026-11-20 バーストを撃てるようになったときの一言（B3-10、3人分）
+ツール: Irodori-TTS 4.1 Small（`scripts/assets/irodori-batch.py`）。手本の声 `assets_src/voice/refs/<キャラ>/` を `refs` に指定（指定文は空、演技の指定だけ）。台詞ファイル `scripts/assets/voices/2026-11-20-burst-ready.json`、候補は `assets_src/voice/2026-11-20-burst-ready/`（各 3 シード、計 9 本）。文字起こし（`voice-asr.py`）と声の分析（`voice-analyze.py`、出力 `tmp/voice-analysis/2026-11-20/`）で選んだ。後処理は FFmpeg（前後の無音を削り、平均 -16 dB にそろえて mp3）。
+
+| ファイル | 台詞（仮） | 演技の指定 | シード | 選んだ理由・落とした候補 |
+|---|---|---|---|---|
+| `assets/audio/voice/tsukimi/burst_ready_01.mp3` | 準備、できました。 | 落ち着いて短く仲間に知らせる | 1801 | 3 本とも聞き取りは一致。声の高さ 309Hz（手本 285〜347）、有声の割合がいちばん高い。1.97 秒 |
+| `assets/audio/voice/akame/burst_ready_01.mp3` | ……いける。 | 低く短く、自分に言うようにつぶやく | 2801 | 1802 は「生きる」、1803 は「行けよ」と聞き取られた。192Hz（手本 189〜276）。0.42 秒 |
+| `assets/audio/voice/kiichigo/burst_ready_01.mp3` | よーし、たまった！ | 軽い調子で明るく短く | 3802 | 3 本とも「たまった」が「黙った／止まった」と聞き取られる（音が近い）。3801・3803 は後ろに短い余分な音のかたまり。3802 は音のかたまりが 2 つだけ。548Hz で高め（はしゃいだ声）。1.92 秒 |
+
+組み込み: `src/main.js` の `voices` に `burstReady`、`updateBurstReadyVoice()`（ゲージが満タンで再使用の待ちが無くなった瞬間、戦闘時間 30 秒に 1 回まで）。**台詞の承認待ちなので `Config.audio.burstReadyVoice: false`（鳴らない）**。URL の `?burstReadyVoice=1` で鳴らして試せる。
+ライセンス: Irodori-TTS（手本の声も Irodori で作ったもの）。

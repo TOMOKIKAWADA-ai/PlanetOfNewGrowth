@@ -40,6 +40,7 @@ test('footprint walks the trail a few seconds behind and loses it at a flight ga
   const game = { player, elapsed: 0, playerTrail: null, footprintStats: { spawned: 0, lost: 0, hits: 0 }, cloneGameplayModel: () => null };
   game.playerTrail = walkTrail(10, 8, 10);
   const footprint = createFootprint(game, new THREE.Vector3(5, 0, 1));
+  footprint.footprint.delay = cfg.delaySeconds;
 
   // 道に乗るまで、記録が古い分だけ早くなぞる。乗ったあとは delaySeconds 前の地点に重なる。
   for (let t = 4; t <= 7.5; t += 0.05) {
@@ -58,4 +59,31 @@ test('footprint walks the trail a few seconds behind and loses it at a flight ga
   }
   assert.equal(footprint.footprint.tracking, false);
   assert.equal(game.footprintStats.lost, 1);
+});
+
+test('each footprint gets its own delay within the configured spread', () => {
+  const player = { position: new THREE.Vector3(0, 0, 0), form: 'human' };
+  const game = { player, elapsed: 0, playerTrail: null, footprintStats: { spawned: 0, lost: 0, hits: 0 }, cloneGameplayModel: () => null };
+  const delays = [];
+  for (let i = 0; i < 20; i++) delays.push(createFootprint(game, new THREE.Vector3(i, 0, 0)).footprint.delay);
+  for (const delay of delays) {
+    assert.ok(delay >= cfg.delaySeconds && delay <= cfg.delaySeconds + cfg.delaySpread, `delay ${delay}`);
+  }
+  if (cfg.delaySpread > 0) assert.ok(Math.max(...delays) - Math.min(...delays) > 0.1);
+});
+
+test('a footprint with a longer delay walks further behind on the same trail', () => {
+  const player = { position: new THREE.Vector3(50, 0, 0), form: 'human' };
+  const game = { player, elapsed: 0, playerTrail: walkTrail(18), footprintStats: { spawned: 0, lost: 0, hits: 0 }, cloneGameplayModel: () => null };
+  const near = createFootprint(game, new THREE.Vector3(20, 0, 1));
+  const far = createFootprint(game, new THREE.Vector3(20, 0, 1));
+  near.footprint.delay = 2.6;
+  far.footprint.delay = 5;
+  for (let t = 6; t <= 18; t += 0.05) {
+    game.elapsed = t;
+    near.updateFootprint(0.05);
+    far.updateFootprint(0.05);
+  }
+  assert.ok(Math.abs(near.position.x - (18 - 2.6) * 5) < 0.8, `near ${near.position.x}`);
+  assert.ok(Math.abs(far.position.x - (18 - 5) * 5) < 0.8, `far ${far.position.x}`);
 });

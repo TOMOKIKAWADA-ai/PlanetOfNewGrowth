@@ -175,7 +175,8 @@ const VOICE_URLS = {
     levelUp: [new URL('../assets/audio/voice/tsukimi/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href],
     bossDown: [new URL('../assets/audio/voice/tsukimi/boss_down_01.mp3', import.meta.url).href],
-    lowHp: [new URL('../assets/audio/voice/tsukimi/low_hp_01.mp3', import.meta.url).href]
+    lowHp: [new URL('../assets/audio/voice/tsukimi/low_hp_01.mp3', import.meta.url).href],
+    burstReady: [new URL('../assets/audio/voice/tsukimi/burst_ready_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -199,7 +200,8 @@ const VOICE_URLS = {
     levelUp: [new URL('../assets/audio/voice/akame/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href],
     bossDown: [new URL('../assets/audio/voice/akame/boss_down_01.mp3', import.meta.url).href],
-    lowHp: [new URL('../assets/audio/voice/akame/low_hp_01.mp3', import.meta.url).href]
+    lowHp: [new URL('../assets/audio/voice/akame/low_hp_01.mp3', import.meta.url).href],
+    burstReady: [new URL('../assets/audio/voice/akame/burst_ready_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -223,7 +225,8 @@ const VOICE_URLS = {
     levelUp: [new URL('../assets/audio/voice/kiichigo/level_up_01.mp3', import.meta.url).href],
     lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href],
     bossDown: [new URL('../assets/audio/voice/kiichigo/boss_down_01.mp3', import.meta.url).href],
-    lowHp: [new URL('../assets/audio/voice/kiichigo/low_hp_01.mp3', import.meta.url).href]
+    lowHp: [new URL('../assets/audio/voice/kiichigo/low_hp_01.mp3', import.meta.url).href],
+    burstReady: [new URL('../assets/audio/voice/kiichigo/burst_ready_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -571,6 +574,11 @@ class Game {
     this.playerTrail = this.footprintsActive ? new PlayerTrail(footprintCfg.trailSeconds, footprintCfg.trailSampleInterval) : null;
     this.footprintHintShown = false;
     this.footprintStats = { spawned: 0, lost: 0, hits: 0 };
+    this.wasBurstReady = undefined;
+    this.lastBurstReadyVoiceAt = undefined;
+    // ?footprintSpread=0 で、足跡の遅れの散らばり（A23）を止めて比べられる
+    const spreadFromUrl = new URLSearchParams(window.location.search).get('footprintSpread');
+    if (spreadFromUrl !== null && Number.isFinite(Number(spreadFromUrl))) footprintCfg.delaySpread = Number(spreadFromUrl);
     this.trailMarkTimer = 0;
     this.criersActive = Config.enemy.crier.enabled && this.stageId >= Config.enemy.crier.fromChapter;
     this.crierHintShown = false;
@@ -1564,6 +1572,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
       this.enemyGrid.rebuild(this.enemies);
       this.player.update(dt, this.input);
       this.updateVineBind(dt);
+      this.updateBurstReadyVoice();
       if (this.playerTrail) this.updatePlayerTrail(dt);
       if (this.rootsuckersActive) this.updateDryGround(dt);
       if (this.swarmFlocks.length) this.updateSwarmFlocks(dt);
@@ -3745,6 +3754,25 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.lastLowHpVoiceAt = this.elapsed;
     this.playVoice('lowHp', { volume: 0.95 });
     return true;
+  }
+
+  // B3-10: one line when the burst becomes ready (gauge full and off cooldown). Off until the lines are approved;
+  // ?burstReadyVoice=1 turns it on to listen.
+  updateBurstReadyVoice() {
+    const player = this.player;
+    if (!player || player.dead) return;
+    const ready = player.burst >= Config.player.burstMax && player.burstCooldownTimer <= 0;
+    const wasReady = this.wasBurstReady;
+    this.wasBurstReady = ready;
+    if (!ready || wasReady !== false) return;
+    if (this._burstReadyVoiceEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('burstReadyVoice');
+      this._burstReadyVoiceEnabled = fromUrl === null ? Boolean(Config.audio.burstReadyVoice) : fromUrl !== '0';
+    }
+    if (!this._burstReadyVoiceEnabled) return;
+    if (this.elapsed - (this.lastBurstReadyVoiceAt ?? -Infinity) < Config.audio.burstReadyVoiceCooldown) return;
+    this.lastBurstReadyVoiceAt = this.elapsed;
+    this.playVoice('burstReady', { volume: 0.85 });
   }
 
   onEnemyKilled() {

@@ -2709,7 +2709,12 @@ export class Enemy {
     this.hpBar = this.createHpBar();
     this.object.add(this.hpBar);
     if (type === 'sniper') this.createSniperBeam();
-    if (type === 'footprint') this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true };
+    if (type === 'footprint') {
+      // 遅れは 1 体ごとに delaySeconds〜delaySeconds+delaySpread で散らす（A23。同じ所を回ると、遅れの違う足跡に前から挟まれる）
+      const fp = Config.enemy.footprint;
+      const delay = fp.delaySeconds + Math.random() * (fp.delaySpread ?? 0);
+      this.footprint = { cursor: null, rejoinTimer: 0, target: null, lostCount: 0, tracking: false, fresh: true, delay };
+    }
     if (type === 'crier') this.crier = { timer: Config.enemy.crier.cryInterval * randRange(0.45, 0.8), swelling: false, baseScale: this.model.scale.clone() };
     if (type === 'hand') this.createHandArm();
     if (type === 'rootsucker') this.createDryCircle();

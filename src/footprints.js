@@ -75,7 +75,8 @@ export class PlayerTrail {
 // 戻り値の target は向かう地点（見失っているときは null）。
 // 孵ったばかりの足跡（state.fresh）はどこからでも一番近い道へ向かう。道を見失ったあとは joinRadius 以内の道しか拾わない。
 export function advanceFootprint(state, trail, now, dt, cfg, position) {
-  const lagTarget = now - cfg.delaySeconds;
+  // state.delay: その足跡だけの遅れ（孵ったときに決める。無ければ設定の値）
+  const lagTarget = now - (state.delay ?? cfg.delaySeconds);
   if (state.cursor === null) {
     state.rejoinTimer -= dt;
     if (state.rejoinTimer > 0) return null;

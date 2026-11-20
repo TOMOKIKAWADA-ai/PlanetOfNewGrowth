@@ -204,6 +204,8 @@
     - 「いったた」は「いっと」「いっとっと」と崩れやすかった（3 シード中 2 本）。「……」の後の間は 1 秒前後になる（ツキミ「まだ……倒れません。」で 1.1 秒）。
   - シェルの heredoc から Python に日本語を渡すと cp932 で化ける。日本語を含む置換は Edit ツールで行う。
 - ゲームに入れる後処理（FFmpeg）: 前後の無音を削り、既存の声に合わせて **-15 LUFS**（真のピーク -1.5 dB）にそろえて mp3 にする。
+  - 2026-11-20: `ffmpeg` は PATH に無い（Git Bash でも PowerShell でも）。Irodori に同梱の `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-n8.1-latest-win64-gpl-shared-8.1\bin\ffmpeg.exe`（ffprobe も同じ所）を使う。Bash では `export PATH="/d/AI/Irodori-TTS-v4_1/tools/ffmpeg-n8.1-latest-win64-gpl-shared-8.1/bin:$PATH"`。`D:\AI\3D_local` の中にもあるが、Hunyuan3D のフォルダなので使わない。
+  - 2026-11-20: 「たまった」は 3 シードとも「黙った／止まった」と聞き取られた。た行・だ行の頭の語は一致率が下がるだけで、言い間違いとは限らない。
   `-af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-15:TP=-1.5:LRA=11,afade=t=in:d=0.01" -ar 44100 -ac 1 -codec:a libmp3lame -q:a 4`
   - 失敗例: `afade=t=out:st=0:d=0.001` を入れたら開始直後にフェードアウトしてほぼ無音（-60 LUFS 以下）になった。書き出したら `-af ebur128 -f null -` で音量を必ず確かめる。0.4 秒未満の短い音は ebur128 が -70 と出るが無音ではない。
   - 既存の声の音量（2026-10-23 計測）: -13.6〜-16.6 LUFS。

@@ -185,7 +185,11 @@ export const Config = {
     // One-liner when HP first drops below lowHpVoiceRatio, instead of the hit cry (added 2026-11-13; false = none, as before).
     lowHpVoice: true,
     lowHpVoiceRatio: 0.3,
-    lowHpVoiceCooldown: 40
+    lowHpVoiceCooldown: 40,
+    // One-liner when the burst becomes ready (B3-10, added 2026-11-20). Off until the user approves the lines;
+    // ?burstReadyVoice=1 plays it. At most once per burstReadyVoiceCooldown seconds of battle time.
+    burstReadyVoice: false,
+    burstReadyVoiceCooldown: 30
   },
   // A5: 敵の出現の緩急（波と小休止）。計算は src/pacing.js。
   // enabled: false か URL の ?pacing=0 で、元の出方（stageBeats だけ、孵る速さは一定の伸び）に戻る。
@@ -657,6 +661,9 @@ export const Config = {
       xp: 7,
       walkAnimationSpeed: 2.6,
       delaySeconds: 2.6,
+      // 1 体ごとの遅れの散らばり（A23、2026-11-20）。2.6〜5.6 秒になり、半径 6 くらいまでの円を回ると挟まれる。
+      // 0 で元どおり（全員 2.6 秒遅れで、後ろに一列に並ぶ）。確かめ方: node scripts/sim-footprint.mjs --count 3
+      delaySpread: 3,
       catchUpRate: 1.3,
       joinRadius: 6,
       reachDistance: 1.5,

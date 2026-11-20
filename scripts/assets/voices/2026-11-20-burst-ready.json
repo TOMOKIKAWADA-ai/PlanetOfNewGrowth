@@ -1,0 +1,55 @@
+{
+  "speakers": {
+    "tsukimi": {
+      "caption": "",
+      "seed": 1801,
+      "refs": [
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_04_doubt-s1301.wav",
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_06_call-s1301.wav"
+      ]
+    },
+    "akame": {
+      "caption": "",
+      "seed": 2801,
+      "refs": [
+        "assets_src/voice/refs/akame/akame-ref_02_report-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_04_refuse-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_05_care-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_06_call-s2202.wav"
+      ]
+    },
+    "kiichigo": {
+      "caption": "",
+      "seed": 3801,
+      "refs": [
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_01_calm-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_04_cheer-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_06_call-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_07_tired-s3303.wav"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "id": "burst_ready_01",
+      "speaker": "tsukimi",
+      "text": "準備、できました。",
+      "style": "戦いの最中、力がたまったことに気づき、落ち着いて短く仲間に知らせる。",
+      "seeds": [1801, 1802, 1803]
+    },
+    {
+      "id": "burst_ready_01",
+      "speaker": "akame",
+      "text": "……いける。",
+      "style": "力がたまったのを感じ、低く短く、自分に言うようにつぶやく。",
+      "seeds": [2801, 2802, 2803]
+    },
+    {
+      "id": "burst_ready_01",
+      "speaker": "kiichigo",
+      "text": "よーし、たまった！",
+      "style": "力がたまってうれしくなり、軽い調子で明るく短く言う。",
+      "seeds": [3801, 3802, 3803]
+    }
+  ]
+}
