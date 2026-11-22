@@ -598,3 +598,13 @@ Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊�
 
 組み込み: `src/main.js` の `voices` に `burstReady`、`updateBurstReadyVoice()`（ゲージが満タンで再使用の待ちが無くなった瞬間、戦闘時間 30 秒に 1 回まで）。**台詞の承認待ちなので `Config.audio.burstReadyVoice: false`（鳴らない）**。URL の `?burstReadyVoice=1` で鳴らして試せる。
 ライセンス: Irodori-TTS（手本の声も Irodori で作ったもの）。
+
+## 2026-11-23 水の章の岸と島の石（B1-6、Blender で手作り、生成なし）
+水の章（第3・5・6章）の岸と島に置く岩は、茶色に緑の斑の `obj_008_rtp.glb` を使っていて、地面から浮いて見えた。Blender のスクリプトで、ノイズで曲げた球 3 個を寄せた低い石の塊を作った。画像生成も 3D 生成も使っていないので、利用条件の心配はない。
+スクリプト: `scripts/blender/build_shore_rocks.py`（1 回 10 秒ほど。ノイズの種は固定なので毎回同じ形）。色は頂点色（水際の濡れた暗い帯、灰緑の石、上面の少しの苔、乾いた白っぽい頂）。確認画像: `docs/devlog/img/2026-11-23-shore-rocks-blender.png`、ゲーム内 `docs/devlog/img/2026-11-23-shore-rocks-new.png`（元の岩は `-old.png`）。
+
+| ファイル | 形 | 三角形 |
+|---|---|---|
+| `assets/background/water_shore_rocks.glb` | 大・中・小の丸い石 3 個の寄せ集め。底は平ら | 960 |
+
+組み込み: `src/main.js` の `WATER_STAGE_SHORE_ROCKS_URL`（岸 18 か所・島 8 か所に置く。高さ 0.38〜0.85）。`Config.visuals.handmadeShoreRocks: true`。false か URL の `?shoreRocks=0` で元の岩に戻る。

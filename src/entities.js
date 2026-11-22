@@ -1505,8 +1505,29 @@ export class Player {
     return true;
   }
 
+  // A24: the floodgate mother while it is stunned (surfaced) and within reach, for both shots to aim at first.
+  stunnedBossTarget() {
+    const cfg = Config.boss.floodgateMother;
+    const mother = this.game.motherEgg;
+    if (!cfg.stunFocus || !mother || mother.dead || mother.floodgate?.state !== 'surfaced') return null;
+    return horizontalDistanceSq(this.position, mother.position) <= cfg.stunFocusRange * cfg.stunFocusRange ? mother : null;
+  }
+
   tryAutoShoot() {
     if (this.attackLockTimer > 0 || this.autoTimer > 0) return;
+    const stunned = this.stunnedBossTarget();
+    if (stunned) {
+      // Auto shots only hit enemies, so one aimed at the boss flies as an egg shot.
+      this.fireFromSeeds(stunned.position, {
+        kind: 'eggSpecial',
+        damage: this.autoDamage * Config.boss.floodgateMother.stunFocusAutoScale,
+        speed: Config.player.autoProjectileSpeed,
+        radius: 0.35,
+        pierce: 0
+      });
+      this.autoTimer = this.autoInterval;
+      return;
+    }
     const target = this.findNearestEnemy(Config.player.autoRange);
     if (!target) return;
     this.fireFromSeeds(target.position, {
@@ -1524,7 +1545,7 @@ export class Player {
 
   trySpecialEggShot() {
     if (this.attackLockTimer > 0 || this.specialTimer > 0) return;
-    const target = this.findNearestEgg(Config.player.specialEggRange, true);
+    const target = (Config.boss.floodgateMother.stunFocusEggShot ? this.stunnedBossTarget() : null) ?? this.findNearestEgg(Config.player.specialEggRange, true);
     if (!target) return;
     this.fireFromSeeds(target.position, {
       kind: 'eggSpecial',

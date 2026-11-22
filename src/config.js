@@ -28,6 +28,9 @@ export const Config = {
     // Tripo で作った新種とボスの体（2026-11-09、assets/enemies/tripo/*_anim.glb）。足跡・群れ鳥・割れ殻・鳴き・手・吸水根と
     // 白蓮の核・花弁を、色違いの仮の体から置き換える。false（または URL に ?tripoEnemies=0）で元の仮の体に戻る。
     tripoEnemyModels: true,
+    // 水の章の岸と島の石（2026-11-23、B1-6。Blender で手作り、scripts/blender/build_shore_rocks.py）。
+    // false（または URL に ?shoreRocks=0）で元の岩（obj_008_rtp.glb）に戻る。
+    handmadeShoreRocks: true,
     // 強化アイコンの手直し版（2026-11-11 seeds の切り残しを消した版、2026-11-15 speed・pierce を太く描き直した版）。false で元の絵に戻る。
     cleanedUpgradeIcons: true,
     // 章のクリア後に選ぶ引き継ぎ強化のアイコン（2026-11-18、B4-2。新しい 6 個は scripts/assets/draw-reward-icons.py、
@@ -453,7 +456,15 @@ export const Config = {
       streamSeconds: 3.2,
       streamDamage: 9,
       streamLinger: 5,
-      shoreMargin: 1.35
+      shoreMargin: 1.35,
+      // A24 (2026-11-23): while it is stunned, the auto shot aims at it first if it is within
+      // stunFocusRange (the auto shot otherwise only hits enemies, so a 7-second stun did almost nothing).
+      // Auto shots aimed at it do stunFocusAutoScale of their damage; stunFocusEggShot also turns the egg shot to it.
+      // false (or URL ?stunFocus=0) for the old aim.
+      stunFocus: true,
+      stunFocusRange: 10,
+      stunFocusAutoScale: 0.25,
+      stunFocusEggShot: false
     },
     // Chapter 4's swarm mother is three sisters joined by threads of light, each with hpShare of a mother's HP.
     // A sister brought to 0 only falls down; unless the rest fall within reviveSeconds she stands up again with

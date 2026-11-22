@@ -383,6 +383,7 @@ const WATER_STAGE_BUILDINGS = [
   { asset: 0, x: 7, z: 46, height: 4.2, rotation: 2.4, sink: 1.5 }
 ];
 const WATER_STAGE_REED_CLUMPS = 26;
+const WATER_STAGE_SHORE_ROCKS_URL = new URL('../assets/background/water_shore_rocks.glb', import.meta.url).href;
 const WATER_STAGE_SHORE_ROCKS = 18;
 const WATER_STAGE_ISLAND_ROCKS = 8;
 const WATER_STAGE_GROUND_PATCHES = 8;
@@ -579,6 +580,9 @@ class Game {
     // ?footprintSpread=0 で、足跡の遅れの散らばり（A23）を止めて比べられる
     const spreadFromUrl = new URLSearchParams(window.location.search).get('footprintSpread');
     if (spreadFromUrl !== null && Number.isFinite(Number(spreadFromUrl))) footprintCfg.delaySpread = Number(spreadFromUrl);
+    // ?stunFocus=0 で、水門の母の気絶中に射撃が母を優先して狙うの（A24）を止めて比べられる
+    const stunFocusFromUrl = new URLSearchParams(window.location.search).get('stunFocus');
+    if (stunFocusFromUrl !== null) Config.boss.floodgateMother.stunFocus = stunFocusFromUrl !== '0';
     this.trailMarkTimer = 0;
     this.criersActive = Config.enemy.crier.enabled && this.stageId >= Config.enemy.crier.fromChapter;
     this.crierHintShown = false;
@@ -987,7 +991,15 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
         ...Array.from({ length: WATER_STAGE_SHORE_ROCKS }, () => this.randomWaterStagePoint(-1.4, 1.2, Config.map.safeRadius + 3)),
         ...Array.from({ length: WATER_STAGE_ISLAND_ROCKS }, () => this.randomWaterStagePoint(-14, -3, Config.map.safeRadius + 3))
       ];
-      this.addInstancedWaterStageProp(scenes.get(6), 'WaterStageRocks', rockPoints, 0.55, 1.35, -0.12);
+      const shoreRocksFromUrl = new URLSearchParams(window.location.search).get('shoreRocks');
+      const handmadeRocks = shoreRocksFromUrl === null ? Boolean(Config.visuals.handmadeShoreRocks) : shoreRocksFromUrl !== '0';
+      if (handmadeRocks) {
+        // B1-6: 手作りの石（低い 3 個の寄せ集め）なので、元の岩より少し低く置いて同じくらいの見た目の大きさにする。
+        const shoreRocks = await loader.loadAsync(WATER_STAGE_SHORE_ROCKS_URL);
+        this.addInstancedWaterStageProp(shoreRocks.scene, 'WaterStageRocks', rockPoints, 0.38, 0.85, -0.08);
+      } else {
+        this.addInstancedWaterStageProp(scenes.get(6), 'WaterStageRocks', rockPoints, 0.55, 1.35, -0.12);
+      }
       const patchPoints = Array.from({ length: WATER_STAGE_GROUND_PATCHES }, () => this.randomWaterStagePoint(-16, -3.5, 9));
       this.addInstancedWaterStageProp(scenes.get(4), 'WaterStageGroundPatches', patchPoints.slice(0, 4), 0.16, 0.2, 0.01, 3.2);
       this.addInstancedWaterStageProp(scenes.get(5), 'WaterStageMossPatches', patchPoints.slice(4), 0.3, 0.4, 0.01, 3.2);
