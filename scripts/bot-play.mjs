@@ -47,6 +47,13 @@ const thirstDeny = args.thirst === '1';
 // or to dive on a boss within 12. On a water map the eased rule only applies on land, where a transform gives a bird
 // (in the water it would give a fish), and during the boss only to dive on the boss.
 const fly = args.fly !== '0';
+// --pursuerTiming 1 (A22, 2026-11-24): against chapter 2's pursuer, keep pursuerFar away while its shell is closed
+// (clearing the crowd and eggs) and close in to pursuerNear only while it lays (shell open). Bird dives on it also wait
+// for the open shell. Off by default so the numbers stay comparable with older runs.
+const pursuerTiming = args.pursuerTiming === '1';
+const pursuerFar = Number(args.pursuerFar ?? 9);
+const pursuerNear = Number(args.pursuerNear ?? 4);
+const pursuerRush = Number(args.pursuerRush ?? 4);
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
@@ -63,7 +70,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny, fly }) {
+function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny, fly, pursuerTiming, pursuerFar, pursuerNear, pursuerRush }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -285,10 +292,15 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
       const flood = mother?.floodgate;
       // On a water map a boss that lives on land is hugged closely: the ground there is land, where a transform gives bird form for the shockwave.
       const landHug = game.isWaterStage && mother && !flood;
-      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? (landHug ? 2.5 : bossRange) : 0;
+      const pursuit = pursuerTiming ? mother?.pursuit : null;
+      const humanRange = pursuit ? (pursuit.state === 'laying' ? pursuerNear : pursuerFar) : landHug ? 2.5 : bossRange;
+      const desired = flood ? (flood.state === 'submerged' ? 0 : 4.5) : player.form === 'human' && mother ? humanRange : 0;
       // The further the boss, the harder the bot heads back (up to 6x), so the crowd's push cannot carry it away.
       const chasePull = chase && mother ? Math.min(6, Math.max(1, (d - desired) / 6)) : 1;
-      const pull = (d > desired ? chasePull : -0.6) * (flood?.state === 'submerged' ? 3 : 1);
+      // A22: the open shell lasts only a few seconds, so rush in hard (the crowd's push would otherwise keep the bot out
+      // of the egg shot's reach); while it is closed, only drift back toward pursuerFar without fighting the crowd.
+      const pursuitBoost = pursuit ? (pursuit.state === 'laying' ? pursuerRush : 0.5) : 1;
+      const pull = (d > desired ? chasePull * pursuitBoost : -0.6) * (flood?.state === 'submerged' ? 3 : 1);
       mx += (dx / d) * pull;
       mz += (dz / d) * pull;
     }
@@ -338,6 +350,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     const drain = drainTarget();
     const onLand = !game.isWaterStage || !game.isWaterPosition(player.position);
     const bossClose = mother && !mother.swarmDown && !flood
+      && !(pursuerTiming && mother.pursuit && mother.pursuit.state !== 'laying')
       && (mother.position.x - player.position.x) ** 2 + (mother.position.z - player.position.z) ** 2 < 144;
     // On a water map, while a boss is up, fly only to dive on it (the eggs are left to the human-form shots): flying for
     // eggs there cost chapters 3 and 6 wins. On land maps flying for eggs during the boss keeps the damage taken down
@@ -420,6 +433,19 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
       stats.motherSpawnedAt = game.elapsed;
       mark('motherSpawn');
     }
+    // A22: how much of the pursuer's HP goes while its shell is open (laying) and while it is closed, and the distance.
+    const pursuerBody = game.motherEgg?.pursuit ? game.motherEgg : null;
+    if (pursuerBody) {
+      const ps = stats.pursuerHits ??= { open: 0, closed: 0, openSeconds: 0, openNearSeconds: 0, lastHp: pursuerBody.hp };
+      const lost = Math.max(0, ps.lastHp - pursuerBody.hp);
+      const open = pursuerBody.pursuit.state === 'laying';
+      if (open) ps.open += lost; else ps.closed += lost;
+      ps.lastHp = pursuerBody.hp;
+      if (open) {
+        ps.openSeconds += dt;
+        if ((pursuerBody.position.x - player.position.x) ** 2 + (pursuerBody.position.z - player.position.z) ** 2 < 36) ps.openNearSeconds += dt;
+      }
+    }
     if (player.diveState === 'dive' && lastDiveState !== 'dive') mark(player.diveTarget?.isMother ? 'motherDive' : 'dive');
     lastDiveState = player.diveState;
     if (game.elapsed >= nextSample) {
@@ -473,7 +499,13 @@ function summarize(game, stats) {
     mimicStuns: game.mimicStuns ?? 0,
     mimic: stats.mimic.seen || stats.mimic.shot ? { ...stats.mimic } : null,
     thirst: game.thirstStats ? { ...game.thirstStats, healed: Math.round(game.thirstStats.healed), reach: stats.thirstReach ?? [] } : null,
-    pursuer: game.pursuerStats?.lays ? { ...game.pursuerStats } : null,
+    pursuer: game.pursuerStats?.lays ? {
+      ...game.pursuerStats,
+      ...(stats.pursuerHits ? {
+        hpLostOpen: Math.round(stats.pursuerHits.open), hpLostClosed: Math.round(stats.pursuerHits.closed),
+        openSeconds: Math.round(stats.pursuerHits.openSeconds), openNearSeconds: Math.round(stats.pursuerHits.openNearSeconds)
+      } : {})
+    } : null,
     vine: game.vineStats?.windups ? { ...game.vineStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
     criers: game.crierStats?.spawned ? { ...game.crierStats } : null,
@@ -536,7 +568,7 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny, fly });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny, fly, pursuerTiming, pursuerFar, pursuerNear, pursuerRush });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
@@ -544,7 +576,7 @@ try {
     result.errors = errors;
     result.carry = carrySpec || null;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs}, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}${result.vine ? `vine windups/binds ${result.vine.windups}/${result.vine.binds} mash/cut/timeout ${result.vine.mashEscapes}/${result.vine.cuts}/${result.vine.timeouts}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs} hpLost open/closed ${result.pursuer.hpLostOpen}/${result.pursuer.hpLostClosed} openNear ${result.pursuer.openNearSeconds}/${result.pursuer.openSeconds}s, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}${result.vine ? `vine windups/binds ${result.vine.windups}/${result.vine.binds} mash/cut/timeout ${result.vine.mashEscapes}/${result.vine.cuts}/${result.vine.timeouts}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     const video = page.video();
     await context.close();
@@ -561,7 +593,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, fly, startAt, carry: carrySpec || null,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, fly, pursuerTiming, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

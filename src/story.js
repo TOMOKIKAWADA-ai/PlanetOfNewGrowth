@@ -180,6 +180,7 @@ export class StoryPlayer {
       this.tick();
     } else if (this.index + 1 < this.scene.lines.length) {
       this.index++;
+      this.onPageTurn?.();
       this.render();
     } else this.finish();
   }

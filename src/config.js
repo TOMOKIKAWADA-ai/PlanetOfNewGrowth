@@ -172,7 +172,11 @@ export const Config = {
     // Sounds added 2026-10-27 (item pickup chime, thirst mother drain). false = reuse xp_pickup / mother_charge as before.
     // 2026-11-03: crier's cry, hand grab, rootsucker rooting (false = mother_release for the cry, no sound for the other two).
     // 2026-11-17: egg hatching nearby, a horn when the boss appears, ticks and a gong when little time is left (false = no sound, as before).
+    // 2026-11-24: swarm birds' cry when they notice a bird-form player (false = no sound, as before).
     newSfx: true,
+    // A soft click when the menu cursor moves (gamepad, Tab / arrow keys) and when the story turns a page
+    // (2026-11-24; false = silent, as before). Needs newSfx too.
+    menuSfx: true,
     // An egg's hatching is heard only within this distance of the player.
     eggHatchSfxRange: 24,
     // Seconds left on the clock when the time warning sounds, if the boss still stands (0 = never).

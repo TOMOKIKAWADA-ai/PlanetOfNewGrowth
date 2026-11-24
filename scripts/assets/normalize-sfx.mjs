@@ -25,11 +25,11 @@ const ROLES = {
 };
 const FILE_ROLES = {
   player_shot: 'frequent', projectile_hit: 'frequent', xp_pickup: 'frequent', enemy_die: 'frequent',
-  button_confirm: 'ui', button_cancel: 'ui',
+  button_confirm: 'ui', button_cancel: 'ui', menu_cursor: 'ui', text_advance: 'ui',
   bird_feed: 'action', transform_bird: 'action', transform_human: 'action', egg_break: 'action',
   item_pickup: 'action', player_hit: 'action', thirst_drain: 'action',
   crier_cry: 'frequent', hand_grab: 'action', root_dry: 'action',
-  fish_bite: 'action', shell_crack: 'action', swarm_rise: 'big',
+  fish_bite: 'action', shell_crack: 'action', swarm_rise: 'big', swarmbird_alert: 'action',
   egg_hatch: 'frequent', boss_warning: 'big', time_warning: 'action',
   burst_pre: 'big', burst_fire: 'big', burst_spread: 'big', tsukimi_burst: 'big', kiichigo_burst: 'big',
   level_up: 'big', mother_charge: 'big', mother_release: 'big', mother_impact: 'big'
@@ -42,8 +42,11 @@ function findFfmpeg() {
   return path.join(root, dir, 'bin');
 }
 
+// ebur128 needs at least one 0.4 s block: a click shorter than that (menu_cursor, text_advance: ~0.14 s, 2026-11-24)
+// reads -70 LUFS and would get +50 dB. apad pads the file to 0.5 s with silence, so a short click is measured as
+// its loudness over one 0.4 s window (no effect on longer files).
 function measure(file) {
-  const result = spawnSync(ffmpeg, ['-hide_banner', '-nostats', '-i', file, '-af', 'ebur128=peak=true', '-f', 'null', '-'], { encoding: 'utf8' });
+  const result = spawnSync(ffmpeg, ['-hide_banner', '-nostats', '-i', file, '-af', 'apad=whole_dur=0.5,ebur128=peak=true', '-f', 'null', '-'], { encoding: 'utf8' });
   const summary = result.stderr.slice(result.stderr.lastIndexOf('Summary:'));
   const lufs = Number(summary.match(/I:\s+(-?[\d.]+) LUFS/)?.[1]);
   const peak = Number(summary.match(/Peak:\s+(-?[\d.]+) dBFS/)?.[1]);

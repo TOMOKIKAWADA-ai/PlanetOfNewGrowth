@@ -144,7 +144,10 @@ const SFX_FILES = {
   swarmRise: 'swarm_rise',
   eggHatch: 'egg_hatch',
   bossWarning: 'boss_warning',
-  timeWarning: 'time_warning'
+  timeWarning: 'time_warning',
+  swarmbirdAlert: 'swarmbird_alert',
+  menuCursor: 'menu_cursor',
+  textAdvance: 'text_advance'
 };
 const SFX_ORIGINAL_URLS = import.meta.glob('../assets/audio/sfx/*.wav', { eager: true, query: '?url', import: 'default' });
 const SFX_NORMALIZED_URLS = import.meta.glob('../assets/audio/sfx-normalized/*.wav', { eager: true, query: '?url', import: 'default' });
@@ -412,6 +415,24 @@ if (DEBUG_ENABLED) {
 let activeGame = null;
 let selectedStageId = 1;
 let menuCursorButton = null;
+let menuKeyAt = -Infinity;
+
+// B2-1 (2026-11-24): a soft click when the menu cursor moves (gamepad, or Tab / arrow keys) and when the story turns
+// a page. Config.audio.menuSfx (or newSfx) false = silent, as before.
+function playMenuSfx(name, volume) {
+  if (!Config.audio.newSfx || !Config.audio.menuSfx || !SFX_URLS[name]) return;
+  const audio = new Audio(SFX_URLS[name]);
+  audio.volume = Math.min(1, Config.audio.sfxVolume * volume);
+  audio.play()?.catch?.(() => {});
+}
+
+window.addEventListener('keydown', (event) => {
+  if (event.code === 'Tab' || event.code.startsWith('Arrow')) menuKeyAt = performance.now();
+}, true);
+document.addEventListener('focusin', (event) => {
+  // Only focus moved by the player's keys: programmatic focus when a screen opens stays silent.
+  if (event.target instanceof HTMLButtonElement && performance.now() - menuKeyAt < 150) playMenuSfx('menuCursor', 0.6);
+});
 
 function setMenuCursor(button) {
   if (menuCursorButton === button) return;
@@ -461,6 +482,7 @@ function moveMenuFocus(container, direction, linearFallback = false) {
     const currentIndex = buttons.indexOf(current);
     buttons[(currentIndex + sign + buttons.length) % buttons.length].focus();
   }
+  if (document.activeElement !== current) playMenuSfx('menuCursor', 0.6);
 }
 
 function handleGamepadMenu(input, container, onCancel = null, linearFallback = false) {
@@ -2048,6 +2070,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   // 群れ鳥が鳥形態のプレイヤーに気づいた（1羽ごと、気づくたびに呼ばれる）
   onSwarmbirdHunt() {
     this.swarmbirdStats.hunts += 1;
+    // Called once per bird of the flock: the cooldown makes it one cry for the flock (B2-1, 2026-11-24).
+    if (Config.audio.newSfx) this.playSfx('swarmbirdAlert', { volume: 0.7, cooldown: 2.5 });
     if (this.swarmbirdHuntHintShown) return;
     this.swarmbirdHuntHintShown = true;
     this.showMessage('群れ鳥が気づいた。人間形態に戻れば離れていく', 2.6, MessagePriority.important);
@@ -4062,6 +4086,7 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 }
 
 const storyPlayer = new StoryPlayer();
+storyPlayer.onPageTurn = () => playMenuSfx('textAdvance', 0.5);
 const forecastCard = new ForecastCard();
 
 // 出撃前会話 → 朝の孵化予報（Config.forecast.enabled） → 戦闘。

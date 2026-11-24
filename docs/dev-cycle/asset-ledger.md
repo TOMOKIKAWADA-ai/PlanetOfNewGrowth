@@ -608,3 +608,15 @@ Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊�
 | `assets/background/water_shore_rocks.glb` | 大・中・小の丸い石 3 個の寄せ集め。底は平ら | 960 |
 
 組み込み: `src/main.js` の `WATER_STAGE_SHORE_ROCKS_URL`（岸 18 か所・島 8 か所に置く。高さ 0.38〜0.85）。`Config.visuals.handmadeShoreRocks: true`。false か URL の `?shoreRocks=0` で元の岩に戻る。
+
+## 2026-11-24 効果音: メニューのカーソル移動・会話の文字送り・群れ鳥が気づいたとき（B2-1 の続き）
+ツール: Stable Audio 3 Small-SFX（steps 8、CFG 1.0）。`scripts/assets/stable-audio-batch.py` で 3 音 × 4 シード（11・23・37・51）、計 12 本（読み込み込み 1 分 42 秒、GPU 最大 2.1 GB）。候補・`jobs.json`・群れ鳥の周波数の見比べ（`grid_swarmbird_alert.png`）: `assets_src/sfx/2026-11-24/`（git 対象外）。採用した 3 つの周波数の絵: `docs/devlog/img/2026-11-24-sfx-spectrum.png`。後処理は FFmpeg（1 回分のクリックだけを切り出す → 3 ms のフェードイン・短いフェードアウト）のあと `normalize-sfx.mjs`。12 本とも振り切れ・平らな雑音はなし。耳での確認はまだ。
+
+| ファイル | 元（シード、切り出し） | プロンプト | 採用 |
+|---|---|---|---|
+| `assets/audio/sfx/menu_cursor.wav`（0.145 秒、メニュー） | menu_cursor_s23（2 秒、0.015〜0.16 秒） | A soft short user interface click, one gentle wooden tick, menu cursor blip | 採用: 4 本とも 2 秒の中にクリックが 2〜4 回入っていた。s23 は 1 回目のクリックの立ち上がり（0.02 秒）が欠けずに入っている（s37 は 0 秒から始まり頭が切れている）。重心 3.0 kHz の柔らかい音。メニューでカーソルが動いたとき |
+| `assets/audio/sfx/text_advance.wav`（0.135 秒、メニュー） | text_advance_s51（2 秒、0.845〜0.98 秒） | One tiny quiet typewriter key tap, a small soft click | 採用: 4 本のうち、クリックが 1 回だけで前後が静か（ほかは 2 回鳴るか、前に小さな雑音）。重心 7.4 kHz の軽い音。会話で次のページへ進んだとき |
+| `assets/audio/sfx/swarmbird_alert.wav`（1.65 秒、操作） | swarmbird_alert_s23（3 秒、0.10〜1.75 秒） | A flock of small birds suddenly taking off, sharp alarmed chirps and fast wing flapping | 採用: 周波数の絵で、鳴き声の横線（2〜4 kHz）と羽ばたきの縦線がどちらもはっきりしている。s37 は低い唸りが下にずっと残る。群れ鳥が鳥形態のプレイヤーに気づいたとき |
+| — | ほかの 9 本 | 同上 | 次点（候補として残す） |
+
+`normalize-sfx.mjs` は、0.4 秒より短い音を測れない（-70 LUFS と出て +50 dB かけてしまう）ので、測るときだけ 0.5 秒まで無音を足すようにした（それより長い既存のファイルの値は変わらないことを確かめた）。
