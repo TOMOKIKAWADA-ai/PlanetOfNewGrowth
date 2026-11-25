@@ -54,6 +54,12 @@ const pursuerTiming = args.pursuerTiming === '1';
 const pursuerFar = Number(args.pursuerFar ?? 9);
 const pursuerNear = Number(args.pursuerNear ?? 4);
 const pursuerRush = Number(args.pursuerRush ?? 4);
+// --crierHunt 1 (A26, 2026-11-25): play like a human who has spotted a crier (chapter 4+): while no boss is up, head for
+// the nearest crier within crierSeek and take off to dive on it once it is within crierTakeOff (MP 30% or more).
+// Off by default so the numbers stay comparable with older runs.
+const crierHunt = args.crierHunt === '1';
+const crierSeek = Number(args.crierSeek ?? 25);
+const crierTakeOff = Number(args.crierTakeOff ?? 8);
 const recordDir = args.record ?? null;
 // --start <seconds> skips the stage clock ahead (e.g. 170 to record or check a chapter's boss without the first three minutes).
 const startAt = Number(args.start ?? 0);
@@ -70,7 +76,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 // Runs inside the page. Seeded Math.random keeps runs comparable; the bot reads game state and drives
 // the same touch-input entry points the on-screen stick uses.
-function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny, fly, pursuerTiming, pursuerFar, pursuerNear, pursuerRush }) {
+function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, bossRange, chase, thirstDeny, fly, pursuerTiming, pursuerFar, pursuerNear, pursuerRush, crierHunt, crierSeek, crierTakeOff }) {
   let state = seed >>> 0 || 1;
   Math.random = () => {
     state = (state * 1664525 + 1013904223) >>> 0;
@@ -145,6 +151,20 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
   const mark = (type, extra = {}) => stats.events.push({
     type, t: Math.round(game.elapsed * 10) / 10, video: Math.round(performance.now()) / 1000, ...extra
   });
+  // A26: the nearest crier within `range` (only when --crierHunt 1 and no boss is up), and how long each crier lived.
+  const huntCrier = range => {
+    if (!crierHunt || (game.bossEggs ?? []).some(body => !body.dead)) return null;
+    let best = null;
+    let bestD2 = range * range;
+    for (const enemy of game.enemies) {
+      if (enemy.dead || enemy.type !== 'crier') continue;
+      const d2 = (enemy.position.x - player.position.x) ** 2 + (enemy.position.z - player.position.z) ** 2;
+      if (d2 < bestD2) { bestD2 = d2; best = enemy; }
+    }
+    return best;
+  };
+  const crierBorn = new Map();
+  stats.crierLifetimes = [];
   const onCrierCry = game.onCrierCry;
   game.onCrierCry = function (crier) {
     mark('crierCry');
@@ -262,6 +282,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     let target = mother;
     const drain = drainTarget();
     if (drain) { target = drain.egg; mother = null; }
+    if (!target) target = huntCrier(crierSeek);
     if (!target) {
       let best = Infinity;
       for (const egg of game.eggs) {
@@ -358,6 +379,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     // human there, and taking off again made it flap 160 times a run.
     const takeOffForBird = onLand && player.mp > player.maxMp * 0.45 && !(flood && nearMother)
       && (bossClose || (nearbyEggs >= 2 && !(mother && game.isWaterStage)));
+    const crierNear = onLand && player.mp > player.maxMp * 0.3 && huntCrier(crierTakeOff);
     if (player.form === 'human') {
       if (drain && drain.d2 < 26 * 26 && player.mp > 5 && !shockwaveComing) {
         // A drained egg is close: take off (or dive in) to break it before the drain ends.
@@ -383,6 +405,11 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
         stats.bursts++;
         mark('burst');
         press('burst');
+      } else if (crierNear && !mimicClose) {
+        // A26: a crier is close: take off, the dive goes for it before the eggs.
+        stats.transforms++;
+        mark('crierHunt');
+        press('transform');
       } else if (fly && takeOffForBird && !mimicClose) {
         // Bird form on land: dive on the boss when it is close, or on two eggs or more.
         stats.transforms++;
@@ -401,7 +428,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
       press('transform');
     } else if (player.form === 'bird' && flood?.state === 'submerged' && nearMother && player.diveState === 'ready') {
       press('transform');
-    } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready' && !shockwaveComing && !drain) {
+    } else if (player.mp < player.maxMp * 0.2 && player.diveState === 'ready' && !shockwaveComing && !drain && !(player.form === 'bird' && crierNear)) {
       press('transform');
     }
   }
@@ -427,6 +454,12 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
       if (game.motherEgg) stats.damageAfterMother += lastHp - player.hp;
     }
     lastHp = player.hp;
+    for (const enemy of game.enemies) if (enemy.type === 'crier' && !enemy.dead && !crierBorn.has(enemy)) crierBorn.set(enemy, game.elapsed);
+    for (const [enemy, born] of crierBorn) {
+      if (!enemy.dead) continue;
+      stats.crierLifetimes.push(Math.round((game.elapsed - born) * 10) / 10);
+      crierBorn.delete(enemy);
+    }
     stats.maxEggs = Math.max(stats.maxEggs, game.eggs.length);
     stats.maxEnemies = Math.max(stats.maxEnemies, game.enemies.length);
     if (stats.motherSpawnedAt === null && game.motherEgg) {
@@ -508,7 +541,7 @@ function summarize(game, stats) {
     } : null,
     vine: game.vineStats?.windups ? { ...game.vineStats } : null,
     footprints: game.footprintStats?.spawned ? { ...game.footprintStats } : null,
-    criers: game.crierStats?.spawned ? { ...game.crierStats } : null,
+    criers: game.crierStats?.spawned ? { ...game.crierStats, lifetimes: stats.crierLifetimes ?? [] } : null,
     hands: game.handStats?.spawned ? { ...game.handStats, heldSeconds: Math.round(game.handStats.heldSeconds * 10) / 10 } : null,
     splitshells: game.splitshellStats?.spawned ? { ...game.splitshellStats } : null,
     swarmbirds: game.swarmbirdStats?.flocks ? { ...game.swarmbirdStats, damage: Math.round(game.swarmbirdStats.damage) } : null,
@@ -568,7 +601,7 @@ try {
     await page.locator('[data-action="skip"]').click();
     if (await page.locator('#forecastStart').isVisible()) await page.locator('#forecastStart').click(); // 朝の孵化予報（Config.forecast.enabled）
     await page.waitForFunction(() => window.__botTest.game?.state === 'playing', null, { timeout: 60000 });
-    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny, fly, pursuerTiming, pursuerFar, pursuerNear, pursuerRush });
+    await page.evaluate(installBot, { speed, seed: seedBase + run, dodge, shake, mimicAware, realtime: Boolean(recordDir), startAt, bossRange, chase, thirstDeny, fly, pursuerTiming, pursuerFar, pursuerNear, pursuerRush, crierHunt, crierSeek, crierTakeOff });
     await page.waitForFunction(() => Boolean(window.__botTest.game.outcome), null, { timeout: 15 * 60 * 1000, polling: 1000 });
     const result = await page.evaluate(summarize.toString().replace(/^function summarize/, '(function') + ')(window.__botTest.game, window.__botStats)');
     result.run = run + 1;
@@ -576,7 +609,7 @@ try {
     result.errors = errors;
     result.carry = carrySpec || null;
     results.push(result);
-    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs} hpLost open/closed ${result.pursuer.hpLostOpen}/${result.pursuer.hpLostClosed} openNear ${result.pursuer.openNearSeconds}/${result.pursuer.openSeconds}s, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}${result.vine ? `vine windups/binds ${result.vine.windups}/${result.vine.binds} mash/cut/timeout ${result.vine.mashEscapes}/${result.vine.cuts}/${result.vine.timeouts}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
+    console.log(`run ${run + 1}: ${result.victory ? 'WIN' : 'LOSE'} at ${result.endedAt}s, level ${result.finalLevel}, damage ${result.damageTaken}, shockwave hit/dodged ${result.shockwaves.reached - result.shockwaves.dodged}/${result.shockwaves.dodged}, mimic stuns ${result.mimicStuns}${result.mimic ? ` (seen ${result.mimic.seen} aborts ${result.mimic.diveAborts} shot ${result.mimic.shot})` : ''}, ${result.thirst?.drains ? `thirst drains ${result.thirst.drains} eaten/denied ${result.thirst.eggsConsumed}/${result.thirst.eggsDenied} healed ${result.thirst.healed}, ` : ""}${result.pursuer ? `pursuer lays ${result.pursuer.lays} eggs ${result.pursuer.eggs} hpLost open/closed ${result.pursuer.hpLostOpen}/${result.pursuer.hpLostClosed} openNear ${result.pursuer.openNearSeconds}/${result.pursuer.openSeconds}s, ` : ''}${result.footprints ? `footprints ${result.footprints.spawned} lost ${result.footprints.lost} hits ${result.footprints.hits}, ` : ''}${result.criers ? `criers ${result.criers.spawned} cries ${result.criers.cries} hurried ${result.criers.eggsHurried} diveKills ${result.criers.diveKills} lifetimes ${result.criers.lifetimes.join('/')}, ` : ''}${result.hands ? `hands ${result.hands.spawned} grabs ${result.hands.grabs}/${result.hands.windups} shaken ${result.hands.shaken} timeouts ${result.hands.timeouts} held ${result.hands.heldSeconds}s, ` : ''}${result.vine ? `vine windups/binds ${result.vine.windups}/${result.vine.binds} mash/cut/timeout ${result.vine.mashEscapes}/${result.vine.cuts}/${result.vine.timeouts}, ` : ''}maxEggs ${result.maxEggs}, maxEnemies ${result.maxEnemies}, fps ${result.renderFps}, real ${result.realSeconds}s${errors.length ? `, errors ${errors.length}` : ''}`);
     if (run === 0) await page.screenshot({ path: 'tmp/bot/last-run.png' }).catch(() => {});
     const video = page.video();
     await context.close();
@@ -593,7 +626,7 @@ try {
 const wins = results.filter(result => result.victory);
 const average = (list, key) => list.length ? Math.round(list.reduce((sum, item) => sum + (item[key] ?? 0), 0) / list.length * 10) / 10 : null;
 const report = {
-  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, fly, pursuerTiming, startAt, carry: carrySpec || null,
+  date: new Date().toISOString(), characterId, stageId, speed, runs, dodge, shake, mimicAware, bossRange, chase, thirstDeny, fly, pursuerTiming, crierHunt, startAt, carry: carrySpec || null,
   winRate: wins.length / results.length,
   averageKillTime: average(wins, 'motherKilledAt'),
   averageDamage: average(results, 'damageTaken'),

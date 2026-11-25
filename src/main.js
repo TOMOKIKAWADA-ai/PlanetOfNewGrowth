@@ -1927,7 +1927,8 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   // 鳴く前の予兆。体が膨らむのに合わせて、足元に届く範囲の輪を出す。
   onCrierSwell(crier) {
     const cfg = Config.enemy.crier;
-    this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.32, cfg.swellSeconds);
+    if (cfg.fixedSwellRing) this.spawnWarningRing(crier.position, cfg.cryRadius, CRIER_RING_COLOR, cfg.swellRingOpacity, cfg.swellSeconds, cfg.swellRingWidth);
+    else this.spawnRingEffect(crier.position, cfg.cryRadius, CRIER_RING_COLOR, 0.32, cfg.swellSeconds);
   }
 
   // 鳴き声: 範囲内の卵（ボスは除く）の孵化を早め、若い卵は育てる。
@@ -3672,6 +3673,28 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
         const t = 1 - effect.life / effect.duration;
         mesh.scale.setScalar(Math.max(0.01, radius * t));
         mesh.material.opacity = Math.max(0, opacity * (1 - t));
+      }
+    });
+  }
+
+  // 予兆の輪: 最初から届く範囲いっぱいの大きさで出し、duration かけて濃くなる（広がりながら消える spawnRingEffect と違い、
+  // 範囲の端が読める）。A26（2026-11-25）。
+  spawnWarningRing(position, radius, color, opacity, duration, width = 0.35) {
+    const mesh = new THREE.Mesh(
+      new THREE.RingGeometry(Math.max(0.05, radius - width), radius, Config.performance.effectSegments),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: opacity * 0.2, side: THREE.DoubleSide, depthWrite: false })
+    );
+    mesh.position.set(position.x, 0.12, position.z);
+    mesh.rotation.x = -Math.PI / 2;
+    this.scene.add(mesh);
+    this.effects.push({
+      object: mesh,
+      life: duration,
+      duration,
+      update(effect, dt) {
+        effect.life -= dt;
+        const t = clamp(1 - effect.life / effect.duration, 0, 1);
+        mesh.material.opacity = opacity * (0.2 + 0.8 * t * t);
       }
     });
   }

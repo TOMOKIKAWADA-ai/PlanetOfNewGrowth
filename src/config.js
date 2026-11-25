@@ -711,7 +711,12 @@ export const Config = {
       cryRadius: 9,
       hatchAdvanceSeconds: 3,
       maturityAdvanceSeconds: 4,
-      birdDiveTarget: true
+      birdDiveTarget: true,
+      // 膨らむあいだの輪（A26、2026-11-25）。true: 最初から半径 cryRadius の太い輪が濃くなっていく。
+      // false: 元の、中心から広がりながら薄れる細い輪（いっぱいに広がる頃には消えていて範囲が読みにくかった）。
+      fixedSwellRing: true,
+      swellRingOpacity: 0.55,
+      swellRingWidth: 0.35
     },
     // 手（E11、第4章の新種）。ゆっくり近づき、reach 以内に入ると windupSeconds かけて腕を伸ばし（予兆）、
     // 伸ばしきったときに人間形態のプレイヤーが届く所にいれば掴む。掴まれると移動が grabSlow 倍になり、
