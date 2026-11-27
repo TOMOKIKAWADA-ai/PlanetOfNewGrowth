@@ -196,7 +196,13 @@ export const Config = {
     // One-liner when the burst becomes ready (B3-10, added 2026-11-20). Off until the user approves the lines;
     // ?burstReadyVoice=1 plays it. At most once per burstReadyVoiceCooldown seconds of battle time.
     burstReadyVoice: false,
-    burstReadyVoiceCooldown: 30
+    burstReadyVoiceCooldown: 30,
+    // One-liner when hits keep coming (B3-10, added 2026-11-27): hurtStreakHits hits within hurtStreakWindow seconds,
+    // in place of that hit's cry. Off until the user approves the lines; ?hurtStreakVoice=1 plays it.
+    hurtStreakVoice: false,
+    hurtStreakHits: 4,
+    hurtStreakWindow: 3,
+    hurtStreakVoiceCooldown: 30
   },
   // A5: 敵の出現の緩急（波と小休止）。計算は src/pacing.js。
   // enabled: false か URL の ?pacing=0 で、元の出方（stageBeats だけ、孵る速さは一定の伸び）に戻る。
@@ -739,7 +745,12 @@ export const Config = {
       grabSlow: 0.35,
       grabDamage: 5,
       cooldown: 4,
-      firstCooldown: 1.5
+      firstCooldown: 1.5,
+      // 押し返されにくさ（A27、2026-11-27）。射撃のノックバックに掛ける倍率。approach: 近づいている間、
+      // windup: 腕を伸ばしている（予兆の）間と掴んでいる間。元はどちらも 1 で、自動射撃に押し返されて
+      // ボット 6 戦で予兆 2 回・掴み 0 回だった。1 / 1 で元どおり。URL の ?handKnock=1 でも元に戻せる。
+      approachKnockbackScale: 0.35,
+      windupKnockbackScale: 0
     },
     // 吸水根（E13、第5章の新種）。動かず、孵って rootSeconds たつと根を張り、足元に乾いた円を作る。
     // 円の半径は dryRadiusStart から growSeconds かけて dryRadiusMax まで広がる。円の中にいる人間形態の

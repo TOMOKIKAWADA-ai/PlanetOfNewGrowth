@@ -210,6 +210,7 @@
 - ゲームに入れる後処理（FFmpeg）: 前後の無音を削り、既存の声に合わせて **-15 LUFS**（真のピーク -1.5 dB）にそろえて mp3 にする。
   - 2026-11-20: `ffmpeg` は PATH に無い（Git Bash でも PowerShell でも）。Irodori に同梱の `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-n8.1-latest-win64-gpl-shared-8.1\bin\ffmpeg.exe`（ffprobe も同じ所）を使う。Bash では `export PATH="/d/AI/Irodori-TTS-v4_1/tools/ffmpeg-n8.1-latest-win64-gpl-shared-8.1/bin:$PATH"`。`D:\AI\3D_local` の中にもあるが、Hunyuan3D のフォルダなので使わない。
   - 2026-11-20: 「たまった」は 3 シードとも「黙った／止まった」と聞き取られた。た行・だ行の頭の語は一致率が下がるだけで、言い間違いとは限らない。
+  - 2026-11-27: 先頭に短い雑音のかたまりがあり、そのあと 0.5 秒以上の無音が続く候補は、`ffmpeg -ss <秒> -i 候補.wav ...` で入力の頭を切ってから上の後処理に通すと簡単（キイチゴ 3901、`-ss 0.6`）。9 本（手本あり）の生成は読み込み込みで 2 分 22 秒、文字起こし約 1 分、分析約 2 分。アカメの低いつぶやきは有声 0（息だけ）になる候補が出やすいので、3 シードでは足りないこともある。
   `-af "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-15:TP=-1.5:LRA=11,afade=t=in:d=0.01" -ar 44100 -ac 1 -codec:a libmp3lame -q:a 4`
   - 失敗例: `afade=t=out:st=0:d=0.001` を入れたら開始直後にフェードアウトしてほぼ無音（-60 LUFS 以下）になった。書き出したら `-af ebur128 -f null -` で音量を必ず確かめる。0.4 秒未満の短い音は ebur128 が -70 と出るが無音ではない。
   - 既存の声の音量（2026-10-23 計測）: -13.6〜-16.6 LUFS。

@@ -1998,7 +1998,8 @@ export class Player {
     }
     // 捕まっている間は縛り蔓の声（Game.onPlayerBound / onBindMash）を出すので、被弾の声は重ねない。
     const vineVoiceActive = this.bindTimer > 0 && Config.audio.vineVoices;
-    if (!vineVoiceActive && !this.game.tryLowHpVoice?.(hpBefore / this.maxHp, this.hp / this.maxHp)) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
+    if (!vineVoiceActive && !this.game.tryLowHpVoice?.(hpBefore / this.maxHp, this.hp / this.maxHp)
+      && !this.game.tryHurtStreakVoice?.()) this.game.playVoice('hit', { volume: 0.86, cooldown: 0.55 });
     this.playOneShotAnimation('react');
     if (this.hp <= 0) this.game.finish(false, 'HPが尽きました');
   }
@@ -4029,8 +4030,12 @@ export class Enemy {
     this.game.spawnHitSpark(this.position, this.type === 'spawner' ? 0xffe36c : 0xffffff);
     if (origin) {
       normalizeXZ(tempVec2, this.position.x - origin.x, this.position.z - origin.z);
-      this.knock.x += tempVec2.x * (strongKnock ? 14 : 4);
-      this.knock.z += tempVec2.z * (strongKnock ? 14 : 4);
+      // A27: the hand is pushed back less while it closes in, and not at all while its arm is out (windup / hold).
+      const knockScale = this.type === 'hand' && this.hand
+        ? (this.hand.state === 'approach' ? Config.enemy.hand.approachKnockbackScale ?? 1 : Config.enemy.hand.windupKnockbackScale ?? 1)
+        : 1;
+      this.knock.x += tempVec2.x * (strongKnock ? 14 : 4) * knockScale;
+      this.knock.z += tempVec2.z * (strongKnock ? 14 : 4) * knockScale;
     }
     if (this.hp <= 0) this.die(true, burstReward);
     else if (this.activeModelAction !== this.modelActions.hit) this.playModelOneShot('hit');

@@ -1,0 +1,55 @@
+{
+  "speakers": {
+    "tsukimi": {
+      "caption": "",
+      "seed": 1901,
+      "refs": [
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_04_doubt-s1301.wav",
+        "assets_src/voice/refs/tsukimi/tsukimi-ref_06_call-s1301.wav"
+      ]
+    },
+    "akame": {
+      "caption": "",
+      "seed": 2901,
+      "refs": [
+        "assets_src/voice/refs/akame/akame-ref_02_report-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_04_refuse-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_05_care-s2202.wav",
+        "assets_src/voice/refs/akame/akame-ref_06_call-s2202.wav"
+      ]
+    },
+    "kiichigo": {
+      "caption": "",
+      "seed": 3901,
+      "refs": [
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_01_calm-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_04_cheer-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_06_call-s3303.wav",
+        "assets_src/voice/refs/kiichigo/kiichigo-ref_07_tired-s3303.wav"
+      ]
+    }
+  },
+  "lines": [
+    {
+      "id": "hurt_streak_01",
+      "speaker": "tsukimi",
+      "text": "いけない、離れないと……！",
+      "style": "続けて攻撃を受け、痛みをこらえながら、あせって自分に言い聞かせるように短く言う。",
+      "seeds": [1901, 1902, 1903]
+    },
+    {
+      "id": "hurt_streak_01",
+      "speaker": "akame",
+      "text": "……しつこい。",
+      "style": "続けて攻撃を受け、痛みを顔に出さず、低くいら立ったように短く吐き捨てる。",
+      "seeds": [2901, 2902, 2903]
+    },
+    {
+      "id": "hurt_streak_01",
+      "speaker": "kiichigo",
+      "text": "ちょっと、痛いってば！",
+      "style": "続けて攻撃を受け、痛いのに冗談めかして、文句を言うように明るく短く言う。",
+      "seeds": [3901, 3902, 3903]
+    }
+  ]
+}

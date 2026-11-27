@@ -179,7 +179,8 @@ const VOICE_URLS = {
     lastMinute: [new URL('../assets/audio/voice/tsukimi/last_minute_01.mp3', import.meta.url).href],
     bossDown: [new URL('../assets/audio/voice/tsukimi/boss_down_01.mp3', import.meta.url).href],
     lowHp: [new URL('../assets/audio/voice/tsukimi/low_hp_01.mp3', import.meta.url).href],
-    burstReady: [new URL('../assets/audio/voice/tsukimi/burst_ready_01.mp3', import.meta.url).href]
+    burstReady: [new URL('../assets/audio/voice/tsukimi/burst_ready_01.mp3', import.meta.url).href],
+    hurtStreak: [new URL('../assets/audio/voice/tsukimi/hurt_streak_01.mp3', import.meta.url).href]
   },
   akame: {
     hit: [
@@ -204,7 +205,8 @@ const VOICE_URLS = {
     lastMinute: [new URL('../assets/audio/voice/akame/last_minute_01.mp3', import.meta.url).href],
     bossDown: [new URL('../assets/audio/voice/akame/boss_down_01.mp3', import.meta.url).href],
     lowHp: [new URL('../assets/audio/voice/akame/low_hp_01.mp3', import.meta.url).href],
-    burstReady: [new URL('../assets/audio/voice/akame/burst_ready_01.mp3', import.meta.url).href]
+    burstReady: [new URL('../assets/audio/voice/akame/burst_ready_01.mp3', import.meta.url).href],
+    hurtStreak: [new URL('../assets/audio/voice/akame/hurt_streak_01.mp3', import.meta.url).href]
   },
   kiichigo: {
     hit: [
@@ -229,7 +231,8 @@ const VOICE_URLS = {
     lastMinute: [new URL('../assets/audio/voice/kiichigo/last_minute_01.mp3', import.meta.url).href],
     bossDown: [new URL('../assets/audio/voice/kiichigo/boss_down_01.mp3', import.meta.url).href],
     lowHp: [new URL('../assets/audio/voice/kiichigo/low_hp_01.mp3', import.meta.url).href],
-    burstReady: [new URL('../assets/audio/voice/kiichigo/burst_ready_01.mp3', import.meta.url).href]
+    burstReady: [new URL('../assets/audio/voice/kiichigo/burst_ready_01.mp3', import.meta.url).href],
+    hurtStreak: [new URL('../assets/audio/voice/kiichigo/hurt_streak_01.mp3', import.meta.url).href]
   }
 };
 const BGM_ACTIVE_STATES = new Set(['loading', 'tutorial', 'playing', 'levelup', 'dying']);
@@ -599,6 +602,8 @@ class Game {
     this.footprintStats = { spawned: 0, lost: 0, hits: 0 };
     this.wasBurstReady = undefined;
     this.lastBurstReadyVoiceAt = undefined;
+    this.recentHurtTimes = [];
+    this.lastHurtStreakVoiceAt = undefined;
     // ?footprintSpread=0 で、足跡の遅れの散らばり（A23）を止めて比べられる
     const spreadFromUrl = new URLSearchParams(window.location.search).get('footprintSpread');
     if (spreadFromUrl !== null && Number.isFinite(Number(spreadFromUrl))) footprintCfg.delaySpread = Number(spreadFromUrl);
@@ -612,6 +617,11 @@ class Game {
     this.handsActive = Config.enemy.hand.enabled && this.stageId >= Config.enemy.hand.fromChapter;
     this.handHintShown = false;
     this.handStats = { spawned: 0, windups: 0, misses: 0, grabs: 0, shaken: 0, timeouts: 0, freed: 0, heldSeconds: 0 };
+    // ?handKnock=1 で、手の押し返されにくさ（A27）を止めて元のノックバックで比べられる
+    if (new URLSearchParams(window.location.search).get('handKnock') === '1') {
+      Config.enemy.hand.approachKnockbackScale = 1;
+      Config.enemy.hand.windupKnockbackScale = 1;
+    }
     this.rootsuckersActive = Config.enemy.rootsucker.enabled && this.stageId >= Config.enemy.rootsucker.fromChapter;
     this.rootsuckerHintShown = false;
     this.dryGroundHintShown = false;
@@ -3812,6 +3822,26 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     if (this.elapsed - (this.lastLowHpVoiceAt ?? -Infinity) < lowHpVoiceCooldown) return false;
     this.lastLowHpVoiceAt = this.elapsed;
     this.playVoice('lowHp', { volume: 0.95 });
+    return true;
+  }
+
+  // B3-10 (2026-11-27): one line when hits keep coming (hurtStreakHits hits within hurtStreakWindow seconds), in place
+  // of that hit's cry. Off until the lines are approved; ?hurtStreakVoice=1 turns it on to listen.
+  tryHurtStreakVoice() {
+    if (this._hurtStreakVoiceEnabled === undefined) {
+      const fromUrl = new URLSearchParams(window.location.search).get('hurtStreakVoice');
+      this._hurtStreakVoiceEnabled = fromUrl === null ? Boolean(Config.audio.hurtStreakVoice) : fromUrl !== '0';
+    }
+    if (!this._hurtStreakVoiceEnabled) return false;
+    const { hurtStreakHits, hurtStreakWindow, hurtStreakVoiceCooldown } = Config.audio;
+    const hits = (this.recentHurtTimes ??= []);
+    hits.push(this.elapsed);
+    while (hits.length && this.elapsed - hits[0] > hurtStreakWindow) hits.shift();
+    if (hits.length < hurtStreakHits) return false;
+    if (this.elapsed - (this.lastHurtStreakVoiceAt ?? -Infinity) < hurtStreakVoiceCooldown) return false;
+    this.lastHurtStreakVoiceAt = this.elapsed;
+    hits.length = 0;
+    this.playVoice('hurtStreak', { volume: 0.9 });
     return true;
   }
 
