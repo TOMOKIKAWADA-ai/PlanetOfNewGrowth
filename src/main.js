@@ -617,6 +617,11 @@ class Game {
     this.handsActive = Config.enemy.hand.enabled && this.stageId >= Config.enemy.hand.fromChapter;
     this.handHintShown = false;
     this.handStats = { spawned: 0, windups: 0, misses: 0, grabs: 0, shaken: 0, timeouts: 0, freed: 0, heldSeconds: 0 };
+    // ?swarmRevive=10&swarmReviveHp=0.6 で、群れの母の起き上がりまでの秒と HP の割合（A29）を変えて比べられる
+    const swarmReviveFromUrl = Number(new URLSearchParams(window.location.search).get('swarmRevive'));
+    if (swarmReviveFromUrl > 0) Config.boss.swarmMother.reviveSeconds = swarmReviveFromUrl;
+    const swarmReviveHpFromUrl = Number(new URLSearchParams(window.location.search).get('swarmReviveHp'));
+    if (swarmReviveHpFromUrl > 0) Config.boss.swarmMother.reviveHpRatio = swarmReviveHpFromUrl;
     // ?handKnock=1 で、手の押し返されにくさ（A27）を止めて元のノックバックで比べられる
     if (new URLSearchParams(window.location.search).get('handKnock') === '1') {
       Config.enemy.hand.approachKnockbackScale = 1;

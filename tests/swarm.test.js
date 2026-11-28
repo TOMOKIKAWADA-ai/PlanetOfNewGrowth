@@ -76,3 +76,19 @@ test('sisters are placed around the spot, pulled in when blocked', () => {
   assert.ok(Math.abs(points[0].z - 4.5) < 1e-9, 'the blocked one moves inward');
   assert.ok(Math.abs(Math.hypot(points[1].x, points[1].z) - 6) < 1e-9);
 });
+
+test('the swarm keeps when each sister fell, stood up and when it broke (A29)', () => {
+  const { game, members, swarm } = createSwarm();
+  game.elapsed = 181;
+  swarmOnLethal(members[0]);
+  game.elapsed = 181 + cfg.reviveSeconds + 1;
+  step(members, cfg.reviveSeconds + 0.2);
+  assert.deepEqual(swarm.downTimes, [181]);
+  assert.deepEqual(swarm.reviveTimes, [181 + cfg.reviveSeconds + 1]);
+  game.elapsed = 230;
+  swarmOnLethal(members[0]);
+  swarmOnLethal(members[1]);
+  assert.equal(swarmOnLethal(members[2]), false);
+  assert.equal(swarm.finishAt, 230);
+  assert.equal(swarm.downTimes.length, 3);
+});

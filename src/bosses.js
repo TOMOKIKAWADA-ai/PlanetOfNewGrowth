@@ -308,7 +308,8 @@ export function updateFloodgate(mother, dt) {
 
 // 群れの母の姉妹をつなぐ。members の順に衝撃波の番が回る。
 export function linkSwarm(members) {
-  const swarm = { members, shockwaveOwner: members[0] ?? null, downs: 0, revives: 0 };
+  // downTimes / reviveTimes / finishAt は game.elapsed（秒）。A29 の確認用（ボットの結果に出る）
+  const swarm = { members, shockwaveOwner: members[0] ?? null, downs: 0, revives: 0, downTimes: [], reviveTimes: [], finishAt: null };
   for (const egg of members) {
     egg.swarm = swarm;
     egg.swarmDown = false;
@@ -333,10 +334,12 @@ export function swarmOnLethal(egg) {
     egg.swarmDownTimer = cfg.reviveSeconds;
     egg.hp = 0;
     swarm.downs += 1;
+    swarm.downTimes.push(egg.game?.elapsed ?? 0);
     if (swarm.shockwaveOwner === egg) handOverShockwave(swarm, standing, cfg);
     egg.game.onSwarmMemberDown?.(egg, standing.length, cfg.reviveSeconds);
     return true;
   }
+  swarm.finishAt = egg.game?.elapsed ?? 0;
   for (const sister of swarm.members) {
     if (sister === egg || sister.dead) continue;
     sister.dead = true;
@@ -373,6 +376,7 @@ export function updateSwarmMember(egg, dt) {
     egg.swarmDownTimer = 0;
     egg.hp = egg.maxHp * cfg.reviveHpRatio;
     swarm.revives += 1;
+    swarm.reviveTimes.push(game.elapsed);
     if (!swarm.shockwaveOwner) {
       swarm.shockwaveOwner = egg;
       egg.shockwaveState = 'idle';

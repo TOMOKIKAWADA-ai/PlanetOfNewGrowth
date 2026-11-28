@@ -15,7 +15,7 @@ const args = Object.fromEntries(rest.reduce((pairs, arg, index, list) => {
   return pairs;
 }, []));
 if (!videoArg) {
-  console.error('usage: node scripts/promo/cut-highlights.mjs <video.webm> [--out dir] [--seconds 28]');
+  console.error('usage: node scripts/promo/cut-highlights.mjs <video.webm> [--out dir] [--seconds 28] [--boss 群れの母]');
   process.exit(1);
 }
 const video = path.resolve(videoArg);
@@ -24,11 +24,18 @@ const targetSeconds = Number(args.seconds ?? 28);
 const ffmpeg = process.env.FFMPEG ?? findBundledFfmpeg();
 const { events } = JSON.parse(readFileSync(video.replace(/\.webm$/, '.events.json'), 'utf8'));
 
-// Scene types in order of priority: [seconds before the event, seconds after, caption].
+// Scene types in order of priority: [seconds before the event, seconds after, caption]. {boss} is --boss (default 母卵).
+// B6-6 (2026-11-28): scenes with the boss in frame come first (the kill, a sister or petal falling, the boss close by);
+// motherSpawn is shown further down because the boss appears far from the player and is not in frame.
+// The recording stops about a second after the outcome, so the kill scene is cut mostly from before it.
+const bossName = args.boss ?? '母卵';
 const SCENES = {
-  motherSpawn: [1, 4, '残り1分、母卵が出現'],
+  motherKill: [3.6, 0.8, '{boss}を撃破'],
+  bossDown: [2.2, 1.8, '{boss}を崩す'],
   shockwaveDodge: [2.6, 1.6, '衝撃波は空へ逃げる'],
-  motherDive: [1.2, 2.4, '母卵へ急降下'],
+  motherDive: [1.2, 2.4, '{boss}へ急降下'],
+  bossNear: [0.4, 3.4, '{boss}に迫る'],
+  motherSpawn: [1, 4, '残り1分、{boss}が出現'],
   burst: [0.8, 3.4, 'バースト'],
   mimicStun: [1.6, 2.4, '擬態卵に注意'],
   dive: [1.4, 2.6, '鳥になって卵を食べる']
@@ -40,11 +47,19 @@ function findBundledFfmpeg() {
   return dir ? `${tools}/${dir}/bin/ffmpeg.exe` : 'ffmpeg';
 }
 
+// When the boss shows up in the recording, egg dives are left out: they are shot from the high bird camera, where the
+// stage is dark and the eggs are dots. Within a kind, scenes in human form (the low camera) come first.
+const BOSS_SCENES = ['motherKill', 'bossDown', 'bossNear', 'motherDive'];
+const hasBossScenes = events.some(item => BOSS_SCENES.includes(item.type));
+
 function pickScenes() {
   const picked = [];
   let total = 0;
   for (const [type, [before, after, caption]] of Object.entries(SCENES)) {
-    for (const event of events.filter(item => item.type === type)) {
+    if (type === 'dive' && hasBossScenes) continue;
+    const ofType = events.filter(item => item.type === type)
+      .sort((a, b) => (a.form === 'human' ? 0 : 1) - (b.form === 'human' ? 0 : 1));
+    for (const event of ofType) {
       if (total >= targetSeconds) break;
       const start = Math.max(0, event.video - before);
       const end = event.video + after;
@@ -52,7 +67,7 @@ function pickScenes() {
       if (picked.some(scene => start < scene.end + 3 && end > scene.start - 3)) continue;
       // At most two scenes of a kind, so one busy stretch does not fill the reel.
       if (picked.filter(scene => scene.type === type).length >= 2) continue;
-      picked.push({ type, start, end, caption });
+      picked.push({ type, start, end, caption: caption.replace('{boss}', bossName) });
       total += end - start;
     }
   }

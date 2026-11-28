@@ -149,7 +149,7 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
   // Offsets are from navigation start, which is close to where Playwright's video begins.
   stats.events = [];
   const mark = (type, extra = {}) => stats.events.push({
-    type, t: Math.round(game.elapsed * 10) / 10, video: Math.round(performance.now()) / 1000, ...extra
+    type, t: Math.round(game.elapsed * 10) / 10, video: Math.round(performance.now()) / 1000, form: game.player?.form, ...extra
   });
   // A26: the nearest crier within `range` (only when --crierHunt 1 and no boss is up), and how long each crier lived.
   const huntCrier = range => {
@@ -240,6 +240,8 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     return addXp.call(this, amount, ...rest);
   };
   let lastDiveState = player.diveState;
+  let lastBossNearMark = -Infinity;
+  let lastBossFallen = 0;
   let lastHp = player.hp;
   let nextSample = 0;
   let pendingRelease = null;
@@ -481,6 +483,15 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     }
     if (player.diveState === 'dive' && lastDiveState !== 'dive') mark(player.diveTarget?.isMother ? 'motherDive' : 'dive');
     lastDiveState = player.diveState;
+    // B6-6: moments with the boss in frame, for the highlight reel. The camera shows about 13 around the player.
+    const bodies = (game.bossEggs ?? []).filter(body => !body.dead);
+    if (bodies.length) {
+      const near = Math.min(...bodies.map(body => Math.hypot(body.position.x - player.position.x, body.position.z - player.position.z)));
+      if (near < 13 && game.elapsed - lastBossNearMark > 5) { lastBossNearMark = game.elapsed; mark('bossNear', { distance: Math.round(near * 10) / 10 }); }
+    }
+    const fallen = (game.motherEgg?.swarm?.downs ?? 0) + (game.motherEgg?.lotus?.broken ?? 0);
+    if (fallen > lastBossFallen) mark('bossDown');
+    lastBossFallen = fallen;
     if (game.elapsed >= nextSample) {
       stats.samples.push({
         t: Math.round(game.elapsed), hp: Math.round(player.hp), level: player.level,
@@ -505,6 +516,10 @@ function installBot({ speed, seed, dodge, shake, mimicAware, realtime, startAt, 
     for (let i = 0; i < (realtime ? 1 : speed) && !this.outcome; i++) {
       tick(dt);
       this.update(dt);
+    }
+    if (this.outcome && !stats.outcomeMarked) {
+      stats.outcomeMarked = true;
+      if (this.outcome.victory) mark('motherKill');
     }
     this.render();
     stats.frames++;
@@ -548,7 +563,13 @@ function summarize(game, stats) {
     rootsuckers: game.rootsuckerStats?.spawned ? { ...game.rootsuckerStats, drySeconds: Math.round(game.rootsuckerStats.drySeconds * 10) / 10, dryMpLost: Math.round(game.rootsuckerStats.dryMpLost) } : null,
     synergies: game.synergyStats?.activated.length ? { ...game.synergyStats } : null,
     lotus: game.lotusStats ? { ...game.lotusStats, broken: game.motherEgg?.lotus?.broken ?? 0 } : null,
-    swarm: game.motherEgg?.swarm ? { downs: game.motherEgg.swarm.downs, revives: game.motherEgg.swarm.revives } : null,
+    swarm: game.motherEgg?.swarm ? (() => {
+      const swarm = game.motherEgg.swarm;
+      const round = (t) => Math.round(t * 10) / 10;
+      return { downs: swarm.downs, revives: swarm.revives, downTimes: swarm.downTimes?.map(round) ?? [],
+        reviveTimes: swarm.reviveTimes?.map(round) ?? [], finishAt: swarm.finishAt == null ? null : round(swarm.finishAt),
+        hpLeft: swarm.members.map((egg) => egg.dead ? 0 : Math.round(egg.hp)) };
+    })() : null,
     floodgate: game.floodgateStats?.streams || game.floodgateStats?.bites ? { ...game.floodgateStats } : null,
     maxEggs: stats.maxEggs,
     maxEnemies: stats.maxEnemies,

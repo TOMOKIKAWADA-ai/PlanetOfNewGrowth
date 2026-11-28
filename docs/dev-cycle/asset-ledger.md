@@ -642,3 +642,12 @@ Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊�
 
 組み込み: `src/main.js` の `voices` に `hurtStreak`、`tryHurtStreakVoice()`（3 秒以内に 4 回の被弾で、その回の被弾の声の代わりに鳴る。戦闘時間 30 秒に 1 回まで。HP 3 割の一言が先）。**台詞の承認待ちなので `Config.audio.hurtStreakVoice: false`（鳴らない）**。URL の `?hurtStreakVoice=1` で鳴らして試せる。
 ライセンス: Irodori-TTS（手本の声も Irodori で作ったもの）。
+
+## 2026-11-28 第4章のハイライト（B6-6、場面選びの改良）
+| ファイル | ツール | 元 | 設定 | 備考 |
+|---|---|---|---|---|
+| `promo/2026-11-28/raw/page@64d3c64c….webm`・`page@78aae1df….webm` | Playwright `recordVideo`（`scripts/bot-play.mjs --record`） | 第4章・ツキミ、自動プレイボット | `--start 165 --seed 1 --runs 2`、実時間、1280×800 | 2 回とも勝ち（232 秒・210 秒）。git 対象外 |
+| `promo/2026-11-28/b/highlight-9x16.mp4`・`highlight-16x9.mp4` | FFmpeg 8.1（`scripts/promo/cut-highlights.mjs --boss 群れの母 --seconds 26`） | `page@64d3c64c….webm` | 新しい場面の順（撃破 → 姉妹が倒れる → 衝撃波 → 急降下 → ボスに迫る → 出現 → バースト）、ボスの場面がある録画では卵への急降下を外す | 6 場面、約 26 秒、音なし。採用候補。git 対象外 |
+| `promo/2026-11-28/highlight-9x16.mp4`・`highlight-16x9.mp4` | 同上（急降下を外す前の版） | `page@78aae1df….webm` | 同上 | 最初の 8 秒が暗い鳥のカメラ。不採用。git 対象外 |
+
+ゲームの画面をそのまま録ったもので、生成モデルは使っていない。投稿文の案は `promo/2026-11-28/post.md`。
