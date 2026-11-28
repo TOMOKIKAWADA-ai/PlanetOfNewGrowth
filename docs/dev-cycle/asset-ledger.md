@@ -651,3 +651,21 @@ Tripo で作り直す案（B1-1）は残す。手作りで足りるかは、遊�
 | `promo/2026-11-28/highlight-9x16.mp4`・`highlight-16x9.mp4` | 同上（急降下を外す前の版） | `page@78aae1df….webm` | 同上 | 最初の 8 秒が暗い鳥のカメラ。不採用。git 対象外 |
 
 ゲームの画面をそのまま録ったもので、生成モデルは使っていない。投稿文の案は `promo/2026-11-28/post.md`。
+
+## 2026-11-29 場面ごとの BGM 6 曲（受け取り用のチャット、ユーザー「magnificMCPにはつなげられる？これでBGMも作ってもらいたい」）
+ツール: **Magnific MCP**（claude.ai のコネクタ、mcp.magnific.com）の `audio_music_generate`、モデル **Google Lyria 3 Pro**（長さはモデルが決める。1 曲 160 クレジット）。Premium（有料）プラン。生成物は Magnific の Personal プロジェクトにも残る。
+1 回目（ゲーム音楽らしい版）を作ったあと、ユーザー「ちょっとゲーム音楽的すぎるかな？AOR・ブルーアイドソウル的な雰囲気を加えたい」で 6 曲とも作り直し、**2 回目（AOR 版）を採用**。2 回で 12 曲・1,920 クレジット。
+元のファイル: `D:/0001_App_Dev/search_survive/assets_src/magnific/2026-11-29-bgm/v2-aor/`（採用）、`v1-game/`（不採用、1 回目）。assets_src は git に入らない。
+
+| ファイル | 場面 | Magnific の曲名 | 指示の要点（英語で指定） |
+|---|---|---|---|
+| `assets/audio/bgm/title.mp3` | タイトル・キャラクター選択 | Duskway | 70〜80 年代の AOR／ブルーアイドソウル、92 BPM、ローズ、コーラスのかかったクリーンギター、サックスの旋律、少しの謎 |
+| `assets/audio/bgm/story.mp3` | 会話（プロローグ・出撃前・帰還後） | Daydreamer | 静かなブルーアイドソウルのバラード、72 BPM、ローズ、ブラシのドラム、文字の邪魔をしない |
+| `assets/audio/bgm/battle-land.mp3` | 草原の章の戦闘 | Conquering Sunlit Meadows | AOR ロック＋ソウルのグルーヴ、124 BPM、ファンキーなギター、ブラス |
+| `assets/audio/bgm/battle-water.mp3` | 水の章の戦闘 | Flooded Tower at Midnight | 80 年代の夜のドライブ風 AOR、112 BPM、シンセベース、FM のベル、サックス |
+| `assets/audio/bgm/boss.mp3` | ボスが出てから | Titan's Heartbeat | AOR ハードロック＋ソウルのホーン、138 BPM、歪んだギター、ハモンド |
+| `assets/audio/bgm/ending.mp3` | 最終章の帰還後（エンディング） | Lotus Bloom at Dawn | ブルーアイドソウル／AOR のバラード、76 BPM、ストリングス、サックスのソロ |
+
+後処理（FFmpeg 8.1）: ループの切れ目が聞こえないよう、曲の終わりの消えていく部分（2〜7 秒）を切り、最後の 3 秒を曲の頭の 3 秒と重ねた（`atrim` ＋ `acrossfade`。ファイルは元の 3 秒目から始まる）。ラウドネスは前の `bgm.mp3`（-13.5 LUFS）に合わせて -14 LUFS、会話の曲だけ -16 LUFS、真のピーク -1.5 dB。エンディングはループさせず、終わりの無音を切って 2 秒で消えるようにした。
+組み込み: `src/music.js`（`MusicPlayer`、場面が変わると 1.2 秒で入れ替わる）、`Config.audio.bgmSet`（false か URL の `?bgmSet=0` で、前の `bgm.mp3` を戦闘中だけ鳴らす元の形に戻る）。
+ライセンス: Magnific の有料プランで生成（前の `bgm.mp3` と同じ扱い。FAQ では生成した曲の権利は利用者が持ち、有料プランは商用利用可）。

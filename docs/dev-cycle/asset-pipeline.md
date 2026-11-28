@@ -19,6 +19,7 @@
 | Mesh Avatar Studio（Live2D_AI） | `D:\AI\Live2D_AI` | 1枚の立ち絵から、まばたき・口パク・首振りする2Dアバター。`<mesh-avatar>` 要素でWebに埋め込める（MIT） | 起動確認済み。品質は未評価（B5-1） |
 | Kohya_ss | `D:\AI\Kohya` | LoRA 学習（キャラクターの見た目をそろえる） | 長時間 GPU を使うので日曜のみ |
 | Bionic（LM Studio） | `D:\AI\Bionic` | ローカルLLM | 文章は自分で書くので基本は使わない |
+| Magnific MCP（Web、有料のクレジット） | claude.ai のコネクタ（mcp.magnific.com、2026-11-29 接続） | BGM（`audio_music_generate`、Google Lyria 3 Pro は 1 曲 160 クレジット）。画像・動画・3D・効果音・音声の生成もある | 使用可。**クレジットを使うので、定期のサイクルでは生成しない**（ユーザーが頼んだときだけ）。BGM の後処理は asset-ledger.md の 2026-11-29 |
 | FFmpeg | `D:\AI\Irodori-TTS-v4_1\tools\ffmpeg-*\bin` | 音声の後処理、動画の編集・書き出し | 使用可 |
 
 ポートの重複に注意: Mesh Avatar Studio は 5173、Irodori の画面は 7860/7861、Stable Audio の画面は 7860、Forge は 7860。ゲームの開発サーバーは 5183 を使う。

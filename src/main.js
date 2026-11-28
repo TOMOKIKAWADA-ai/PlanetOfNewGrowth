@@ -6,6 +6,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { CameraRig } from './camera-rig.js';
 import { getCharacterPortrait } from './character-portraits.js';
 import { StoryPlayer } from './story.js';
+import { battleTrackKey, MusicPlayer, storyTrackKey } from './music.js';
 import { buildForecast, ForecastCard } from './forecast.js';
 import { PROLOGUE, createBriefing, createAftermath } from './story-data.js';
 import {
@@ -111,6 +112,15 @@ const HAND_RING_COLOR = 0xff6a3d;
 const ROOTSUCKER_RING_COLOR = 0xf0c27a;
 const SPLITSHELL_SHARD_COLOR = 0xfff0b8;
 const BGM_URL = new URL('../assets/audio/bgm.mp3', import.meta.url).href;
+// Scene tracks (2026-11-29, Magnific / Lyria 3 Pro). Config.audio.bgmSet = false or ?bgmSet=0 keeps BGM_URL alone.
+const MUSIC_URLS = {
+  title: new URL('../assets/audio/bgm/title.mp3', import.meta.url).href,
+  story: new URL('../assets/audio/bgm/story.mp3', import.meta.url).href,
+  battleLand: new URL('../assets/audio/bgm/battle-land.mp3', import.meta.url).href,
+  battleWater: new URL('../assets/audio/bgm/battle-water.mp3', import.meta.url).href,
+  boss: new URL('../assets/audio/bgm/boss.mp3', import.meta.url).href,
+  ending: new URL('../assets/audio/bgm/ending.mp3', import.meta.url).href
+};
 // Sound effect files by name. Config.audio.normalizedSfx picks the loudness-matched copies in sfx-normalized/
 // (made by scripts/assets/normalize-sfx.mjs, 2026-11-01); false = the original files as before.
 const SFX_FILES = {
@@ -3969,14 +3979,15 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
     this.state = 'story';
     this.hud.result.classList.add('hidden');
     document.getElementById('hud').classList.add('hidden');
-    storyPlayer.show(scene, () => {
+    showStory(scene, () => {
       this.state = 'result';
       document.getElementById('hud').classList.remove('hidden');
       this.hud.showResult(this.outcome.victory, this.outcome.body);
-    });
+    }, storyTrackKey({ finalAftermath: isFinalChapter(this.stageId) }));
   }
 
   createBgm() {
+    if (music) return null;
     const audio = new Audio(BGM_URL);
     audio.loop = true;
     audio.preload = 'auto';
@@ -4077,11 +4088,27 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
   }
 
   updateBgmState() {
+    if (music) {
+      this.updateMusic();
+      return;
+    }
     if (!this.bgm) return;
     if (BGM_ACTIVE_STATES.has(this.state)) {
       this.tryPlayBgm();
     } else {
       this.pauseBgm();
+    }
+  }
+
+  // Scene tracks: battle (land or water), the boss track once the boss is out, silence after a defeat.
+  // Story scenes pick their own track through showStory(); a won result keeps it playing.
+  updateMusic() {
+    if (this.state === 'paused') {
+      music.suspend();
+    } else if (BGM_ACTIVE_STATES.has(this.state)) {
+      music.play(battleTrackKey({ terrain: this.stage?.terrain, bossActive: this.motherSpawned && !this.outcome }));
+    } else if (this.state === 'result' && !this.outcome?.victory) {
+      music.play(null);
     }
   }
 
@@ -4144,12 +4171,23 @@ transformed.z += cos(uWindTime * 1.1 + windPhase * 1.3) * 0.07 * windBend;`
 }
 
 const storyPlayer = new StoryPlayer();
+const music = Config.audio.bgmSet && new URLSearchParams(window.location.search).get('bgmSet') !== '0'
+  ? new MusicPlayer({ urls: MUSIC_URLS, volume: Config.audio.bgmVolume, fadeSeconds: Config.audio.bgmFadeSeconds })
+  : null;
+// Dev builds and ?debug expose the player so a check can read which track is up (window.__music.current).
+if (DEBUG_ENABLED && music) window.__music = music;
+
+// Plays a story scene with its track (the story track, or the ending for the final chapter's aftermath).
+function showStory(scene, onDone, musicKey = storyTrackKey()) {
+  music?.play(musicKey);
+  storyPlayer.show(scene, onDone);
+}
 storyPlayer.onPageTurn = () => playMenuSfx('textAdvance', 0.5);
 const forecastCard = new ForecastCard();
 
 // 出撃前会話 → 朝の孵化予報（Config.forecast.enabled） → 戦闘。
 function showBriefingThenStart(characterId, stageId) {
-  storyPlayer.show(createBriefing(characterId, stageId), () => {
+  showStory(createBriefing(characterId, stageId), () => {
     if (!Config.forecast.enabled) {
       startGameWithCharacter(characterId);
       return;
@@ -4299,6 +4337,7 @@ function setupTitleScreen() {
     beginChapter(launch.characterId, launch.chapter);
     return;
   }
+  music?.play('title');
   const progress = loadProgress();
   if (progress && continueButton) {
     const stage = getStage(progress.chapter);
@@ -4317,7 +4356,8 @@ function setupTitleScreen() {
     confirm.volume = Config.audio.sfxVolume * 0.75;
     confirm.play()?.catch?.(() => {});
     titleScreen.classList.add('hidden');
-    storyPlayer.show(PROLOGUE, () => {
+    showStory(PROLOGUE, () => {
+      music?.play('title');
       characterSelect.classList.remove('hidden');
       characterSelect.querySelector('[data-character="tsukimi"]')?.focus({ preventScroll: true });
     });

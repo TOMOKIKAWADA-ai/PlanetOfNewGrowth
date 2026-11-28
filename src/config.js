@@ -161,6 +161,11 @@ export const Config = {
   },
   audio: {
     bgmVolume: 0.42,
+    // 2026-11-29「magnificMCP…これでBGMも作ってもらいたい」: a track for each scene (title, story, land battle,
+    // water battle, boss, ending), made with Magnific (Google Lyria 3 Pro). Second take after「ゲーム音楽的すぎるかな？AOR・ブルーアイドソウル的な雰囲気を加えたい」. false or ?bgmSet=0 = the single bgm.mp3, battle only.
+    bgmSet: true,
+    // Seconds to fade from one scene's track to the next.
+    bgmFadeSeconds: 1.2,
     sfxVolume: 0.58,
     voiceVolume: 0.72,
     // Battle-start line when the stage begins and a last line after the dying scream (false = previous voice set).
